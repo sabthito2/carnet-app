@@ -699,7 +699,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 41;
+const VERSION_APP = 43;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1175,6 +1175,19 @@ function chargesReelles(deb, fin){
   }, 0);
 }
 
+/* Les prélèvements non mensuels qui tombent dans la période : le mois où
+   ils sortent réellement du compte. Une charge mensuelle en est exclue,
+   son montant lissé est déjà exactement la sortie du mois. */
+function prelevementsPonctuels(deb, fin){
+  const out = [];
+  toutesLignes().forEach(({ l, d }) => {
+    if(PERIODES[l.periodicite] <= 1) return;
+    datesPrelevement(l, deb, fin).forEach(date => out.push({ l, d, date }));
+  });
+  return out.sort((a, c) => a.date.localeCompare(c.date));
+}
+const compterPrelevements = () => db.reglages.compter_prelevements !== false;
+
 /* Ce qui n'est pas encore passé sur le compte d'ici la fin de la période. */
 function resteAPrelever(deb, fin){
   const j = jourISO();
@@ -1211,14 +1224,21 @@ function bilan(decalage = 0){
   const attente = enAttenteRemb();
   const avances = attente.reduce((s,x) => s + (x.montant||0), 0);
   const disponible = revenus - charges + encaissees;
+  /* Option : retirer aussi la facture en entier le mois où elle tombe.
+     Elle est alors comptée deux fois — une fois lissée sur douze mois, une
+     fois en entier ce mois-ci. C'est volontaire : on préfère sous-estimer
+     ce qui reste que d'être surpris le jour du prélèvement. */
+  const ponctuels = prelevementsPonctuels(deb, fin);
+  const sortiePonctuelle = compterPrelevements()
+    ? ponctuels.reduce((s, x) => s + (x.l.montant || 0), 0) : 0;
   const depense = sommeDep(dep);
-  const reste = disponible - depense;
+  const reste = disponible - depense - sortiePonctuelle;
   const total = ecartJours(deb, fin) + 1;
   const ecoules = Math.min(total, Math.max(0, ecartJours(deb, j) + 1));
   const restants = Math.max(0, total - ecoules) + (j >= deb && j <= fin ? 0 : 0);
   const encore = j >= deb && j <= fin ? Math.max(1, total - ecoules + 1) : total;
   return { deb, fin, dep, revenus, charges, disponible, depense, reste, total, ecoules, restants, encore,
-           encaissees, attendues, attente, avances,
+           encaissees, attendues, attente, avances, ponctuels, sortiePonctuelle,
            reel: chargesReelles(deb, fin), courante: j >= deb && j <= fin };
 }
 
@@ -1907,6 +1927,10 @@ function vueBudget(){
       <div class="jauge"><i class="${b.depense>b.disponible?"trop":""}" style="width:${pc}%"></i></div>
       <div class="petit-detail">${euro(b.depense,0)} dépensés ${
         b.courante ? "ce mois-ci" : "sur " + nomPeriode}${
+        b.sortiePonctuelle > 0
+          ? ` · ${euro(b.sortiePonctuelle,0)} de facture annuelle retirés en plus, ${
+              b.ponctuels.map(x => ech(x.l.libelle) + " le " + versDate(x.date).getDate()).join(", ")}`
+          : ""}${
         aPrel > 0 && b.courante
           ? ` · les ${euro(aPrel,0)} qui doivent encore être prélevés sont déjà retirés de ce montant`
           : ""}</div>
@@ -1915,6 +1939,9 @@ function vueBudget(){
       <div><div class="e">Ce qu'il y avait au départ</div><div class="v">${euroCourt(b.disponible)}</div></div>
       <div><div class="e">Factures et abonnements</div><div class="v moins">${euroCourt(b.charges)}</div></div>
       <div><div class="e">Dépenses du quotidien</div><div class="v moins">${euroCourt(b.depense)}</div></div>
+      ${b.sortiePonctuelle > 0
+        ? `<div><div class="e">Facture annuelle du mois</div><div class="v moins">${euroCourt(b.sortiePonctuelle)}</div></div>`
+        : ""}
     </div>`);
     h.push(`<button class="aide-q" data-act="voirExplication">${
       vue.voirExplication ? "Masquer l'explication" : "Comment ce calcul fonctionne ?"}</button>`);
@@ -1970,6 +1997,40 @@ function vueBudget(){
     : vide("Aucune rentrée", "Remboursement, prime, vente… date et montant facultatifs."));
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
+  /* Prélèvements du mois : ce qui part réellement du compte à une date
+     donnée. Ils ne sont pas des dépenses du quotidien — on ne les saisit
+     pas — mais ils quittent bien le compte, et jusqu'ici rien ne le montrait
+     sur le mois concerné. */
+  const prelevs = [];
+  toutesLignes().forEach(({ l, d }) => {
+    datesPrelevement(l, b.deb, b.fin).forEach(date => prelevs.push({ l, d, date }));
+  });
+  prelevs.sort((a,c) => a.date.localeCompare(c.date));
+  if(prelevs.length){
+    const total = prelevs.reduce((s,x) => s + (x.l.montant || 0), 0);
+    h.push(`<div class="oeil">Prélèvements ${b.courante ? "du mois" : "de " + nomPeriode}
+      <span class="cpt">${euro(total,2)}</span></div>`);
+    h.push(enFiche(prelevs.map(({ l, d, date }) => {
+      const passe = date < j;
+      return `<div class="ligne" data-dossier="${d.id}">
+        <div class="jour-prel ${passe?"passe":""}">${String(versDate(date).getDate()).padStart(2,"0")}</div>
+        <div class="corps">
+          <button class="nom" data-act="ouvrir" style="background:none;border:0;padding:0;text-align:left;font-weight:540">${ech(l.libelle)}</button>
+          <div class="meta"><span class="puce doss">${ech(d.nom)}</span>
+            <span class="puce date">${dateLongue(date)}</span>
+            <span class="puce">${passe ? "prélevé" : "à venir"}</span></div></div>
+        <div class="somme">${euro(l.montant,2)}</div></div>`;
+    })));
+    h.push(`<p class="petit-detail" style="margin:8px 0 0">${
+      b.sortiePonctuelle > 0
+        ? `Les factures annuelles ci-dessus sont retirées une seconde fois de « Il reste » ce mois-ci,
+           en plus de la part lissée. ${nomPeriode} paraît donc plus serré qu'il ne l'est —
+           c'est le réglage « compter deux fois », modifiable dans Réglages.`
+        : `Ces montants sont déjà pris en compte dans « Il reste », étalés mois par mois.
+           Ils figurent ici parce qu'ils quittent réellement le compte
+           ${b.courante ? "ce mois-ci" : "sur " + nomPeriode}.`}</p>`);
+  }
+
   /* Dépenses de la période, par jour */
   const parJour = {};
   b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push(x));
@@ -1984,7 +2045,9 @@ function vueBudget(){
       .sort((a,z) => Math.abs(a - vue.decalage) - Math.abs(z - vue.decalage))
       .slice(0, 5);
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
-      ailleurs.length
+      prelevs.length
+        ? `Aucune dépense saisie à la main. Les ${euro(prelevs.reduce((s,x)=>s+(x.l.montant||0),0),0)} de prélèvements sont listés juste au-dessus.`
+        : ailleurs.length
         ? `Vous en avez enregistré sur d'autres mois : ${ailleurs.map(n =>
             `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
           ).join(" · ")}`
@@ -2294,7 +2357,18 @@ function vueReglages(){
         <label class="champ"><span>Préavis par défaut (jours)</span>
           <input type="number" min="0" max="365" value="${db.reglages.preavis_defaut}" data-act="preavis"></label>
       </div>
-      <p style="margin:0;font-size:12.5px;color:var(--encre-3)">Mettez le jour de votre paie si le mois calendaire ne correspond pas à votre cycle réel.</p>
+      <p style="margin:0 0 14px;font-size:12.5px;color:var(--encre-3)">Mettez le jour de votre paie si le mois calendaire ne correspond pas à votre cycle réel.</p>
+      <div class="boites" style="margin:0">
+        <span class="boite-note">Factures annuelles</span>
+        <div class="segments">
+          <button class="seg ${compterPrelevements()?"on":""}" data-prelev="1">Compter deux fois</button>
+          <button class="seg ${compterPrelevements()?"":"on"}" data-prelev="0">Lisser seulement</button>
+        </div>
+      </div>
+      <p style="margin:10px 0 0;font-size:12.5px;color:var(--encre-3)">
+        ${compterPrelevements()
+          ? "Une facture annuelle est retirée un peu chaque mois <b>et</b> en entier le mois où elle tombe. Ce mois-là paraît donc plus serré qu'il ne l'est vraiment — c'est une marge de sécurité volontaire."
+          : "Une facture annuelle n'est retirée qu'un douzième par mois. Le montant restant est exact toute l'année, mais le mois du prélèvement ne se distingue pas des autres."}</p>
     </div></div>
 
   <div class="bloc"><div class="oeil">Revenus<span class="a-droite">${(db.revenus||[]).length} ligne${(db.revenus||[]).length>1?"s":""}</span></div>
@@ -2861,6 +2935,8 @@ document.addEventListener("click", ev => {
   if(bC){ vue.filtreCtx = bC.dataset.fctx || null; return rendre(); }
   const bD = c.closest("[data-fdoss]");
   if(bD){ vue.filtreDoss = bD.dataset.fdoss || null; return rendre(); }
+  const bPr = c.closest("[data-prelev]");
+  if(bPr){ db.reglages.compter_prelevements = bPr.dataset.prelev === "1"; return maj(); }
   const bS = c.closest("[data-sphere]");
   if(bS){ db.reglages.sphere = bS.dataset.sphere; vue.saisieTravail = null; return maj(); }
   const bT = c.closest("[data-teinte]");
