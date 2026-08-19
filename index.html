@@ -699,7 +699,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 43;
+const VERSION_APP = 44;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1895,12 +1895,10 @@ function vueAgenda(){
 /* ---- Budget ---- */
 function vueBudget(){
   const b = bilan(vue.decalage), j = jourISO();
+  const nomPeriode = nomDeLaPeriode(vue.decalage);
   const h = [`<div class="entete-mob"><h1 class="titre">Budget</h1><div class="jour">${dateCourte(j)}</div></div>`];
 
-  /* Le mois consulté est l'information la plus structurante de cet écran :
-     tous les chiffres en dépendent. Il doit donc s'imposer, et se distinguer
-     nettement du mois en cours quand on navigue ailleurs. */
-  const nomPeriode = nomDeLaPeriode(vue.decalage);
+  /* ---------- 1. Le mois consulté ---------- */
   h.push(`<div class="barre-mois ${b.courante ? "" : "ailleurs"}">
     <button class="btn mini creux" data-periode="-1">←</button>
     <div class="titre-mois">
@@ -1909,15 +1907,22 @@ function vueBudget(){
         b.courante ? "" : (vue.decalage < 0 ? " · mois passé" : " · mois à venir")}</span>
     </div>
     <button class="btn mini creux" data-periode="1">→</button>
-    ${vue.decalage!==0?`<button class="btn mini creux" data-periode="0">Revenir au mois en cours</button>`:""}
+    ${vue.decalage !== 0 ? `<button class="btn mini creux" data-periode="0">Revenir au mois en cours</button>` : ""}
   </div>`);
 
+  /* ---------- 2. Ce qu'il reste ---------- */
   if(!b.revenus && !b.charges && !db.depenses.length){
     h.push(vide("Le budget est vide",
       "Commencez par renseigner vos revenus dans Réglages. Vos factures et abonnements se saisissent dans les dossiers du Suivi."));
   }else{
     const pc = b.disponible > 0 ? Math.min(100, (b.depense / b.disponible) * 100) : (b.depense > 0 ? 100 : 0);
     const aPrel = resteAPrelever(b.deb, b.fin);
+    const details = [`${euro(b.depense,0)} dépensés ${b.courante ? "ce mois-ci" : "sur " + nomPeriode}`];
+    if(b.sortiePonctuelle > 0)
+      details.push(`${euro(b.sortiePonctuelle,0)} de facture annuelle retirés en plus`);
+    if(aPrel > 0 && b.courante)
+      details.push(`${euro(aPrel,0)} encore à prélever, déjà retirés`);
+
     h.push(`<div class="compteur">
       <div class="etiq">${b.courante ? "Il reste" : "Il resterait sur " + nomPeriode}</div>
       <div class="grand ${b.reste<0?"neg":""}">${euro(b.reste,0).replace(" €",'<span class="u"> €</span>')}</div>
@@ -1925,16 +1930,9 @@ function vueBudget(){
         ? `pour finir le mois, soit <b>${euro(b.reste / b.encore, 0)}</b> par jour pendant ${b.encore} jours`
         : `sur la période close · ${b.total} jours`}</div>
       <div class="jauge"><i class="${b.depense>b.disponible?"trop":""}" style="width:${pc}%"></i></div>
-      <div class="petit-detail">${euro(b.depense,0)} dépensés ${
-        b.courante ? "ce mois-ci" : "sur " + nomPeriode}${
-        b.sortiePonctuelle > 0
-          ? ` · ${euro(b.sortiePonctuelle,0)} de facture annuelle retirés en plus, ${
-              b.ponctuels.map(x => ech(x.l.libelle) + " le " + versDate(x.date).getDate()).join(", ")}`
-          : ""}${
-        aPrel > 0 && b.courante
-          ? ` · les ${euro(aPrel,0)} qui doivent encore être prélevés sont déjà retirés de ce montant`
-          : ""}</div>
+      <div class="petit-detail">${details.join(" · ")}</div>
     </div>`);
+
     h.push(`<div class="bilan">
       <div><div class="e">Ce qu'il y avait au départ</div><div class="v">${euroCourt(b.disponible)}</div></div>
       <div><div class="e">Factures et abonnements</div><div class="v moins">${euroCourt(b.charges)}</div></div>
@@ -1943,19 +1941,20 @@ function vueBudget(){
         ? `<div><div class="e">Facture annuelle du mois</div><div class="v moins">${euroCourt(b.sortiePonctuelle)}</div></div>`
         : ""}
     </div>`);
+
     h.push(`<button class="aide-q" data-act="voirExplication">${
       vue.voirExplication ? "Masquer l'explication" : "Comment ce calcul fonctionne ?"}</button>`);
     if(vue.voirExplication)
       h.push(`<p class="explique">
         « Ce qu'il y avait au départ », ce sont vos revenus une fois les factures et abonnements retirés.
         Vos dépenses du quotidien viennent s'y soustraire au fil du mois : ce qu'il reste est le montant ci-dessus.
-        ${Math.abs(b.reel - b.charges) > 1
-          ? `Une précision : ce mois-ci ${euro(b.reel,0)} partent réellement de votre compte, alors que ${euro(b.charges,0)} sont comptés.
-             La différence est mise de côté pour les factures qui ne tombent qu'une fois par an.`
+        ${b.sortiePonctuelle > 0
+          ? `Ce mois-ci, une facture annuelle est en plus retirée en entier : elle est donc comptée deux fois,
+             une fois lissée et une fois en totalité. C'est une marge de sécurité volontaire, modifiable dans Réglages.`
           : ""}</p>`);
   }
 
-  /* Saisie d'une dépense */
+  /* ---------- 3. Saisir une dépense ---------- */
   h.push(`<div class="oeil">Ajouter une dépense</div>`);
   h.push(`<div class="saisie">
     <input id="dep-montant" class="court" inputmode="decimal" placeholder="0,00" autocomplete="off" enterkeyhint="done">
@@ -1964,12 +1963,11 @@ function vueBudget(){
   h.push(`<div class="filtres">${db.categories_depense.map(c =>
     `<button class="filtre ${vue.catDep===c.id?"on":""}" data-cdep="${c.id}">${ech(c.nom)}</button>`).join("")}</div>`);
 
-
-  /* Ce que l'on attend : remboursements en cours, puis rentrées annoncées */
+  /* ---------- 4. Ce que l'on attend ---------- */
   if(b.attente.length){
     const age = ecartJours(b.attente[0].date, j);
     h.push(`<div class="oeil">En attente de remboursement<span class="a-droite">${euro(b.avances,0)} avancés</span></div>`);
-    h.push(`<p style="font-family:var(--mono);font-size:11px;color:var(--encre-3);margin:0 0 8px">
+    h.push(`<p class="petit-detail" style="margin:0 0 8px">
       ${b.attente.length} dépense${b.attente.length>1?"s":""} · la plus ancienne remonte à ${age} jour${age>1?"s":""}.</p>`);
     h.push(enFiche(b.attente.map(x => { const c = cdepDe(x.categorie_id); return `<div class="ligne" data-depense="${x.id}">
       <div class="cases"><button class="case carre" data-act="rembourser"
@@ -1997,57 +1995,19 @@ function vueBudget(){
     : vide("Aucune rentrée", "Remboursement, prime, vente… date et montant facultatifs."));
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
-  /* Prélèvements du mois : ce qui part réellement du compte à une date
-     donnée. Ils ne sont pas des dépenses du quotidien — on ne les saisit
-     pas — mais ils quittent bien le compte, et jusqu'ici rien ne le montrait
-     sur le mois concerné. */
-  const prelevs = [];
-  toutesLignes().forEach(({ l, d }) => {
-    datesPrelevement(l, b.deb, b.fin).forEach(date => prelevs.push({ l, d, date }));
-  });
-  prelevs.sort((a,c) => a.date.localeCompare(c.date));
-  if(prelevs.length){
-    const total = prelevs.reduce((s,x) => s + (x.l.montant || 0), 0);
-    h.push(`<div class="oeil">Prélèvements ${b.courante ? "du mois" : "de " + nomPeriode}
-      <span class="cpt">${euro(total,2)}</span></div>`);
-    h.push(enFiche(prelevs.map(({ l, d, date }) => {
-      const passe = date < j;
-      return `<div class="ligne" data-dossier="${d.id}">
-        <div class="jour-prel ${passe?"passe":""}">${String(versDate(date).getDate()).padStart(2,"0")}</div>
-        <div class="corps">
-          <button class="nom" data-act="ouvrir" style="background:none;border:0;padding:0;text-align:left;font-weight:540">${ech(l.libelle)}</button>
-          <div class="meta"><span class="puce doss">${ech(d.nom)}</span>
-            <span class="puce date">${dateLongue(date)}</span>
-            <span class="puce">${passe ? "prélevé" : "à venir"}</span></div></div>
-        <div class="somme">${euro(l.montant,2)}</div></div>`;
-    })));
-    h.push(`<p class="petit-detail" style="margin:8px 0 0">${
-      b.sortiePonctuelle > 0
-        ? `Les factures annuelles ci-dessus sont retirées une seconde fois de « Il reste » ce mois-ci,
-           en plus de la part lissée. ${nomPeriode} paraît donc plus serré qu'il ne l'est —
-           c'est le réglage « compter deux fois », modifiable dans Réglages.`
-        : `Ces montants sont déjà pris en compte dans « Il reste », étalés mois par mois.
-           Ils figurent ici parce qu'ils quittent réellement le compte
-           ${b.courante ? "ce mois-ci" : "sur " + nomPeriode}.`}</p>`);
-  }
-
-  /* Dépenses de la période, par jour */
+  /* ---------- 5. Les dépenses saisies ---------- */
   const parJour = {};
   b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push(x));
   const jours = Object.keys(parJour).sort().reverse();
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
     ${b.dep.length?`<span class="cpt">${euro(b.depense,2)}</span>`:""}</div>`);
   if(!jours.length){
-    /* Rien ce mois-ci, mais peut-être ailleurs : sans ce repère, une dépense
-       datée d'un autre mois reste introuvable autrement qu'à la loupe. */
     const ailleurs = [...new Set(db.depenses.map(x => decalagePeriode(x.date)))]
       .filter(n => n !== vue.decalage)
       .sort((a,z) => Math.abs(a - vue.decalage) - Math.abs(z - vue.decalage))
       .slice(0, 5);
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
-      prelevs.length
-        ? `Aucune dépense saisie à la main. Les ${euro(prelevs.reduce((s,x)=>s+(x.l.montant||0),0),0)} de prélèvements sont listés juste au-dessus.`
-        : ailleurs.length
+      ailleurs.length
         ? `Vous en avez enregistré sur d'autres mois : ${ailleurs.map(n =>
             `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
           ).join(" · ")}`
@@ -2069,7 +2029,6 @@ function vueBudget(){
         <button class="ico sup" data-act="jeter">✕</button></div></div>`; }))}`;
   }).join(""));
 
-  /* Répartition */
   if(b.dep.length){
     const tot = {};
     b.dep.forEach(x => tot[x.categorie_id || "?"] = (tot[x.categorie_id || "?"] || 0) + x.montant);
@@ -2082,63 +2041,67 @@ function vueBudget(){
         <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
   }
 
-  /* Charges fixes : celles qui tombent réellement sur le mois affiché
-     passent devant, avec leur montant plein. Les autres sont lissées. */
-  const lg = toutesLignes().map(x => {
-    const dates = datesPrelevement(x.l, b.deb, b.fin);
-    return { ...x, dates, tombe: dates.length > 0 };
+  /* ---------- 6. Factures et abonnements : une seule liste ---------- */
+  const factures = toutesLignes().map(({ l, d }) => {
+    const p = PERIODES[l.periodicite];
+    const dates = datesPrelevement(l, b.deb, b.fin);
+    return { l, d, mensuelle: p === 1, dates,
+             tombe: dates.length > 0,
+             quand: dates[0] || null,
+             reel: p === 1 ? l.montant : l.montant * dates.length,
+             lisse: parMois(l) };
   }).sort((a,c) =>
     (c.tombe?1:0) - (a.tombe?1:0)
-    || (a.dates[0]||"9").localeCompare(c.dates[0]||"9")
+    || (a.quand || "9").localeCompare(c.quand || "9")
     || (a.l.jour || 99) - (c.l.jour || 99)
-    || parMois(c.l) - parMois(a.l));
-  const aPrelever = resteAPrelever(b.deb, b.fin);
-  const sansMois = toutesLignes().filter(x => PERIODES[x.l.periodicite] > 1 && !x.l.mois);
-  const pleins = lg.filter(x => x.tombe && PERIODES[x.l.periodicite] > 1);
+    || c.lisse - a.lisse);
+
+  const sansMois = factures.filter(x => !x.mensuelle && !x.l.mois);
+  const totalReel = factures.reduce((s,x) => s + x.reel, 0);
+
   h.push(`<div class="oeil">Factures et abonnements<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
-  if(pleins.length)
-    h.push(`<p class="petit-detail" style="margin:0 0 8px">
-      ${pleins.length === 1 ? "Une facture tombe" : pleins.length + " factures tombent"} en entier
-      sur ${nomPeriode} : ${pleins.map(x => `${ech(x.l.libelle)} ${euro(x.l.montant,0)}`).join(" · ")}.</p>`);
+
   if(sansMois.length)
     h.push(`<div class="bandeau alerte" style="margin:0 0 10px"><div class="g">
       ${sansMois.length === 1 ? "Une facture n'a pas de mois de prélèvement" : sansMois.length + " factures n'ont pas de mois de prélèvement"} :
       ${sansMois.map(x => ech(x.l.libelle)).join(" · ")}. Tant qu'il manque, aucun mois ne les voit tomber.
       </div><button class="btn mini creux" data-dossier="${sansMois[0].d.id}" data-act="ouvrir">Corriger</button></div>`);
-  if(!lg.length) h.push(vide("Aucune facture enregistrée",
-    "Loyer, mutuelle, abonnements : ouvrez le dossier concerné dans Suivi et ajoutez-le dans « Charges »."));
+
+  if(!factures.length)
+    h.push(vide("Aucune facture enregistrée",
+      "Loyer, mutuelle, abonnements : ouvrez le dossier concerné dans Suivi et ajoutez-le dans « Charges »."));
   else{
-    if(b.courante && aPrelever > 0)
-      if(b.courante) h.push(`<p class="petit-detail" style="margin:0 0 8px">
-        ${euro(aPrelever,0)} n'ont pas encore été prélevés d'ici le ${dateMoyenne(b.fin)}.</p>`);
-    h.push(enFiche(lg.map(({ l, d, dates, tombe }) => {
-      /* Une pastille colorée annonce un prélèvement encore à venir dans la
-         période ; une pastille grise, un prélèvement déjà passé. */
-      const dp = dates[0] || (PERIODES[l.periodicite] > 1 && !l.mois ? prochaineDe(d.id) : null);
-      const aVenir = dp && dp >= jourISO() && dp <= b.fin;
-      const passe = !aVenir;
+    h.push(enFiche(factures.map(({ l, d, mensuelle, tombe, quand, reel, lisse }) => {
+      const passe = quand && quand < j;
+      const jourAffiche = quand ? String(versDate(quand).getDate()).padStart(2,"0")
+                                : (l.jour ? String(l.jour).padStart(2,"0") : "—");
+      const meta = [`<span class="puce doss">${ech(d.nom)}</span>`,
+                    `<span class="puce">${ech(l.periodicite)}</span>`];
+      if(!mensuelle){
+        if(tombe) meta.push(`<span class="puce ctx">${euro(l.montant,0)} le ${dateMoyenne(quand)}</span>`);
+        else if(l.mois) meta.push(`<span class="puce">${euro(l.montant,0)} le ${l.jour} ${MOIS[l.mois-1]}</span>`);
+        else meta.push(`<span class="puce chaud">mois à préciser</span>`);
+      }
+      if(quand) meta.push(`<span class="puce">${passe ? "prélevé" : "à venir"}</span>`);
       return `<div class="ligne" data-dossier="${d.id}">
-        <div class="jour-prel ${passe?"passe":""}" ${l.mois?`title="le ${l.jour} ${MOIS[l.mois-1]}"`:""}>${l.jour ? String(l.jour).padStart(2,"0") : "—"}</div>
+        <div class="jour-prel ${passe || !quand ? "passe" : ""}">${jourAffiche}</div>
         <div class="corps">
-          <button class="nom" data-act="ouvrir" style="background:none;border:0;padding:0;text-align:left;font-weight:540">${ech(l.libelle || d.nom)}</button>
-          <div class="meta"><span class="puce doss">${ech(d.nom)}</span>
-            <span class="puce">${ech(l.periodicite)}</span>
-            ${PERIODES[l.periodicite] > 1 ? `<span class="puce date">${euro(l.montant,0)}${
-              l.mois ? ` le ${l.jour} ${MOIS[l.mois-1]}` : ` tous les ${PERIODES[l.periodicite]} mois`}</span>` : ""}
-            ${tombe && PERIODES[l.periodicite] > 1
-              ? `<span class="puce ctx">tombe sur ${nomPeriode}</span>` : ""}
-            ${PERIODES[l.periodicite] > 1 && !l.mois ? `<span class="puce chaud">mois à préciser</span>` : ""}
-            ${passe ? `<span class="puce">prélevé</span>` : ""}</div></div>
-        <div class="somme">${euro(parMois(l),2)}</div></div>`;
+          <button class="nom" data-act="ouvrir" style="background:none;border:0;padding:0;text-align:left;font-weight:540">${ech(l.libelle)}</button>
+          <div class="meta">${meta.join("")}</div></div>
+        <div class="somme">${reel > 0 ? euro(reel,2) : `<span style="color:var(--encre-3)">${euro(lisse,2)}</span>`}</div>
+      </div>`;
     })));
+    h.push(`<p class="petit-detail" style="margin:8px 0 0">
+      ${euro(totalReel,2)} partent réellement du compte ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} ;
+      ${euro(totalCharges(),2)} sont comptés chaque mois dans le calcul.
+      Les montants en gris sont des parts lissées, ceux en noir des prélèvements du mois.</p>`);
   }
 
-  h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
-
-  /* Les revenus se règlent dans Réglages, hors de vue */
   if(!totalRevenus())
     h.push(`<div class="bandeau" style="margin:22px 0 0"><div class="g">Aucun revenu saisi : sans lui, le calcul n'a pas de sens. Il se renseigne dans Réglages.</div>
       <button class="btn mini creux" data-aller="reglages">Réglages</button></div>`);
+
+  h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
   return h.join("");
 }
 
