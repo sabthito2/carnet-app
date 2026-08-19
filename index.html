@@ -709,7 +709,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 47;
+const VERSION_APP = 48;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2043,25 +2043,37 @@ function vueBudget(){
   /* Les factures annuelles qui tombent ce mois-ci figurent parmi les
      dépenses : ce jour-là, l'argent quitte réellement le compte, et le
      réglage « compter deux fois » les retire effectivement du reste. */
-  const ponctuelsDuMois = b.sortiePonctuelle > 0 ? b.ponctuels : [];
+  /* Une facture qui tombe ce mois-ci se voit toujours : qu'elle soit
+     comptée en plus ou seulement lissée est une affaire de calcul, pas
+     une raison de la cacher. */
+  const ponctuelsDuMois = b.ponctuels;
+  const comptes = compterPrelevements();
   const parJour = {};
   b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push({ genre:"dep", x }));
   ponctuelsDuMois.forEach(p => (parJour[p.date] = parJour[p.date] || []).push({ genre:"prel", p }));
   const jours = Object.keys(parJour).sort().reverse();
-  const totalMois = b.depense + b.sortiePonctuelle;
+  const totalMois = b.depense + (comptes ? b.sortiePonctuelle : 0);
+  /* Le renvoi vers les mois à venir ne doit pas disparaître dès qu'une
+     dépense est saisie : c'est justement là qu'on cherche où tombe la
+     prochaine facture annuelle. */
+  const aVenirMois = moisAvecMouvement()
+    .filter(n => n > 0 && n !== vue.decalage)
+    .sort((a,z) => a - z)
+    .slice(0, 6);
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
     ${jours.length?`<span class="cpt">${euro(totalMois,2)}</span>`:""}</div>`);
-  if(ponctuelsDuMois.length)
-    h.push(`<p class="petit-detail" style="margin:0 0 8px">
-      Dont ${euro(b.sortiePonctuelle,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} :
-      ${ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ")}.</p>`);
+  if(ponctuelsDuMois.length){
+    const somme = ponctuelsDuMois.reduce((s,p) => s + (p.l.montant || 0), 0);
+    const liste = ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ");
+    h.push(`<p class="petit-detail" style="margin:0 0 8px">${comptes
+      ? `Dont ${euro(somme,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} : ${liste}.`
+      : `${euro(somme,2)} de facture annuelle sont aussi prélevés ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} — ${liste} —
+         mais déjà comptés de façon lissée, ils ne s'ajoutent pas au total.`}</p>`);
+  }
   if(!jours.length){
     /* On ne propose que les mois à venir : une facture annuelle a autant
        d'occurrences passées que futures, et les remonter n'aide en rien. */
-    const ailleurs = moisAvecMouvement()
-      .filter(n => n > 0 && n !== vue.decalage)
-      .sort((a,z) => a - z)
-      .slice(0, 6);
+    const ailleurs = aVenirMois;
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
       ailleurs.length
         ? `À venir sur d'autres mois : ${ailleurs.map(n =>
@@ -2079,8 +2091,9 @@ function vueBudget(){
         return `<div class="ligne" data-dossier="${dos.id}">
           <div class="corps"><div class="intitule">${ech(lg.libelle)}</div>
             <div class="meta"><span class="puce doss">${ech(dos.nom)}</span>
-              <span class="puce ctx">prélèvement ${ech(lg.periodicite)}</span></div></div>
-          <div class="somme">${euro(lg.montant,2)}</div>
+              <span class="puce ctx">prélèvement ${ech(lg.periodicite)}</span>
+              ${comptes ? "" : `<span class="puce">déjà lissé</span>`}</div></div>
+          <div class="somme"${comptes ? "" : ` style="color:var(--encre-3)"`}>${euro(lg.montant,2)}</div>
           <div class="outils"><button class="ico" data-act="ouvrir" title="Ouvrir le dossier">↗</button></div></div>`;
       }
       const x = e.x, c = cdepDe(x.categorie_id);
@@ -2097,6 +2110,12 @@ function vueBudget(){
         <button class="ico sup" data-act="jeter">✕</button></div></div>`;
     }))}`;
   }).join(""));
+
+  if(jours.length && aVenirMois.length)
+    h.push(`<p class="petit-detail" style="margin:10px 0 0">À venir sur d'autres mois : ${
+      aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
+        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
+      ).join(" · ")}</p>`);
 
   if(b.dep.length){
     const tot = {};
