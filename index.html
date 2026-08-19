@@ -699,7 +699,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 40;
+const VERSION_APP = 41;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2019,23 +2019,39 @@ function vueBudget(){
         <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
   }
 
-  /* Charges fixes, rangées par jour de prélèvement */
-  const lg = toutesLignes().sort((a,c) =>
-    (a.l.jour || 99) - (c.l.jour || 99) || parMois(c.l) - parMois(a.l));
+  /* Charges fixes : celles qui tombent réellement sur le mois affiché
+     passent devant, avec leur montant plein. Les autres sont lissées. */
+  const lg = toutesLignes().map(x => {
+    const dates = datesPrelevement(x.l, b.deb, b.fin);
+    return { ...x, dates, tombe: dates.length > 0 };
+  }).sort((a,c) =>
+    (c.tombe?1:0) - (a.tombe?1:0)
+    || (a.dates[0]||"9").localeCompare(c.dates[0]||"9")
+    || (a.l.jour || 99) - (c.l.jour || 99)
+    || parMois(c.l) - parMois(a.l));
   const aPrelever = resteAPrelever(b.deb, b.fin);
+  const sansMois = toutesLignes().filter(x => PERIODES[x.l.periodicite] > 1 && !x.l.mois);
+  const pleins = lg.filter(x => x.tombe && PERIODES[x.l.periodicite] > 1);
   h.push(`<div class="oeil">Factures et abonnements<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  if(pleins.length)
+    h.push(`<p class="petit-detail" style="margin:0 0 8px">
+      ${pleins.length === 1 ? "Une facture tombe" : pleins.length + " factures tombent"} en entier
+      sur ${nomPeriode} : ${pleins.map(x => `${ech(x.l.libelle)} ${euro(x.l.montant,0)}`).join(" · ")}.</p>`);
+  if(sansMois.length)
+    h.push(`<div class="bandeau alerte" style="margin:0 0 10px"><div class="g">
+      ${sansMois.length === 1 ? "Une facture n'a pas de mois de prélèvement" : sansMois.length + " factures n'ont pas de mois de prélèvement"} :
+      ${sansMois.map(x => ech(x.l.libelle)).join(" · ")}. Tant qu'il manque, aucun mois ne les voit tomber.
+      </div><button class="btn mini creux" data-dossier="${sansMois[0].d.id}" data-act="ouvrir">Corriger</button></div>`);
   if(!lg.length) h.push(vide("Aucune facture enregistrée",
     "Loyer, mutuelle, abonnements : ouvrez le dossier concerné dans Suivi et ajoutez-le dans « Charges »."));
   else{
     if(b.courante && aPrelever > 0)
       if(b.courante) h.push(`<p class="petit-detail" style="margin:0 0 8px">
         ${euro(aPrelever,0)} n'ont pas encore été prélevés d'ici le ${dateMoyenne(b.fin)}.</p>`);
-    h.push(enFiche(lg.map(({ l, d }) => {
-      /* Une pastille violette annonce un prélèvement encore à venir dans la
-         période ; une pastille grise, un prélèvement déjà passé. Les charges
-         annuelles suivent la même règle via l'échéance de leur dossier. */
-      const dp = datesPrelevement(l, b.deb, b.fin)[0]
-        || (PERIODES[l.periodicite] > 1 && !l.mois ? prochaineDe(d.id) : null);
+    h.push(enFiche(lg.map(({ l, d, dates, tombe }) => {
+      /* Une pastille colorée annonce un prélèvement encore à venir dans la
+         période ; une pastille grise, un prélèvement déjà passé. */
+      const dp = dates[0] || (PERIODES[l.periodicite] > 1 && !l.mois ? prochaineDe(d.id) : null);
       const aVenir = dp && dp >= jourISO() && dp <= b.fin;
       const passe = !aVenir;
       return `<div class="ligne" data-dossier="${d.id}">
@@ -2046,6 +2062,9 @@ function vueBudget(){
             <span class="puce">${ech(l.periodicite)}</span>
             ${PERIODES[l.periodicite] > 1 ? `<span class="puce date">${euro(l.montant,0)}${
               l.mois ? ` le ${l.jour} ${MOIS[l.mois-1]}` : ` tous les ${PERIODES[l.periodicite]} mois`}</span>` : ""}
+            ${tombe && PERIODES[l.periodicite] > 1
+              ? `<span class="puce ctx">tombe sur ${nomPeriode}</span>` : ""}
+            ${PERIODES[l.periodicite] > 1 && !l.mois ? `<span class="puce chaud">mois à préciser</span>` : ""}
             ${passe ? `<span class="puce">prélevé</span>` : ""}</div></div>
         <div class="somme">${euro(parMois(l),2)}</div></div>`;
     })));
