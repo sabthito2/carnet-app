@@ -219,6 +219,25 @@
     padding:11px 13px;font-size:16px}
   .champ-rech:focus{border-color:var(--accent);outline:none}
   .rech-vide{color:var(--encre-3);font-size:13px;margin:14px 2px;text-align:center}
+  /* Suivi d'habitudes : sept ronds par ligne, assez gros pour le pouce. */
+  .habitudes{padding:4px 10px 8px}
+  .hab-entete,.hab-ligne{display:grid;grid-template-columns:1fr repeat(7, 30px);align-items:center;gap:2px}
+  .hab-entete{font-family:var(--mono);font-size:10px;color:var(--encre-3);padding:5px 0 3px}
+  .hab-entete span{text-align:center}
+  .hab-entete span.auj{color:var(--accent);font-weight:700}
+  .hab-ligne{padding:5px 0;border-top:1px solid var(--filet)}
+  .hab-nom{font-size:13.5px;padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hab-nom .serie{font-family:var(--mono);font-style:normal;font-size:10px;color:var(--accent);margin-left:6px}
+  .rond{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--filet-fort);background:transparent;
+    padding:0;justify-self:center}
+  .rond:hover{border-color:var(--encre-2)}
+  .rond.plein{background:var(--accent);border-color:var(--accent)}
+  .rond.auj{border-width:2.5px}
+  .rond.futur{opacity:.3;border-style:dashed}
+  @media(max-width:820px){
+    .hab-entete,.hab-ligne{grid-template-columns:1fr repeat(7, 32px)}
+    .rond{width:27px;height:27px}
+  }
   .pied{margin:34px 0 0;padding-top:16px;border-top:1px solid var(--filet);display:flex;justify-content:center}
   .pied{gap:14px;align-items:baseline}
   .pied button{background:none;border:0;color:var(--encre-3);font-size:13px;padding:8px 14px;border-radius:var(--r)}
@@ -708,8 +727,8 @@ const Sync = (() => {
 /* =====================================================================
    2. MODÈLE
    ===================================================================== */
-const VERSION_SCHEMA = 8;
-const VERSION_APP = 48;
+const VERSION_SCHEMA = 9;
+const VERSION_APP = 49;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -881,6 +900,8 @@ function etatNeuf(){
     anniversaires: anniversairesNeufs(),
     vacances: vacancesNeuves(),
     rentrees: [],
+    habitudes: [],
+    habitudes_faites: [],
     supprimes: [],
     corbeille: [],
     reglages: { dernier_bascule:null, dernier_export:null, preavis_defaut:30, exemples:true,
@@ -921,6 +942,11 @@ function migrer(d){
     x.rendez_vous = x.rendez_vous || [];
     x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
   }
+  if((x.version_schema ?? 8) < 9){
+    x.version_schema = 9;
+    x.habitudes = x.habitudes || [];
+    x.habitudes_faites = x.habitudes_faites || [];
+  }
   if((x.version_schema ?? 7) < 8){
     x.version_schema = 8;
     x.rentrees = x.rentrees || [];
@@ -949,6 +975,7 @@ function migrer(d){
 /* Collections fusionnables : chaque élément y porte un identifiant unique,
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
+                     "habitudes","habitudes_faites",
                      "anniversaires","vacances","contextes","categories","categories_depense"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
@@ -1086,6 +1113,40 @@ const duDossier = id => db.taches.filter(t => t.dossier_id === id && t.statut !=
 /* Un rendez-vous peut s'étendre sur plusieurs jours : on le fait alors
    apparaître sur chacun d'eux, sans avoir à le ressaisir. */
 const finRdv = r => ajouterPeriode(r.date, Math.max(1, r.duree || 1) - 1, "jour");
+/* Le suivi d'habitudes. L'identifiant d'une case cochée est déduit de
+   l'habitude et du jour : deux appareils qui cochent le même jour créent
+   donc le même élément, et la fusion n'en garde qu'un. */
+const cleCoche = (hid, iso) => `hf-${hid}-${iso}`;
+const habitudeFaite = (hid, iso) =>
+  (db.habitudes_faites || []).some(x => x.id === cleCoche(hid, iso));
+function basculerHabitude(hid, iso){
+  const cle = cleCoche(hid, iso);
+  const i = (db.habitudes_faites || []).findIndex(x => x.id === cle);
+  if(i >= 0){ db.habitudes_faites.splice(i, 1); oublier(cle); }
+  else {
+    db.supprimes = (db.supprimes || []).filter(x => x.id !== cle);
+    (db.habitudes_faites = db.habitudes_faites || []).push(touche({ id:cle, habitude_id:hid, date:iso }));
+  }
+}
+/* Nombre de jours consécutifs jusqu'à aujourd'hui. */
+function serieHabitude(hid){
+  let n = 0, d = new Date();
+  for(let k = 0; k < 400; k++){
+    const iso = jourISO(d);
+    if(habitudeFaite(hid, iso)) n++;
+    else if(k > 0 || !habitudeFaite(hid, iso)) break;
+    d.setDate(d.getDate() - 1);
+  }
+  return n;
+}
+const semaineDe = iso => {
+  const d = versDate(iso);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return Array.from({ length:7 }, (_, k) => {
+    const x = new Date(d); x.setDate(x.getDate() + k); return jourISO(x);
+  });
+};
+
 const rdvDu = iso => (db.rendez_vous||[]).filter(r => iso >= r.date && iso <= finRdv(r))
                       .sort((a,b) => (a.heure||"99").localeCompare(b.heure||"99"));
 const rangRdv = (r, iso) => ecartJours(r.date, iso) + 1;
@@ -1131,8 +1192,12 @@ function moisAvecMouvement(fenetre = 18){
 }
 
 function nomDeLaPeriode(decalage){
-  const d = versDate(finPeriode(debutPeriode(decalage)));
-  return `${MOIS[d.getMonth()]} ${d.getFullYear()}`;
+  const deb = debutPeriode(decalage);
+  const d = versDate(deb), f = versDate(finPeriode(deb));
+  if(d.getMonth() === f.getMonth()) return `${MOIS[f.getMonth()]} ${f.getFullYear()}`;
+  /* Mois budgétaire à cheval : le nommer par son seul mois de fin fait
+     chercher en janvier une facture du 28 décembre. On nomme les deux. */
+  return `${MOIS[d.getMonth()].slice(0,4)}–${MOIS[f.getMonth()].slice(0,4)} ${f.getFullYear()}`;
 }
 
 function decalagePeriode(iso){
@@ -1769,6 +1834,29 @@ function vueAccueil(){
     h.push(groupe("À venir", null, enFiche([contenu])));
   }
 
+  /* Le suivi d'habitudes vit sur l'accueil : c'est l'écran qu'on ouvre
+     chaque matin, et cocher un rond doit tenir en un geste. Aucun onglet
+     supplémentaire, donc aucune case du menu à rétrécir. */
+  const habs = (db.habitudes || []).filter(x => !x.archive);
+  if(habs.length){
+    const sem = semaineDe(j);
+    const lettres = ["L","M","M","J","V","S","D"];
+    h.push(`<div class="oeil">Habitudes<span class="a-droite">${
+      MOIS[versDate(sem[0]).getMonth()].slice(0,4)}. ${versDate(sem[0]).getDate()} – ${versDate(sem[6]).getDate()}</span></div>`);
+    h.push(`<div class="fiche habitudes">
+      <div class="hab-entete"><span></span>${sem.map((d,k) =>
+        `<span class="${d === j ? "auj" : ""}">${lettres[k]}</span>`).join("")}</div>
+      ${habs.map(x => {
+        const serie = serieHabitude(x.id);
+        return `<div class="hab-ligne">
+          <span class="hab-nom">${ech(x.nom)}${serie > 1 ? `<i class="serie">${serie} j</i>` : ""}</span>
+          ${sem.map(d => `<button class="rond ${habitudeFaite(x.id, d) ? "plein" : ""} ${d === j ? "auj" : ""} ${d > j ? "futur" : ""}"
+            data-hab="${x.id}" data-hjour="${d}" aria-label="${ech(x.nom)} ${dateLongue(d)}"
+            ${d > j ? "disabled" : ""}></button>`).join("")}
+        </div>`;
+      }).join("")}</div>`);
+  }
+
   h.push(groupe("À faire", suiv.length || null, suiv.length ? enFiche(suiv.map(t => ligneTache(t)))
     : vide("Rien en attente", "La flèche ↑ y place une tâche.")));
   h.push(groupe("Échéances · 60 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
@@ -2326,7 +2414,7 @@ function vueDossier(){
      besoin de place, et rien ne doit être repoussé au-delà. */
   h.push(`<div class="oeil">Notes</div>
     <div class="bloc-notes grand"><textarea id="notesDoss" data-dossier="${d.id}"
-      placeholder="MAIF · garantie Plénitude&#10;Franchise 250 €&#10;Numéro d'assistance&#10;Identifiant espace client…">${ech(d.notes)}</textarea></div>`);
+      placeholder="">${ech(d.notes)}</textarea></div>`);
   return h.join("");
 }
 
@@ -2446,6 +2534,17 @@ function vueReglages(){
   ${listeMod("Contextes de tâche", db.contextes, "contexte")}
   ${listeMod("Catégories de dossier", db.categories, "categorie")}
   ${listeMod("Catégories de dépense", db.categories_depense, "cdepense")}
+
+  <div class="bloc"><div class="oeil">Habitudes suivies
+      <span class="a-droite">${(db.habitudes||[]).length}</span></div>
+    <div class="fiche liste">${(db.habitudes||[]).map(x => `<div class="ligne" data-habitude="${x.id}">
+      <div class="corps"><div class="intitule">${ech(x.nom)}</div>
+        <div class="meta"><span class="repousse">${serieHabitude(x.id)} jour(s) d'affilée</span></div></div>
+      <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`).join("")}</div>
+    <div style="margin-top:9px"><button class="btn mini creux" data-act="nouvelleHabitude">Ajouter une habitude</button></div>
+    <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">
+      Elles s'affichent sur l'accueil, sept ronds par semaine. Trois ou quatre suffisent :
+      au-delà, on coche sans y penser.</p></div>
 
   <div class="bloc"><div class="oeil">Vacances scolaires
       <span class="a-droite">zone C</span></div>
@@ -2575,7 +2674,10 @@ function formulaire(titre, champs, valeurs, onOk, onSup){
     dlg.close(); onOk(d); };
   dlg.querySelector("#dlgNon").onclick = () => dlg.close();
   if(onSup) dlg.querySelector("#dlgSup").onclick = () => { dlg.close(); onSup(); };
-  dlg.showModal();
+  /* Si une fenêtre est restée ouverte, showModal() échoue en silence et le
+     formulaire ne paraît pas : il fallait alors s'y reprendre plusieurs fois. */
+  try{ if(dlg.open) dlg.close(); dlg.showModal(); }
+  catch(e){ try{ dlg.close(); dlg.showModal(); }catch(x){} }
   setTimeout(() => dlg.querySelector("input,select,textarea")?.focus(), 40);
 }
 
@@ -2662,6 +2764,26 @@ function editerRdv(r, dateProposee){
   }, neuf ? null : () => { jeter("rendez-vous", x); db.rendez_vous = db.rendez_vous.filter(y => y.id !== x.id); maj(); });
 }
 
+function editerHabitude(x0){
+  const neuf = !x0;
+  const x = x0 || { id:uid(), nom:"", cree_le:jourISO() };
+  formulaire(neuf ? "Nouvelle habitude" : "Modifier l'habitude", [
+    { cle:"nom", nom:"Nom" },
+  ], x, d => {
+    if(!d.nom) return;
+    x.nom = d.nom;
+    touche(x);
+    if(neuf) (db.habitudes = db.habitudes || []).push(x);
+    maj();
+  }, neuf ? null : () => {
+    jeter("habitude", x);
+    db.habitudes = db.habitudes.filter(y => y.id !== x.id);
+    (db.habitudes_faites || []).filter(f => f.habitude_id === x.id).forEach(f => oublier(f.id));
+    db.habitudes_faites = (db.habitudes_faites || []).filter(f => f.habitude_id !== x.id);
+    maj();
+  });
+}
+
 function editerVacances(v){
   const neuf = !v;
   const x = v || { id:uid(), nom:"", debut:jourISO(), fin:jourISO() };
@@ -2702,12 +2824,12 @@ function editerDossier(d){
   const x = d || { id:uid(), nom:"", categorie_id:db.categories[0]?.id||null, url:"", identifiant:"", contrat:"",
                    montant:null, periodicite:"", lignes:[], notes:"" };
   formulaire(neuf ? "Nouveau dossier" : "Modifier le dossier", [
-    { cle:"nom", nom:"Nom", ph:"Le van, Mutuelle, Loyer…" },
+    { cle:"nom", nom:"Nom" },
     { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCat() },
     { cle:"url", nom:"Lien vers le site", type:"url", ph:"https://" },
     { cle:"identifiant", nom:"Identifiant", duo:true },
     { cle:"contrat", nom:"N° de contrat" },
-    { cle:"notes", nom:"Notes", type:"textarea", ph:"MAIF · garantie Plénitude · franchise 250 €" },
+    { cle:"notes", nom:"Notes", type:"textarea" },
   ], { ...x }, f => {
     if(!f.nom) return;
     Object.assign(x, { nom:f.nom, categorie_id:f.categorie_id || null,
@@ -2731,7 +2853,7 @@ function editerCharge(d, l){
   const neuf = !l;
   const x = l || { id:uid(), libelle:"", montant:null, periodicite:"mensuel", jour:null, mois:null };
   formulaire(neuf ? `Nouvelle charge · ${d.nom}` : "Modifier la charge", [
-    { cle:"libelle", nom:"Libellé", ph:"Auto, Van, Habitation…" },
+    { cle:"libelle", nom:"Libellé" },
     { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
     { cle:"periodicite", nom:"Périodicité", type:"select", options:Object.keys(PERIODES).map(k => ({v:k,n:k})) },
     { cle:"jour", nom:"Jour du prélèvement", type:"text", mode:"numeric", ph:"12", duo:true },
@@ -2998,6 +3120,8 @@ document.addEventListener("click", ev => {
   if(bD){ vue.filtreDoss = bD.dataset.fdoss || null; return rendre(); }
   const bPr = c.closest("[data-prelev]");
   if(bPr){ db.reglages.compter_prelevements = bPr.dataset.prelev === "1"; return maj(); }
+  const bH = c.closest("[data-hab]");
+  if(bH){ basculerHabitude(bH.dataset.hab, bH.dataset.hjour); return maj(); }
   const bS = c.closest("[data-sphere]");
   if(bS){ db.reglages.sphere = bS.dataset.sphere; vue.saisieTravail = null; return maj(); }
   const bT = c.closest("[data-teinte]");
@@ -3067,6 +3191,7 @@ document.addEventListener("click", ev => {
   if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
   if(act === "nouvelAnniversaire") return editerAnniversaire(null);
   if(act === "nouvellesVacances") return editerVacances(null);
+  if(act === "nouvelleHabitude") return editerHabitude(null);
   if(act === "recherche") return ouvrirRecherche();
   if(act === "ajoutRapide") return ouvrirAjoutRapide();
   if(act === "depenseRapide") return ouvrirDepenseRapide();
@@ -3166,6 +3291,11 @@ document.addEventListener("click", ev => {
     if(act === "editerRdv") return editerRdv(r);
     return;
   }
+  const lhab = trouver(c, "habitude");
+  if(lhab && act === "editer"){
+    const x = (db.habitudes||[]).find(y => y.id === lhab.id);
+    if(x) return editerHabitude(x);
+  }
   const lvac = trouver(c, "vac");
   if(lvac && act === "editer"){
     const v = (db.vacances||[]).find(y => y.id === lvac.id);
@@ -3259,7 +3389,7 @@ document.addEventListener("click", ev => {
       const cible = { "tâche":"taches", "dossier":"dossiers", "contexte":"contextes", "categorie":"categories",
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
-                      "rentrée":"rentrees" }[x.genre];
+                      "rentrée":"rentrees", "habitude":"habitudes" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     db.supprimes = (db.supprimes||[]).filter(y => y.id !== (x.obj && x.obj.id));
@@ -3362,6 +3492,8 @@ setInterval(verifierJour, 60000);
   db.depenses = db.depenses || [];
   db.rendez_vous = db.rendez_vous || [];
   db.rentrees = db.rentrees || [];
+  db.habitudes = db.habitudes || [];
+  db.habitudes_faites = db.habitudes_faites || [];
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
   db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
   db.anniversaires = (db.anniversaires && db.anniversaires.length) ? db.anniversaires : anniversairesNeufs();
