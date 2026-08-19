@@ -120,8 +120,16 @@
   @keyframes surgir{0%{background:var(--accent-pale)}100%{background:var(--fiche)}}
   .ligne.neuf{animation:surgir 1.6s ease-out}
   @media(prefers-reduced-motion:reduce){.ligne.neuf{animation:none;background:var(--accent-pale)}}
-  .point-retard{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rouge);
-    margin-right:7px;vertical-align:1px;flex:none}
+  /* Un anneau pour une date dépassée, un disque plein pour l'urgence :
+     deux signaux rouges, mais qu'on distingue d'un coup d'œil. */
+  .point-retard{display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid var(--rouge);
+    margin-right:7px;vertical-align:0;flex:none}
+  .point-urgent{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--rouge);
+    margin-right:7px;vertical-align:0;flex:none}
+  .txt-urgent{font-weight:600}
+  .ico.urg{color:var(--filet-fort)}
+  .ico.urg:hover{color:var(--rouge)}
+  .ico.urg.actif{color:var(--rouge)}
   @keyframes tamponner{0%{opacity:0;transform:translateY(-50%) rotate(-7deg) scale(2.4)}60%{opacity:1}
     100%{opacity:1;transform:translateY(-50%) rotate(-7deg) scale(1)}}
   @media(prefers-reduced-motion:reduce){.tampon{animation:none}}
@@ -331,6 +339,8 @@
   .rdv .ico{margin-left:auto;opacity:0;transition:opacity .12s;flex:none}
   .rdv:hover .ico{opacity:1}
   @media(hover:none){.rdv .ico{opacity:.5}}
+  .rdv .jalon{font-family:var(--mono);font-size:10px;font-style:normal;color:var(--encre-3);
+    border:1px solid var(--filet);border-radius:2px;padding:0 3px}
   .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
   .rdv.tache:hover{opacity:.9}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
@@ -699,7 +709,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 44;
+const VERSION_APP = 45;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -817,7 +827,7 @@ function tacheNeuve(p = {}){
   return Object.assign({
     id:uid(), intitule:"", contexte_id:null, dossier_id:null,
     date_due:null, preavis:0, n:0, unite:"an",
-    statut:"inbox", suivant_le:null, reports:0, en_inbox:false, travail:false,
+    statut:"inbox", suivant_le:null, reports:0, en_inbox:false, travail:false, urgent:false,
     cree_le:jourISO(), fait_le:null, notes:"", journal:[],
   }, p);
 }
@@ -1063,16 +1073,22 @@ const passeSphere = t => sphere() === "travail" ? !!t.travail : !t.travail;
 const enCours   = () => db.taches.filter(t => t.statut !== "done");
 const inbox     = () => db.taches.filter(dansInbox);
 const suivantes = () => inbox().filter(t => t.suivant_le)
-                   .sort((a,b) => b.reports - a.reports || (a.date_due||"9").localeCompare(b.date_due||"9"));
+                   .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
+                     || b.reports - a.reports || (a.date_due||"9").localeCompare(b.date_due||"9"));
 const aTrier    = () => inbox().filter(t => !t.suivant_le)
-                   .sort((a,b) => (a.date_due||"9").localeCompare(b.date_due||"9") || b.cree_le.localeCompare(a.cree_le));
+                   .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
+                     || (a.date_due||"9").localeCompare(b.date_due||"9") || b.cree_le.localeCompare(a.cree_le));
 const datees    = () => enCours().filter(t => t.date_due).sort((a,b) => a.date_due.localeCompare(b.date_due));
 const faitesLe  = j => db.taches.filter(t => t.statut === "done" && t.fait_le === j);
 const reglees   = () => db.taches.filter(t => t.statut === "done")
                    .sort((a,b) => (b.fait_le||"").localeCompare(a.fait_le||""));
 const duDossier = id => db.taches.filter(t => t.dossier_id === id && t.statut !== "done");
-const rdvDu = iso => (db.rendez_vous||[]).filter(r => r.date === iso)
+/* Un rendez-vous peut s'étendre sur plusieurs jours : on le fait alors
+   apparaître sur chacun d'eux, sans avoir à le ressaisir. */
+const finRdv = r => ajouterPeriode(r.date, Math.max(1, r.duree || 1) - 1, "jour");
+const rdvDu = iso => (db.rendez_vous||[]).filter(r => iso >= r.date && iso <= finRdv(r))
                       .sort((a,b) => (a.heure||"99").localeCompare(b.heure||"99"));
+const rangRdv = (r, iso) => ecartJours(r.date, iso) + 1;
 const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5,7) && a.jour === +iso.slice(8,10));
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
 
@@ -1346,7 +1362,9 @@ function lireDate(mot){
 function analyser(texte){
   let suivant = false, ctxId = null, dossId = null, date = null;
   const mots = texte.trim().split(/\s+/).filter(m => {
-    if(m === "!"){ suivant = true; return false; }
+    /* L'apostrophe est accessible d'une frappe sur le clavier iPhone,
+       contrairement au point d'exclamation. Les deux restent acceptés. */
+    if(m === "!" || m === "'" || m === "’"){ suivant = true; return false; }
     if(m.startsWith("@") && m.length > 1){
       const cle = sansAccents(m.slice(1));
       const c = db.contextes.find(c => sansAccents(c.nom).startsWith(cle) || (c.alias||[]).some(a => sansAccents(a) === cle));
@@ -1362,7 +1380,7 @@ function analyser(texte){
     return true;
   });
   let intitule = mots.join(" ");
-  if(intitule.endsWith("!")){ suivant = true; intitule = intitule.slice(0,-1).trim(); }
+  while(/[!'’]$/.test(intitule)){ suivant = true; intitule = intitule.slice(0,-1).trim(); }
   return { intitule, ctxId, dossId, date, suivant };
 }
 
@@ -1518,7 +1536,7 @@ function ouvrirAjoutRapide(){
           <button class="seg ${!vue.eclairTravail?"on":""}" data-act="eclairPerso">Perso</button>
           <button class="seg ${vue.eclairTravail?"on":""}" data-act="eclairTravail">Travail</button>
         </div></div>
-      <p class="aide" style="margin:10px 2px 0"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>!</b> à faire</p>
+      <p class="aide" style="margin:10px 2px 0"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>'</b> à faire</p>
     </div>
     <div class="dlg-p"><button type="button" class="btn mini creux" id="eclairNon">Annuler</button>
       <button type="button" class="btn mini" id="eclairOui">Ajouter</button></div>`;
@@ -1645,13 +1663,15 @@ function ligneTache(t, opts = {}){
       ${opts.sansSuivant ? "" : `<button class="case fleche ${t.suivant_le?"coche":""}" data-act="suivant" title="À faire" aria-label="Mettre dans À faire">↑</button>`}
     </div>
     <div class="corps">
-      <div class="intitule">${retard?'<span class="point-retard" title="Date dépassée"></span>':""}${ech(t.intitule)}</div>
+      <div class="intitule">${t.urgent?'<span class="point-urgent" title="Urgent"></span>':""}${retard?'<span class="point-retard" title="Date dépassée"></span>':""}<span class="${t.urgent?"txt-urgent":""}">${ech(t.intitule)}</span></div>
       ${meta.length ? `<div class="meta">${meta.join("")}</div>` : ""}
     </div>
     <div class="outils">${opts.reglee
       ? `<button class="ico mont" data-act="remettre" title="Remettre dans l'inbox">↩</button>
          <button class="ico sup" data-act="supprimerDef" title="Supprimer définitivement">✕</button>`
       : `${monter}
+         <button class="ico urg ${t.urgent?"actif":""}" data-act="urgent"
+           title="${t.urgent?"Ne plus marquer urgent":"Marquer urgent"}">●</button>
          <button class="ico" data-act="editer" title="Modifier">✎</button>
          <button class="ico sup" data-act="jeter" title="Corbeille">✕</button>`}</div>
   </div>`;
@@ -1712,14 +1732,14 @@ function vueAccueil(){
 
   /* Rendez-vous et anniversaires du jour et du lendemain */
   const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
-  const paquet = iso => ({ rdv:rdvDu(iso), anni:anniDu(iso) });
+  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso) });
   const auj = paquet(j), dem = paquet(demain);
   if(auj.rdv.length || auj.anni.length || dem.rdv.length || dem.anni.length){
     const bloc = (p, quand) => {
       if(!p.rdv.length && !p.anni.length) return "";
       const l = [];
       p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-act="editerRdv">
-        <div class="heure-c">${r.heure ? ech(r.heure) : "—"}</div>
+        <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
         <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
           <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
             <span class="puce date">${quand}</span></div></div></div>`));
@@ -1765,7 +1785,7 @@ function vueTaches(){
         <button class="seg ${destinationTravail()?"on":""}" data-act="saisieTravail">Travail</button>
       </div>
     </div>`,
-    `<p class="aide"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>!</b> à faire</p>`];
+    `<p class="aide"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>'</b> à faire</p>`];
 
   const nPerso = inbox().filter(t => !t.travail).length;
   const nTravail = inbox().filter(t => t.travail).length;
@@ -1846,11 +1866,12 @@ function vueAgenda(){
   const jours = grilleMois(an, mo - 1);
   const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1><div class="jour">${dateCourte(j)}</div></div>`];
 
-  h.push(`<div class="nav-mois">
+  const navMois = `<div class="nav-mois">
     <button class="btn mini creux" data-mois="-1">←</button>
     <button class="btn mini creux" data-mois="0">Aujourd'hui</button>
     <button class="btn mini creux" data-mois="1">→</button>
-    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button></div>`);
+    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button></div>`;
+  h.push(navMois);
 
   const lignes = [];
   let semaine = -1;
@@ -1868,7 +1889,9 @@ function vueAgenda(){
 
     const bloc = cote => rdvDu(iso).filter(r => (r.cote || "perso") === cote).map(r =>
       `<div class="rdv" data-rdv="${r.id}" data-act="editerRdv" title="Modifier">
-         <span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${r.heure ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}</span>
+         <span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${
+           (r.duree || 1) > 1 ? `<i class="jalon">${rangRdv(r, iso)}/${r.duree}</i> ` : ""
+         }${r.heure && rangRdv(r, iso) === 1 ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}</span>
          <button class="ico sup" data-act="jeter" title="Supprimer">✕</button></div>`).join("");
 
     const taches = cote => cote === "perso" ? tachesDu(iso).map(t =>
@@ -1889,6 +1912,11 @@ function vueAgenda(){
   h.push(`<div class="fiche agenda">
     <div class="entete-cols"><span></span><span>Perso</span><span>Pro</span></div>
     ${lignes.join("")}</div>`);
+  /* Les mêmes flèches en bas : après avoir parcouru le mois, on ne veut pas
+     remonter en haut pour passer au suivant. */
+  h.push(`<div style="margin-top:14px">${navMois}</div>`);
+  h.push(`<p class="petit-detail" style="text-align:center;margin:2px 0 0">
+    Sur téléphone, balayez l'écran vers la gauche ou la droite pour changer de mois.</p>`);
   return h.join("");
 }
 
@@ -1996,11 +2024,21 @@ function vueBudget(){
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
   /* ---------- 5. Les dépenses saisies ---------- */
+  /* Les factures annuelles qui tombent ce mois-ci figurent parmi les
+     dépenses : ce jour-là, l'argent quitte réellement le compte, et le
+     réglage « compter deux fois » les retire effectivement du reste. */
+  const ponctuelsDuMois = b.sortiePonctuelle > 0 ? b.ponctuels : [];
   const parJour = {};
-  b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push(x));
+  b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push({ genre:"dep", x }));
+  ponctuelsDuMois.forEach(p => (parJour[p.date] = parJour[p.date] || []).push({ genre:"prel", p }));
   const jours = Object.keys(parJour).sort().reverse();
+  const totalMois = b.depense + b.sortiePonctuelle;
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
-    ${b.dep.length?`<span class="cpt">${euro(b.depense,2)}</span>`:""}</div>`);
+    ${jours.length?`<span class="cpt">${euro(totalMois,2)}</span>`:""}</div>`);
+  if(ponctuelsDuMois.length)
+    h.push(`<p class="petit-detail" style="margin:0 0 8px">
+      Dont ${euro(b.sortiePonctuelle,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} :
+      ${ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ")}.</p>`);
   if(!jours.length){
     const ailleurs = [...new Set(db.depenses.map(x => decalagePeriode(x.date)))]
       .filter(n => n !== vue.decalage)
@@ -2014,9 +2052,21 @@ function vueBudget(){
         : "La première saisie se fait en deux gestes : un montant, une catégorie."));
   }
   else h.push(jours.map(d => {
-    const l = parJour[d], s = sommeDep(l);
+    const l = parJour[d];
+    const s = l.reduce((t,e) => t + (e.genre === "dep" ? e.x.montant : e.p.l.montant), 0);
     return `<div class="oeil" style="margin:14px 0 6px">${d===j?"Aujourd'hui":dateLongue(d)}<span class="a-droite">${euro(s,2)}</span></div>
-    ${enFiche(l.map(x => { const c = cdepDe(x.categorie_id); return `<div class="ligne" data-depense="${x.id}">
+    ${enFiche(l.map(e => {
+      if(e.genre === "prel"){
+        const { l:lg, d:dos } = e.p;
+        return `<div class="ligne" data-dossier="${dos.id}">
+          <div class="corps"><div class="intitule">${ech(lg.libelle)}</div>
+            <div class="meta"><span class="puce doss">${ech(dos.nom)}</span>
+              <span class="puce ctx">prélèvement ${ech(lg.periodicite)}</span></div></div>
+          <div class="somme">${euro(lg.montant,2)}</div>
+          <div class="outils"><button class="ico" data-act="ouvrir" title="Ouvrir le dossier">↗</button></div></div>`;
+      }
+      const x = e.x, c = cdepDe(x.categorie_id);
+      return `<div class="ligne" data-depense="${x.id}">
       <div class="corps"><div class="intitule">${ech(x.libelle) || (c ? ech(c.nom) : "Dépense")}</div>
         <div class="meta">${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}
           ${x.rembourser && !x.rembourse ? `<span class="puce ctx">à rembourser</span>` : ""}
@@ -2026,7 +2076,8 @@ function vueBudget(){
         <button class="ico ${x.rembourser?"actif":""}" data-act="marquerRemb"
           title="${x.rembourser?"Ne plus attendre de remboursement":"À se faire rembourser"}">⟲</button>
         <button class="ico" data-act="editer">✎</button>
-        <button class="ico sup" data-act="jeter">✕</button></div></div>`; }))}`;
+        <button class="ico sup" data-act="jeter">✕</button></div></div>`;
+    }))}`;
   }).join(""));
 
   if(b.dep.length){
@@ -2091,10 +2142,14 @@ function vueBudget(){
         <div class="somme">${reel > 0 ? euro(reel,2) : `<span style="color:var(--encre-3)">${euro(lisse,2)}</span>`}</div>
       </div>`;
     })));
+    const encoreDu = resteAPrelever(b.deb, b.fin);
     h.push(`<p class="petit-detail" style="margin:8px 0 0">
       ${euro(totalReel,2)} partent réellement du compte ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} ;
       ${euro(totalCharges(),2)} sont comptés chaque mois dans le calcul.
-      Les montants en gris sont des parts lissées, ceux en noir des prélèvements du mois.</p>`);
+      Les montants en gris sont des parts lissées, ceux en noir des prélèvements du mois.
+      ${encoreDu > 0 && b.courante
+        ? `<br><b>${euro(encoreDu,2)} n'ont pas encore été débités</b> d'ici le ${dateMoyenne(b.fin)}.`
+        : ""}</p>`);
   }
 
   if(!totalRevenus())
@@ -2498,17 +2553,19 @@ function editerTache(t, neuve = false){
     { cle:"dossier_id", nom:"Dossier", type:"select", options:optDoss(), duo:true },
     { cle:"contexte_id", nom:"Contexte", type:"select", options:optCtx() },
     { cle:"travail", nom:"Classer dans", type:"select",
-      options:[{v:"",n:"Perso"},{v:"1",n:"Travail"}] },
+      options:[{v:"",n:"Perso"},{v:"1",n:"Travail"}], duo:true },
+    { cle:"urgent", nom:"Urgence", type:"select",
+      options:[{v:"",n:"Normale"},{v:"1",n:"Urgent"}] },
     { cle:"date_due", nom:"Date (facultative)", type:"date", duo:true },
     { cle:"preavis", nom:"Préavis (jours)", type:"number", min:0 },
     { cle:"n", nom:"Revient tous les", type:"number", min:0, duo:true },
     { cle:"unite", nom:"Unité", type:"select", options:optUnite },
     { cle:"notes", nom:"Notes", type:"textarea" },
-  ], { ...o, travail: o.travail ? "1" : "" }, d => {
+  ], { ...o, travail: o.travail ? "1" : "", urgent: o.urgent ? "1" : "" }, d => {
     if(!d.intitule) return;
     Object.assign(o, { intitule:d.intitule, dossier_id:d.dossier_id || null, contexte_id:d.contexte_id || null,
       date_due:d.date_due || null, preavis:Number(d.preavis) || 0, n:Number(d.n) || 0, unite:d.unite,
-      notes:d.notes, travail: d.travail === "1", demo:false });
+      notes:d.notes, travail: d.travail === "1", urgent: d.urgent === "1", demo:false });
     touche(o);
     if(neuve) db.taches.push(o);
     vue.surligne = o.id;
@@ -2531,7 +2588,7 @@ function lireHeure(v){
 function editerRdv(r, dateProposee){
   const neuf = !r;
   const base = dateProposee || jourISO();
-  const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"" };
+  const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"", duree:1 };
   const an = +x.date.slice(0,4), courant = new Date().getFullYear();
   const annees = [];
   for(let a = courant - 1; a <= courant + 3; a++) annees.push({ v:a, n:String(a) });
@@ -2541,11 +2598,12 @@ function editerRdv(r, dateProposee){
     { cle:"heure", nom:"Heure", type:"text", ph:"9h30" },
     { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })), duo:true },
     { cle:"annee", nom:"Année", type:"select", options:annees },
+    { cle:"duree", nom:"Durée (jours)", type:"text", mode:"numeric", ph:"1", duo:true },
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
     { cle:"couleur", nom:"Surligneur", type:"select", options:[
         {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
-  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an }, d => {
+  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1 }, d => {
     const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
     const dim = new Date(aa, mm, 0).getDate();
@@ -2555,6 +2613,7 @@ function editerRdv(r, dateProposee){
     Object.assign(x, {
       date: `${aa}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`,
       heure: H, intitule: d.intitule, cote: d.cote, couleur: d.couleur || "", notes: d.notes,
+      duree: Math.min(60, Math.max(1, parseInt(d.duree, 10) || 1)),
     });
     touche(x);
     if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
@@ -2914,16 +2973,7 @@ document.addEventListener("click", ev => {
   const bK = c.closest("[data-cdep]");
   if(bK){ vue.catDep = vue.catDep === bK.dataset.cdep ? null : bK.dataset.cdep; return rendre(); }
   const bM = c.closest("[data-mois]");
-  if(bM){
-    const v = +bM.dataset.mois;
-    if(v === 0) vue.moisAgenda = jourISO().slice(0,7);
-    else {
-      const [a,m] = (vue.moisAgenda || jourISO().slice(0,7)).split("-").map(Number);
-      const d = new Date(a, m - 1 + v, 1);
-      vue.moisAgenda = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    }
-    return rendre();
-  }
+  if(bM){ decalerMois(+bM.dataset.mois); return rendre(); }
   const bJ = c.closest("[data-saut]");
   if(bJ){ vue.decalage = +bJ.dataset.saut; return rendre(); }
   const bP = c.closest("[data-periode]");
@@ -3047,6 +3097,7 @@ document.addEventListener("click", ev => {
       else if(t.dossier_id) t.en_inbox = true;
       return maj();
     }
+    if(act === "urgent"){ t.urgent = !t.urgent; touche(t); return maj(); }
     if(act === "rapatrier"){ t.en_inbox = true; touche(t); return maj(); }
     if(act === "renvoyer"){ t.en_inbox = false; t.suivant_le = null; touche(t); return maj(); }
     if(act === "remettre"){ t.statut = "inbox"; t.fait_le = null; if(t.dossier_id) t.en_inbox = true; touche(t); return maj(); }
@@ -3212,6 +3263,35 @@ document.addEventListener("change", ev => {
   if(a === "preavis"){ db.reglages.preavis_defaut = Math.max(0, Number(ev.target.value) || 0); sauver(); }
   if(a === "jourDebut"){ db.reglages.jour_debut_mois = Math.min(28, Math.max(1, Number(ev.target.value) || 1)); maj(); }
 });
+
+function decalerMois(v){
+  if(v === 0){ vue.moisAgenda = jourISO().slice(0,7); return; }
+  const [a,m] = (vue.moisAgenda || jourISO().slice(0,7)).split("-").map(Number);
+  const d = new Date(a, m - 1 + v, 1);
+  vue.moisAgenda = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+}
+
+/* Balayage horizontal pour changer de mois dans l'agenda. On exige un geste
+   franc et surtout plus horizontal que vertical, faute de quoi un simple
+   défilement de la page ferait sauter d'un mois. */
+let toucheDebut = null;
+document.addEventListener("touchstart", ev => {
+  if(vue.onglet !== "agenda" || ev.touches.length !== 1 || dlg.open){ toucheDebut = null; return; }
+  const t = ev.touches[0];
+  toucheDebut = { x:t.clientX, y:t.clientY, quand:Date.now() };
+}, { passive:true });
+
+document.addEventListener("touchend", ev => {
+  if(!toucheDebut || vue.onglet !== "agenda") return;
+  const t = ev.changedTouches[0];
+  const dx = t.clientX - toucheDebut.x, dy = t.clientY - toucheDebut.y;
+  const rapide = Date.now() - toucheDebut.quand < 700;
+  toucheDebut = null;
+  if(rapide && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8){
+    decalerMois(dx < 0 ? 1 : -1);
+    rendre();
+  }
+}, { passive:true });
 
 function verifierJour(){
   const avant = db.reglages.dernier_bascule;
