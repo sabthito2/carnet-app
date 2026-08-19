@@ -709,7 +709,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 45;
+const VERSION_APP = 46;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1114,6 +1114,22 @@ function debutPeriode(decalage = 0, ref = jourISO()){
 /* Une période est nommée par son mois de fin : « 27 janvier → 26 février »
    s'appelle février. Cette règle doit être unique, sinon deux périodes
    voisines finissent par porter le même nom. */
+/* Tous les mois qui portent un mouvement : une dépense saisie, ou une
+   facture non mensuelle qui y tombe. Sans les secondes, une charge annuelle
+   de février restait introuvable — rien n'indiquait où aller la voir. */
+function moisAvecMouvement(fenetre = 18){
+  const s = new Set(db.depenses.map(x => decalagePeriode(x.date)));
+  const lignes = toutesLignes().filter(({ l }) =>
+    PERIODES[l.periodicite] > 1 && l.mois && l.jour);
+  if(lignes.length){
+    for(let n = -fenetre; n <= fenetre; n++){
+      const deb = debutPeriode(n), fin = finPeriode(deb);
+      if(lignes.some(({ l }) => datesPrelevement(l, deb, fin).length)) s.add(n);
+    }
+  }
+  return [...s];
+}
+
 function nomDeLaPeriode(decalage){
   const d = versDate(finPeriode(debutPeriode(decalage)));
   return `${MOIS[d.getMonth()]} ${d.getFullYear()}`;
@@ -2040,13 +2056,13 @@ function vueBudget(){
       Dont ${euro(b.sortiePonctuelle,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} :
       ${ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ")}.</p>`);
   if(!jours.length){
-    const ailleurs = [...new Set(db.depenses.map(x => decalagePeriode(x.date)))]
+    const ailleurs = moisAvecMouvement()
       .filter(n => n !== vue.decalage)
       .sort((a,z) => Math.abs(a - vue.decalage) - Math.abs(z - vue.decalage))
-      .slice(0, 5);
+      .slice(0, 6);
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
       ailleurs.length
-        ? `Vous en avez enregistré sur d'autres mois : ${ailleurs.map(n =>
+        ? `Des mouvements sont enregistrés sur d'autres mois : ${ailleurs.map(n =>
             `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
           ).join(" · ")}`
         : "La première saisie se fait en deux gestes : un montant, une catégorie."));
@@ -2110,7 +2126,13 @@ function vueBudget(){
   const sansMois = factures.filter(x => !x.mensuelle && !x.l.mois);
   const totalReel = factures.reduce((s,x) => s + x.reel, 0);
 
+  const encoreDu = resteAPrelever(b.deb, b.fin);
   h.push(`<div class="oeil">Factures et abonnements<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  if(b.courante)
+    h.push(`<p class="petit-detail" style="margin:0 0 8px">${
+      encoreDu > 0
+        ? `Reste ${euro(encoreDu,2)} à prélever d'ici le ${dateMoyenne(b.fin)}.`
+        : "Tout est prélevé pour ce mois-ci."}</p>`);
 
   if(sansMois.length)
     h.push(`<div class="bandeau alerte" style="margin:0 0 10px"><div class="g">
@@ -2142,14 +2164,10 @@ function vueBudget(){
         <div class="somme">${reel > 0 ? euro(reel,2) : `<span style="color:var(--encre-3)">${euro(lisse,2)}</span>`}</div>
       </div>`;
     })));
-    const encoreDu = resteAPrelever(b.deb, b.fin);
     h.push(`<p class="petit-detail" style="margin:8px 0 0">
       ${euro(totalReel,2)} partent réellement du compte ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} ;
       ${euro(totalCharges(),2)} sont comptés chaque mois dans le calcul.
-      Les montants en gris sont des parts lissées, ceux en noir des prélèvements du mois.
-      ${encoreDu > 0 && b.courante
-        ? `<br><b>${euro(encoreDu,2)} n'ont pas encore été débités</b> d'ici le ${dateMoyenne(b.fin)}.`
-        : ""}</p>`);
+      Les montants en gris sont des parts lissées, ceux en noir des prélèvements du mois.</p>`);
   }
 
   if(!totalRevenus())
