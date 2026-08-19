@@ -1,0 +1,3206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#E6E8E0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Carnet">
+<title>Carnet</title>
+<style>
+  :root{
+    --papier:#E6E8E0; --fiche:#F1F2EC; --fiche-2:#E9EBE3;
+    --encre:#1C2230; --encre-2:#5C6373; --encre-3:#8C93A0;
+    --filet:#C7CABE; --filet-fort:#AEB2A4;
+    --accent:#1E5A6E; --accent-pale:#DCE8EC;
+    --rouge:#A8372B; --rouge-pale:#F6E3E0; --vert:#3D7A50;
+    --r:3px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--papier);color:var(--encre);font-family:var(--sans);font-size:15px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer}
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .app{display:flex;min-height:100dvh}
+  .rail{width:196px;flex:none;border-right:1px solid var(--filet);padding:22px 0 22px 18px;position:sticky;top:0;height:100dvh}
+  .marque{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--encre-2);margin-bottom:2px}
+  .marque b{color:var(--accent);font-weight:700}
+  /* Quatre teintes d'accent au choix, appliquées au chargement. */
+  .jour{font-family:var(--mono);font-size:11.5px;color:var(--encre-3);margin-bottom:26px}
+  .nav{display:flex;flex-direction:column;gap:1px}
+  .nav button{background:none;border:0;text-align:left;padding:7px 10px 7px 0;color:var(--encre-2);
+    display:flex;align-items:baseline;gap:9px;border-radius:var(--r)}
+  .nav button .n{font-family:var(--mono);font-size:10.5px;color:var(--encre-3)}
+  .nav button .pastille{margin-left:auto;font-family:var(--mono);font-size:10.5px;
+    background:var(--accent-pale);color:var(--accent);padding:0 5px;border-radius:8px}
+  .nav button.on{color:var(--encre);font-weight:600}
+  .nav button.on .n{color:var(--accent)}
+  .nav button:hover{color:var(--encre)}
+
+  main{flex:1;min-width:0;padding:26px 26px 90px;max-width:880px}
+  .titre{font-size:26px;font-weight:640;letter-spacing:-.02em;margin:0 0 2px}
+  .grand-jour{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+  .grand-jour .sem{font-size:19px;font-weight:500;color:var(--encre-2);text-transform:capitalize}
+  .grand-jour .chiffre{font-family:var(--mono);font-size:46px;line-height:1;font-weight:500;
+    letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+  .grand-jour .mois{font-size:22px;font-weight:560}
+  .sous{color:var(--encre-2);font-size:13.5px;margin:0 0 22px}
+  .oeil{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--encre-3);
+    display:flex;align-items:center;gap:10px;margin:26px 0 9px}
+  .oeil::after{content:"";flex:1;height:1px;background:var(--filet)}
+  .oeil .cpt{color:var(--accent)}
+  .oeil .a-droite{font-family:var(--mono);font-size:10.5px;color:var(--encre-3);order:3;letter-spacing:.06em}
+
+  .fiche{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
+  .liste{display:flex;flex-direction:column}
+  .liste>*+*{border-top:1px solid var(--filet)}
+
+  .ligne{display:flex;align-items:flex-start;gap:11px;padding:10px 12px;position:relative;background:var(--fiche)}
+  .ligne:first-child{border-top-left-radius:var(--r);border-top-right-radius:var(--r)}
+  .ligne:last-child{border-bottom-left-radius:var(--r);border-bottom-right-radius:var(--r)}
+  .cases{display:flex;gap:6px;padding-top:1px;flex:none}
+  .case{width:22px;height:22px;border:1.5px solid var(--filet-fort);background:transparent;display:grid;place-items:center;
+    padding:0;color:transparent;flex:none;border-radius:3px}
+  .case:hover{border-color:var(--encre-2)}
+  .case svg{width:12px;height:12px;display:block}
+  .case.carre.coche{background:var(--vert);border-color:var(--vert);color:#fff}
+  .case.fleche{color:var(--filet-fort);font-size:14px;line-height:1;font-weight:700;border-style:solid}
+  .case.fleche:hover{color:var(--encre-2)}
+  .case.fleche.coche{background:var(--accent);border-color:var(--accent);color:#fff}
+  .corps{flex:1;min-width:0}
+  .intitule{word-break:break-word}
+  .ligne.faite .intitule{color:var(--encre-3);text-decoration:line-through;text-decoration-color:var(--filet-fort)}
+  .meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin-top:4px}
+  /* Pastilles sans cadre : la couleur et le point suffisent à distinguer,
+     et la place gagnée sert à agrandir le texte. */
+  .puce{font-family:var(--mono);font-size:11.5px;letter-spacing:.02em;padding:0;
+    color:var(--encre-2);background:none;border:0;display:inline-flex;align-items:center}
+  .puce.ctx{color:var(--accent);font-weight:600}
+  .puce.ctx::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);
+    display:inline-block;margin-right:5px;flex:none}
+  .puce.trav{color:var(--encre);font-weight:600}
+  .puce.trav::before{content:"";width:6px;height:6px;border-radius:1px;background:var(--encre);
+    display:inline-block;margin-right:5px;flex:none}
+  .puce.doss{color:var(--encre)}
+  .puce.doss::before{content:"";width:6px;height:6px;border-radius:1px;background:var(--filet-fort);
+    display:inline-block;margin-right:5px;flex:none}
+  .puce.chaud{color:var(--rouge);font-weight:600}
+  .puce.date{font-variant-numeric:tabular-nums}
+  .puce.veille{color:var(--encre-3);font-style:italic}
+  .repousse{font-family:var(--mono);font-size:11.5px;color:var(--encre-3);font-style:italic}
+  .repousse.chaud{color:var(--rouge)}
+  .outils{display:flex;gap:2px;flex:none;opacity:0;transition:opacity .12s}
+  .ligne:hover .outils,.ligne:focus-within .outils{opacity:1}
+  @media(hover:none){.outils{opacity:1}}
+  .ico{background:none;border:0;color:var(--encre-3);padding:6px 8px;border-radius:var(--r);font-size:14px;line-height:1}
+  .ico:hover{color:var(--encre);background:var(--fiche-2)}
+  .ico.sup:hover{color:var(--rouge)}
+  .ico.mont:hover{color:var(--accent)}
+  .ico.actif{color:var(--accent)}
+  .rdv-l{align-items:baseline}
+  .heure-c{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;flex:none;
+    width:44px;color:var(--accent);font-weight:600}
+  .jour-prel{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;flex:none;
+    width:26px;text-align:center;color:var(--accent);border:1px solid var(--accent);border-radius:2px;
+    padding:1px 0;background:var(--accent-pale);height:20px;line-height:16px}
+  .jour-prel.passe{color:var(--encre-3);border-color:var(--filet);background:transparent}
+  .somme{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:1px}
+
+  .tampon{position:absolute;right:14px;top:50%;pointer-events:none;font-family:var(--mono);font-size:10px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--accent);border:1.5px solid var(--accent);border-radius:2px;
+    padding:2px 7px;background:rgba(235,227,247,.75);transform:translateY(-50%) rotate(-7deg);
+    animation:tamponner .45s cubic-bezier(.2,1.5,.4,1) both}
+  @keyframes surgir{0%{background:var(--accent-pale)}100%{background:var(--fiche)}}
+  .ligne.neuf{animation:surgir 1.6s ease-out}
+  @media(prefers-reduced-motion:reduce){.ligne.neuf{animation:none;background:var(--accent-pale)}}
+  .point-retard{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rouge);
+    margin-right:7px;vertical-align:1px;flex:none}
+  @keyframes tamponner{0%{opacity:0;transform:translateY(-50%) rotate(-7deg) scale(2.4)}60%{opacity:1}
+    100%{opacity:1;transform:translateY(-50%) rotate(-7deg) scale(1)}}
+  @media(prefers-reduced-motion:reduce){.tampon{animation:none}}
+
+  .saisie{display:flex;gap:8px;margin-bottom:14px}
+  .saisie input{flex:1;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);padding:10px 12px;min-width:0}
+  .saisie input:focus{border-color:var(--accent);outline:none}
+  .saisie input.court{flex:0 0 110px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .aide{font-family:var(--mono);font-size:11px;color:var(--encre-3);margin:-8px 0 18px}
+  .aide b{color:var(--accent);font-weight:400}
+
+  .btn{background:var(--encre);color:var(--papier);border:1px solid var(--encre);border-radius:var(--r);
+    padding:9px 15px;font-size:14px;font-weight:500}
+  .btn:hover{background:#2A3144}
+  .btn.creux{background:transparent;color:var(--encre);border-color:var(--filet-fort)}
+  .btn.creux:hover{background:var(--fiche);border-color:var(--encre-2)}
+  .btn.mini{padding:5px 11px;font-size:12.5px}
+  .btn.danger{color:var(--rouge);border-color:var(--rouge);background:transparent}
+  .btn.danger:hover{background:var(--rouge-pale)}
+
+  .filtres{display:flex;flex-wrap:wrap;gap:2px 20px;margin-bottom:14px}
+  .filtres.spheres{gap:2px 18px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--filet)}
+  .boites{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:-6px 0 12px}
+  .segments{display:inline-flex;border:1.5px solid var(--filet-fort);border-radius:var(--r);overflow:hidden}
+  .seg{background:transparent;border:0;padding:6px 15px;font-size:13.5px;color:var(--encre-2)}
+  .seg+.seg{border-left:1.5px solid var(--filet-fort)}
+  .seg:hover{background:var(--fiche-2);color:var(--encre)}
+  .seg.on{background:var(--accent);color:#fff;font-weight:600}
+  .boite-note{font-size:11.5px;color:var(--encre-3);letter-spacing:.02em}
+  .filtre{background:none;border:0;border-bottom:2px solid transparent;border-radius:0;
+    padding:3px 0 4px;font-size:14.5px;color:var(--encre-3);display:flex;align-items:baseline;gap:6px}
+  .filtre .n{font-family:var(--mono);font-size:11px;color:var(--encre-3)}
+  .filtre:hover{color:var(--encre)}
+  .filtre.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+  .filtre.on .n{color:var(--accent)}
+  .filtre.doss.on{color:var(--encre);border-bottom-color:var(--encre)}
+  .filtre.doss.on .n{color:var(--encre-2)}
+
+  /* ---------- Budget ---------- */
+  .compteur{border:1px solid var(--filet);background:var(--fiche);border-radius:var(--r);padding:18px 18px 16px;margin-bottom:20px}
+  .compteur .etiq{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--encre-3)}
+  /* Discret : lisible pour soi, difficile à déchiffrer par-dessus l'épaule. */
+  .grand{font-family:var(--mono);font-size:23px;line-height:1.15;font-variant-numeric:tabular-nums;
+    letter-spacing:-.01em;margin:4px 0 2px;font-weight:600}
+  .grand.neg{color:var(--rouge)}
+  .grand .u{font-size:15px;color:var(--encre-3)}
+  .parjour{font-size:13.5px;color:var(--encre-2)}
+  .parjour b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
+  .jauge{height:5px;background:var(--fiche-2);border:1px solid var(--filet);border-radius:3px;margin:14px 0 7px;overflow:hidden}
+  .jauge i{display:block;height:100%;background:var(--accent)}
+  .jauge i.trop{background:var(--rouge)}
+  .repere{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--encre-3)}
+  .petit-detail{font-size:11.5px;color:var(--encre-3);line-height:1.4;margin-top:3px}
+  .explique{font-size:12.5px;color:var(--encre-2);line-height:1.5;margin:6px 2px 4px;max-width:62ch;
+    padding:9px 11px;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
+  .aide-q{background:none;border:0;padding:4px 0;margin:5px 0 0;font-size:12px;color:var(--encre-3);
+    text-decoration:underline;text-underline-offset:3px}
+  .aide-q:hover{color:var(--accent)}
+  .bilan{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche);margin-bottom:6px}
+  .bilan div{flex:1;min-width:132px;padding:11px 13px;border-right:1px solid var(--filet)}
+  .bilan div:last-child{border-right:0}
+  .bilan .e{font-size:11px;color:var(--encre-3);line-height:1.25}
+  .bilan .v{font-family:var(--mono);font-size:17px;font-variant-numeric:tabular-nums;margin-top:2px}
+  .bilan .v.moins{color:var(--rouge)}
+  .bilan .v.plus{color:var(--vert)}
+  .barre-cat{display:flex;align-items:center;gap:10px;padding:7px 12px}
+  .barre-cat .nom{flex:0 0 33%;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .barre-cat .tige{flex:1;height:9px;background:var(--fiche-2);border-radius:2px;overflow:hidden}
+  .barre-cat .tige i{display:block;height:100%;background:var(--accent);opacity:.75}
+  .barre-cat .v{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;flex:none;color:var(--encre-2)}
+  .sync{cursor:pointer;font-size:15px;vertical-align:-1px;letter-spacing:0;padding:0 2px}
+  .sync .heure{font-size:12px;letter-spacing:.02em;margin-left:2px}
+  .sync.ok{color:var(--vert)}
+  .sync.attente{color:var(--encre-3)}
+  .sync.occupe{color:var(--accent);animation:pulser 1.1s ease-in-out infinite}
+  .sync.conflit,.sync.erreur{color:var(--rouge)}
+  @keyframes pulser{0%,100%{opacity:.35}50%{opacity:1}}
+  @media(prefers-reduced-motion:reduce){.sync.occupe{animation:none}}
+  .teintes{display:flex;gap:10px;flex-wrap:wrap}
+  .teinte{width:34px;height:34px;border-radius:50%;border:2px solid transparent;padding:0;
+    box-shadow:inset 0 0 0 1px rgba(28,34,48,.12)}
+  .teinte.on{border-color:var(--encre);box-shadow:inset 0 0 0 2px var(--papier)}
+  .loupe{background:none;border:0;padding:2px 5px;color:var(--encre-2);font-size:19px;line-height:1;
+    cursor:pointer;vertical-align:-3px;border-radius:var(--r)}
+  .loupe:hover{color:var(--accent);background:var(--fiche-2)}
+  .champ-rech{width:100%;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);
+    padding:11px 13px;font-size:16px}
+  .champ-rech:focus{border-color:var(--accent);outline:none}
+  .rech-vide{color:var(--encre-3);font-size:13px;margin:14px 2px;text-align:center}
+  .pied{margin:34px 0 0;padding-top:16px;border-top:1px solid var(--filet);display:flex;justify-content:center}
+  .pied{gap:14px;align-items:baseline}
+  .pied button{background:none;border:0;color:var(--encre-3);font-size:13px;padding:8px 14px;border-radius:var(--r)}
+  .pied button:hover{color:var(--accent);background:var(--fiche)}
+  .pied-version{font-family:var(--mono);font-size:10.5px;color:var(--filet-fort);letter-spacing:.06em}
+  .filet-rappel{background:none;border:0;padding:0;margin:-6px 0 16px;display:block;
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--encre-3);text-align:left}
+  .filet-rappel:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+  .filet-rappel.doux{margin:-4px 0 14px;font-size:11px;color:var(--encre-2)}
+  .filet-rappel.doux .point-retard{width:7px;height:7px;margin-right:6px;vertical-align:0}
+  .lien-mois{background:none;border:0;padding:0;color:var(--accent);font-size:13.5px;
+    text-decoration:underline;text-underline-offset:3px}
+  .lien-mois:hover{color:var(--encre)}
+  .prive{display:inline-flex;align-items:baseline;gap:9px;border:1px solid var(--filet);background:transparent;
+    border-radius:12px;padding:3px 12px;margin:-8px 0 20px;font-family:var(--mono);font-size:11px;
+    color:var(--encre-3);letter-spacing:.04em}
+  .prive:hover{border-color:var(--filet-fort);color:var(--encre-2)}
+  .prive .v{font-variant-numeric:tabular-nums;color:var(--encre-2)}
+  .prive .v.neg{color:var(--rouge)}
+  .prive .oeilleton{opacity:.55}
+
+  .tab{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tab th{text-align:left;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--encre-3);font-weight:400;padding:8px 11px;border-bottom:1px solid var(--filet-fort);white-space:nowrap}
+  .tab td{padding:9px 11px;border-bottom:1px solid var(--filet);vertical-align:top}
+  .tab tr:last-child td{border-bottom:0}
+  .tab td.num{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tab .nom{font-weight:560;background:none;border:0;padding:0;text-align:left;color:var(--encre)}
+  .tab .nom:hover{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+  .note-min{font-size:11.5px;color:var(--encre-3);margin-top:2px;display:block;max-width:230px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lien{font-family:var(--mono);font-size:11px;text-decoration:none;border:1px solid var(--filet);border-radius:9px;
+    padding:1px 8px;color:var(--accent);white-space:nowrap;display:inline-block}
+  .lien:hover{background:var(--accent-pale);border-color:var(--accent)}
+  .cartes{display:none}
+
+  .retour{background:none;border:0;padding:0;color:var(--encre-2);font-family:var(--mono);font-size:11px;
+    letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+  .retour:hover{color:var(--accent)}
+  .entete-d{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+  .entete-d .titre{flex:1;min-width:0}
+  .bloc-notes{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
+  .bloc-notes textarea{width:100%;background:transparent;border:0;padding:12px 13px;min-height:96px;resize:vertical;
+    font-family:var(--sans);font-size:14px;line-height:1.55;display:block}
+  .bloc-notes.grand textarea{min-height:300px}
+  @media(max-width:820px){ .bloc-notes.grand textarea{min-height:340px} }
+  .bloc-notes textarea:focus{outline:none}
+  .bloc-notes textarea::placeholder{color:var(--encre-3)}
+
+  .vide{border:1px dashed var(--filet-fort);border-radius:var(--r);padding:26px 18px;text-align:center;
+    color:var(--encre-2);font-size:13.5px;background:transparent}
+  .vide b{display:block;color:var(--encre);font-weight:600;margin-bottom:3px;font-size:15px}
+  .bandeau{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--accent);background:var(--accent-pale);
+    border-radius:var(--r);padding:10px 13px;margin-bottom:20px;font-size:13.5px}
+  .bandeau.alerte{border-color:var(--rouge);background:var(--rouge-pale)}
+  .bandeau .g{flex:1;min-width:180px}
+  .bloc{margin-bottom:30px}
+  .champ{display:block;margin-bottom:13px}
+  .champ span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--encre-3);margin-bottom:4px}
+  .champ input,.champ select,.champ textarea{width:100%;background:var(--fiche);border:1px solid var(--filet);
+    border-radius:var(--r);padding:8px 10px}
+  .champ textarea{min-height:74px;resize:vertical}
+  .champ input:focus,.champ select:focus,.champ textarea:focus{border-color:var(--accent);outline:none}
+  .duo{display:flex;gap:11px}
+  .duo>*{flex:1;min-width:0}
+
+  dialog{border:1px solid var(--filet-fort);border-radius:var(--r);background:var(--papier);color:var(--encre);padding:0;
+    width:min(490px,calc(100vw - 28px));box-shadow:0 20px 50px rgba(28,34,48,.22);max-height:88dvh}
+  dialog::backdrop{background:rgba(28,34,48,.34)}
+  .dlg-t{padding:15px 17px 0;font-size:17px;font-weight:620}
+  .dlg-c{padding:15px 17px;overflow:auto;max-height:62dvh}
+  .dlg-p{display:flex;gap:8px;justify-content:flex-end;padding:0 17px 16px}
+  .dlg-p .esp{margin-right:auto}
+
+  /* Surligneur : teintes assez tenues pour rester lisibles sur le papier,
+     assez franches pour se repérer en balayant le mois du regard. */
+  .surl{border-radius:2px;padding:0 3px;margin:0 -2px;box-decoration-break:clone;
+    -webkit-box-decoration-break:clone}
+  .surl-jaune{background:#F0E39B}
+  .surl-rose{background:#F3CFDA}
+  .surl-vert{background:#C8E0C4}
+
+  /* ---------- Agenda ---------- */
+  .nav-mois{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .barre-mois{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
+    padding:9px 12px;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche)}
+  .barre-mois.ailleurs{border-color:var(--accent);background:var(--accent-pale)}
+  .titre-mois{display:flex;flex-direction:column;line-height:1.25}
+  .titre-mois .nom{font-size:16px;font-weight:640;text-transform:capitalize}
+  .titre-mois .plage{font-family:var(--mono);font-size:10.5px;color:var(--encre-3)}
+  .barre-mois.ailleurs .titre-mois .nom{color:var(--accent)}
+  .agenda{overflow:hidden}
+  .entete-cols{display:grid;grid-template-columns:56px 1fr 1fr;border-bottom:1px solid var(--filet-fort);
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--encre-3)}
+  .entete-cols span{padding:6px 9px}
+  .entete-cols span+span{border-left:1px solid var(--filet)}
+  .jour-l{display:grid;grid-template-columns:56px 1fr 1fr;border-bottom:1px solid var(--filet);min-height:34px}
+  .jour-l:last-child{border-bottom:0}
+  .jour-l.we{background:var(--fiche-2)}
+  .jour-l.hors{opacity:.42}
+  .jour-l.envac .date-c{box-shadow:inset 3px 0 0 var(--accent)}
+  .jour-l.auj{background:var(--accent-pale)}
+  .jour-l.auj .num{color:var(--accent);font-weight:700}
+  .sep-sem{height:0;border-bottom:1px solid var(--filet-fort)}
+  .date-c{display:flex;align-items:center;gap:5px;padding:5px 7px;font-family:var(--mono);
+    font-variant-numeric:tabular-nums;position:relative}
+  .date-c .lettre{font-size:10px;color:var(--encre-3);width:9px}
+  .date-c .num{font-size:14px}
+  .date-c .plus{margin-left:auto;background:none;border:0;color:var(--filet-fort);font-size:14px;
+    line-height:1;padding:0 2px;opacity:0;transition:opacity .12s}
+  .jour-l:hover .plus{opacity:1}
+  @media(hover:none){.date-c .plus{opacity:.6}}
+  .date-c .plus:hover{color:var(--accent)}
+  .col{padding:4px 8px;border-left:1px solid var(--filet);min-width:0}
+  .rdv{font-size:13px;line-height:1.35;padding:1px 0;display:flex;align-items:baseline;gap:5px;word-break:break-word}
+  .rdv b{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--accent);font-weight:600}
+  .rdv .ico{margin-left:auto;opacity:0;transition:opacity .12s;flex:none}
+  .rdv:hover .ico{opacity:1}
+  @media(hover:none){.rdv .ico{opacity:.5}}
+  .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
+  .rdv.tache:hover{opacity:.9}
+  .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
+  .anniv,.ferie,.vac{font-size:11px;color:var(--encre-3);white-space:nowrap}
+  .ferie{color:var(--rouge)}
+  .vac{color:var(--accent)}
+
+  .fab{position:fixed;right:22px;bottom:26px;z-index:45;width:52px;height:52px;border-radius:50%;
+    background:var(--accent);color:#fff;border:0;font-size:27px;line-height:1;font-weight:300;
+    box-shadow:0 4px 14px rgba(28,34,48,.22);display:grid;place-items:center;padding:0 0 3px}
+  .fab:hover{filter:brightness(1.12)}
+  .fab:active{transform:scale(.94)}
+
+  .barre{display:none}
+  @media(max-width:820px){
+    .rail{display:none}
+    main{padding:18px 15px 96px;max-width:none}
+    .titre{font-size:22px}
+    .grand{font-size:22px}
+    .tab{display:none}
+    .cartes{display:flex;flex-direction:column}
+    .barre{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;background:var(--fiche);
+      border-top:1px solid var(--filet-fort);padding-bottom:env(safe-area-inset-bottom)}
+    .barre button{flex:1;background:none;border:0;padding:9px 1px 11px;color:var(--encre-2);font-size:11px;
+      display:flex;flex-direction:column;align-items:center;gap:4px;letter-spacing:-.01em}
+    .barre button .g{font-size:21px;line-height:1}
+    .barre button.on{font-weight:600}
+    .barre button.on{color:var(--accent)}
+    /* Sur téléphone ces deux boutons sont le seul accès à la recherche et
+       aux réglages : ils doivent se voir et se toucher sans viser. */
+    .loupe{font-size:24px;padding:5px 9px;color:var(--encre-2)}
+    .entete-mob .jour{display:flex;align-items:center;gap:2px}
+    .fab{right:16px;bottom:calc(70px + env(safe-area-inset-bottom));width:56px;height:56px;font-size:29px}
+    .entete-mob{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+    .entete-mob .jour{margin:0}
+    /* Sur téléphone, chaque bouton doit rester atteignable au pouce. */
+    .ico{padding:9px 11px;font-size:16px}
+    .case{width:26px;height:26px}
+    .case svg{width:14px;height:14px}
+    .case.fleche{font-size:16px}
+    .cases{gap:8px}
+    .saisie{flex-wrap:wrap}
+    .saisie input.court{flex:0 0 92px}
+    .barre-cat .nom{flex:0 0 40%}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="marque">Car<b>net</b></div>
+    <div class="jour" id="jourRail"></div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main id="vue"></main>
+</div>
+<nav class="barre" id="barre"></nav>
+<dialog id="dlg"></dialog>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   1. STOCKAGE — seule porte vers les données.
+   Pour brancher une synchro un jour : réécrire lire() et ecrire().
+   ===================================================================== */
+const Stockage = (() => {
+  const NOM = "carnet", MAG = "etat", CLE = "db";
+  let idb = null, memoire = {}, dispo = false;
+  function ouvrir(){
+    return new Promise(res => {
+      if(!("indexedDB" in window)) return res(null);
+      let r; try{ r = indexedDB.open(NOM, 1); }catch(e){ return res(null); }
+      r.onupgradeneeded = () => { if(!r.result.objectStoreNames.contains(MAG)) r.result.createObjectStore(MAG); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+      setTimeout(() => res(null), 2500);
+    });
+  }
+  async function init(){
+    idb = await ouvrir(); dispo = !!idb;
+    if(dispo && navigator.storage?.persist){ try{ await navigator.storage.persist(); }catch(e){} }
+    return dispo;
+  }
+  function lire(cle = CLE){
+    return new Promise(res => {
+      if(!idb) return res(memoire[cle] ?? null);
+      try{ const t = idb.transaction(MAG,"readonly").objectStore(MAG).get(cle);
+        t.onsuccess = () => res(t.result ?? null); t.onerror = () => res(null);
+      }catch(e){ res(null); }
+    });
+  }
+  function ecrire(v, cle = CLE){
+    memoire[cle] = v;
+    return new Promise(res => {
+      if(!idb) return res(false);
+      try{ const t = idb.transaction(MAG,"readwrite").objectStore(MAG).put(v, cle);
+        t.onsuccess = () => res(true); t.onerror = () => res(false);
+      }catch(e){ res(false); }
+    });
+  }
+  return { init, lire, ecrire, persistant: () => dispo };
+})();
+
+/* =====================================================================
+   1 bis. SYNCHRONISATION GITHUB
+   Le carnet est un fichier JSON dans un dépôt privé. Chaque écriture est
+   un commit : on garde l'historique et la possibilité de revenir en arrière.
+   Le jeton est rangé sous une autre clé que le carnet : il ne part donc
+   jamais dans l'export.
+   ===================================================================== */
+const Sync = (() => {
+  const CLE_CFG = "config_sync";
+  let cfg = { actif:false, owner:"", repo:"", chemin:"carnet.json", branche:"main", jeton:"", sha:null, base:null };
+  let etat = { statut:"off", message:"", quand:null };
+  let minuteur = null, enCours = false, dernierPull = 0, redemande = false, veille = null;
+  let dernierGeste = 0, retardataire = 0;
+  const noterGeste = () => { dernierGeste = Date.now(); };
+
+  const lireCfg = () => ({ ...cfg });
+  const estActif = () => cfg.actif && !!cfg.jeton && !!cfg.owner && !!cfg.repo;
+  const lireEtat = () => ({ ...etat });
+
+  function poser(statut, message = ""){
+    etat = { statut, message, quand: statut === "ok" ? Date.now() : etat.quand };
+    if(typeof rafraichirBadge === "function") rafraichirBadge();
+  }
+
+  async function charger(){
+    const c = await Stockage.lire(CLE_CFG);
+    if(c) cfg = Object.assign(cfg, c);
+    poser(estActif() ? "attente" : "off");
+  }
+  const enregistrerCfg = () => Stockage.ecrire({ ...cfg }, CLE_CFG);
+
+  /* --- Base64 compatible UTF-8 --- */
+  function versB64(s){
+    const o = new TextEncoder().encode(s);
+    let bin = "", pas = 0x8000;
+    for(let i = 0; i < o.length; i += pas) bin += String.fromCharCode.apply(null, o.subarray(i, i+pas));
+    return btoa(bin);
+  }
+  function depuisB64(s){
+    const bin = atob(String(s).replace(/\s/g,""));
+    const o = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) o[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(o);
+  }
+
+  const api = (chemin, opts = {}) => fetch("https://api.github.com" + chemin, Object.assign({}, opts, {
+    headers: Object.assign({
+      Authorization: "Bearer " + cfg.jeton,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    }, opts.headers || {}),
+  }));
+
+  async function motErreur(r){
+    let d = "";
+    try{ d = (await r.json()).message || ""; }catch(e){}
+    if(r.status === 401) return "Jeton refusé — il est peut-être expiré.";
+    if(r.status === 403) return "Accès refusé — vérifiez les droits Contents du jeton.";
+    if(r.status === 404) return "Dépôt ou branche introuvable.";
+    if(r.status === 409) return "Conflit de version côté GitHub.";
+    return `${r.status} · ${d || "erreur inconnue"}`;
+  }
+
+  const urlFichier = () => `/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.chemin.replace(/^\/+/,"")}`;
+
+  async function lireDistant(){
+    const r = await api(`${urlFichier()}?ref=${encodeURIComponent(cfg.branche)}`);
+    if(r.status === 404) return { absent:true };
+    if(!r.ok) throw new Error(await motErreur(r));
+    const j = await r.json();
+    if(!j.content) throw new Error("Fichier trop volumineux pour cette méthode.");
+    return { sha:j.sha, donnees: JSON.parse(depuisB64(j.content)) };
+  }
+
+  async function ecrireDistant(){
+    /* GitHub refuse l'écriture (409/422) si le fichier a changé depuis notre
+       lecture. Plutôt que d'abandonner, on relit, on fusionne ce qui est
+       arrivé entre-temps, et on réessaie. Trois tentatives suffisent
+       largement : le cas ne se produit que si un autre appareil écrit
+       exactement au même instant. */
+    for(let essai = 1; essai <= 3; essai++){
+      if(!db.modifie_le) db.modifie_le = new Date().toISOString();
+      const instantane = db.modifie_le;
+      const corps = {
+        message: `Carnet · ${nomAppareil()} · ${new Date().toLocaleString("fr-FR")}`,
+        content: versB64(JSON.stringify(db, null, 2)),
+        branch: cfg.branche,
+      };
+      if(cfg.sha) corps.sha = cfg.sha;
+
+      const r = await api(urlFichier(), { method:"PUT", body:JSON.stringify(corps) });
+
+      if(r.ok){
+        const j = await r.json();
+        cfg.sha = j.content.sha;
+        cfg.base = instantane;
+        await enregistrerCfg();
+        /* Une saisie est arrivée pendant l'envoi : on repart pour un tour. */
+        if(db.modifie_le !== instantane) planifier();
+        return;
+      }
+
+      if((r.status !== 409 && r.status !== 422) || essai === 3)
+        throw new Error(await motErreur(r));
+
+      const d = await lireDistant();
+      if(d.absent){
+        cfg.sha = null;               /* le fichier n'existe pas : on le crée */
+      }else{
+        cfg.sha = d.sha;
+        adopter(fusionner(db, d.donnees));   /* on absorbe ce qui vient d'arriver */
+      }
+      await new Promise(res => setTimeout(res, 400 * essai));
+    }
+  }
+
+  function adopter(donnees){
+    const m = migrer(donnees);
+    if(!m || !Array.isArray(m.taches)) throw new Error("Le fichier distant n'est pas un carnet.");
+    /* Empreinte de l'état courant : si la version distante ne change rien,
+       inutile de redessiner l'écran sous les yeux de l'utilisateur. */
+    const empreinte = db ? JSON.stringify(db) : "";
+    /* Une suppression est définitive : elle ne doit pas être oubliée parce
+       qu'on adopte une version distante qui l'ignore. On conserve donc le
+       registre local, on le réunit avec celui reçu, et on écarte des
+       collections adoptées tout ce qui a été supprimé d'un côté ou de
+       l'autre. Sans cela, un élément effacé ici revenait dès qu'un autre
+       appareil renvoyait une version antérieure à sa suppression. */
+    const registreLocal = (db && db.supprimes) || [];
+    db = Object.assign(etatNeuf(), m);
+    const vus = new Map();
+    [...registreLocal, ...(db.supprimes || [])].forEach(x => {
+      if(x && x.id && !vus.has(x.id)) vus.set(x.id, x);
+    });
+    db.supprimes = [...vus.values()].slice(-1000);
+    COLLECTIONS.forEach(col => {
+      if(Array.isArray(db[col])) db[col] = db[col].filter(x => !x || !vus.has(x.id));
+    });
+    db.version_schema = VERSION_SCHEMA;
+    db.corbeille = db.corbeille || [];
+    db.dossiers = db.dossiers || [];
+    db.revenus = db.revenus || [];
+    db.depenses = db.depenses || [];
+    db.taches = db.taches.map(t => tacheNeuve(t));
+    delete db.vierge;
+    appliquerTeinte();
+    bascule(); purgerCorbeille(); dedoublonner();
+    Stockage.ecrire(structuredClone(db));
+    cfg.base = db.modifie_le || null;
+    enregistrerCfg();
+    if(typeof rendre === "function" && JSON.stringify(db) !== empreinte) rendre();
+  }
+
+  /* Décide seul dans les cas simples, demande à l'utilisateur si les deux
+     côtés ont bougé depuis la dernière synchro. */
+  async function synchroniser(manuel = false){
+    if(!estActif()) return;
+    if(enCours){ redemande = true; return; }
+    /* Une adoption au milieu d'une saisie fait sauter l'écran : on laisse
+       passer quelques secondes après le dernier geste. */
+    if(!manuel && Date.now() - dernierGeste < 5000){ planifier(); return; }
+    if(!navigator.onLine){ poser("erreur", "Hors ligne — la synchro reprendra au retour du réseau."); return; }
+    enCours = true; redemande = false; poser("occupe");
+    try{
+      /* La lecture distante prend quelques secondes. Si l'utilisateur saisit
+         pendant ce temps, la décision prise ensuite porterait sur un état
+         périmé et effacerait sa saisie de l'écran — elle ne reviendrait
+         qu'au tour de synchro suivant. On mémorise donc l'état d'avant. */
+      const avant = db.modifie_le;
+      const d = await lireDistant();
+      const bougeEntreTemps = db.modifie_le !== avant;
+      if(d.absent){ cfg.sha = null; await ecrireDistant(); poser("ok"); return; }
+      cfg.sha = d.sha;
+      /* Un appareil resté sur une version ancienne ne connaît pas les
+         protections récentes : on le signale plutôt que de laisser
+         l'utilisatrice chercher pourquoi ses saisies s'évaporent. */
+      const vDistante = d.donnees.version_app || 0;
+      retardataire = vDistante > 0 && vDistante < VERSION_APP ? vDistante : 0;
+
+      const distant = d.donnees.modifie_le || null;
+      const local = db.vierge ? null : (db.modifie_le || null);
+      const base = cfg.base;
+      /* Carnet encore vierge : on prend la version distante telle quelle,
+         sans y verser les exemples de démonstration. */
+      if(db.vierge && !bougeEntreTemps){ adopter(d.donnees); poser("ok"); return; }
+
+      if(distant === local){ cfg.base = local; await enregistrerCfg(); poser("ok"); return; }
+      /* Fichier distant sans horodatage : c'est notre propre écriture initiale,
+         pas une modification concurrente. On le complète au lieu d'alerter. */
+      if(!distant){ await ecrireDistant(); poser("ok"); return; }
+      /* Appareil encore vierge : il adopte simplement ce qui existe. */
+      if(!local && !bougeEntreTemps){ adopter(d.donnees); poser("ok"); return; }
+      if(base && distant === base){ await ecrireDistant(); poser("ok"); return; }
+      /* Même quand rien ne semble avoir bougé ici, on fusionne plutôt que
+         d'adopter : c'est la seule façon de garantir qu'une saisie récente
+         ne disparaisse pas, y compris si l'autre appareil tourne encore sur
+         une version ancienne qui renverrait un carnet incomplet. */
+      if(base && local === base && !bougeEntreTemps){
+        adopter(fusionner(db, d.donnees)); poser("ok"); return;
+      }
+
+      /* Les deux côtés ont bougé : on réunit au lieu de choisir. */
+      const fusion = fusionner(db, d.donnees);
+      adopter(fusion);
+      await ecrireDistant();
+      poser("ok", "Versions réunies.");
+    }catch(e){
+      poser("erreur", e.message || String(e));
+    }finally{
+      enCours = false;
+      dernierPull = Date.now();
+      if(redemande){ redemande = false; setTimeout(() => synchroniser(false), 400); }
+    }
+  }
+
+  function planifier(){
+    if(!estActif()) return;
+    poser("attente");
+    clearTimeout(minuteur);
+    minuteur = setTimeout(() => synchroniser(false), 2500);
+  }
+
+  /* Relève régulière tant que l'onglet est visible.
+     Sans elle, un appareil resté ouvert ignore ce que l'autre a poussé et
+     ne le découvre qu'au moment où l'on modifie quelque chose — c'est-à-dire
+     une fois le conflit déjà créé. En allant chercher toutes les deux minutes,
+     la version distante est adoptée en silence tant que rien n'a été saisi ici. */
+  function lancerVeille(){
+    clearInterval(veille);
+    veille = setInterval(() => {
+      if(document.hidden || !estActif() || enCours) return;
+      if(dlg.open) return;
+      synchroniser(false);
+    }, 120000);
+  }
+
+  async function connecter(nouveau){
+    cfg = Object.assign(cfg, nouveau, { actif:true, sha:null, base:null });
+    await enregistrerCfg();
+    poser("occupe");
+    await synchroniser(true);
+  }
+  async function deconnecter(){
+    cfg = { actif:false, owner:"", repo:"", chemin:"carnet.json", branche:"main", jeton:"", sha:null, base:null };
+    await enregistrerCfg();
+    poser("off");
+    if(typeof rendre === "function") rendre();
+  }
+
+  function auRetour(){
+    if(!estActif()) return;
+    if(Date.now() - dernierPull < 8000) return;
+    synchroniser(false);
+  }
+
+  const versionEnRetard = () => retardataire;
+  return { charger, lireCfg, lireEtat, estActif, planifier, synchroniser, connecter, deconnecter,
+           auRetour, lancerVeille, noterGeste, versionEnRetard };
+})();
+
+/* =====================================================================
+   2. MODÈLE
+   ===================================================================== */
+const VERSION_SCHEMA = 8;
+const VERSION_APP = 40;
+
+const uid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
+
+const jourISO = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const versDate = iso => new Date(iso + "T00:00:00");
+const ecartJours = (a,b) => Math.round((versDate(b) - versDate(a)) / 86400000);
+
+function ajouterPeriode(iso, n, unite){
+  const d = versDate(iso);
+  if(unite === "jour") d.setDate(d.getDate() + n);
+  else if(unite === "semaine") d.setDate(d.getDate() + n*7);
+  else if(unite === "mois"){ const j = d.getDate(); d.setDate(1); d.setMonth(d.getMonth()+n);
+    d.setDate(Math.min(j, new Date(d.getFullYear(), d.getMonth()+1, 0).getDate())); }
+  else if(unite === "an"){ const j = d.getDate(); d.setDate(1); d.setFullYear(d.getFullYear()+n);
+    d.setDate(Math.min(j, new Date(d.getFullYear(), d.getMonth()+1, 0).getDate())); }
+  return jourISO(d);
+}
+
+const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const JOURS = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+const dateLongue = iso => { const d = versDate(iso); return `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`; };
+const dateMoyenne = iso => { const d = versDate(iso); return `${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}`; };
+const dateCourte = iso => { const d = versDate(iso);
+  return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getFullYear()).slice(2)}`; };
+function resteEnMots(iso, ref = jourISO()){
+  const n = ecartJours(ref, iso);
+  if(n < -1) return `en retard de ${-n} j`;
+  if(n === -1) return "hier";
+  if(n === 0) return "aujourd'hui";
+  if(n === 1) return "demain";
+  if(n < 31) return `dans ${n} j`;
+  if(n < 365) return `dans ${Math.round(n/30)} mois`;
+  return `dans ${(n/365).toFixed(1).replace(".",",")} an`;
+}
+const PERIODES = { mensuel:1, bimestriel:2, trimestriel:3, semestriel:6, annuel:12, biennal:24 };
+
+/* --- Calendrier français --- */
+/* Pâques par l'algorithme de Meeus : tous les fériés mobiles en découlent. */
+function paques(a){
+  const n = a % 19, c = Math.floor(a/100), d = a % 100;
+  const e = Math.floor(c/4), f = c % 4, g = Math.floor((c+8)/25);
+  const h = Math.floor((c-g+1)/3), i = (19*n + c - e - h + 15) % 30;
+  const k = Math.floor(d/4), l = d % 4;
+  const m = (32 + 2*f + 2*k - i - l) % 7;
+  const o = Math.floor((n + 11*i + 22*m)/451);
+  const mois = Math.floor((i + m - 7*o + 114)/31);
+  const jour = ((i + m - 7*o + 114) % 31) + 1;
+  return new Date(a, mois-1, jour);
+}
+const feriesCache = {};
+function feries(a){
+  if(feriesCache[a]) return feriesCache[a];
+  const p = paques(a), dec = n => { const d = new Date(p); d.setDate(d.getDate()+n); return jourISO(d); };
+  const f = {
+    [`${a}-01-01`]:"Jour de l'an", [dec(1)]:"Lundi de Pâques", [`${a}-05-01`]:"Fête du travail",
+    [`${a}-05-08`]:"Victoire 1945", [dec(39)]:"Ascension", [dec(50)]:"Lundi de Pentecôte",
+    [`${a}-07-14`]:"Fête nationale", [`${a}-08-15`]:"Assomption", [`${a}-11-01`]:"Toussaint",
+    [`${a}-11-11`]:"Armistice", [`${a}-12-25`]:"Noël",
+  };
+  return feriesCache[a] = f;
+}
+const ferieDe = iso => feries(+iso.slice(0,4))[iso] || null;
+
+/* Zone C — académies de Créteil, Montpellier, Paris, Toulouse, Versailles.
+   Dates publiées au Journal officiel, jusqu'à l'été 2027. Au-delà, elles
+   n'existent pas encore : la liste se complète dans Réglages. Le dernier jour
+   indiqué est le dernier jour de congé, la reprise a lieu le lendemain. */
+const VACANCES_C = [
+  ["2025-12-20","2026-01-04","Noël"],
+  ["2026-02-14","2026-03-01","Hiver"],
+  ["2026-04-11","2026-04-26","Printemps"],
+  ["2026-07-04","2026-08-31","Été"],
+  ["2026-10-17","2026-11-01","Toussaint"],
+  ["2026-12-19","2027-01-03","Noël"],
+  ["2027-02-06","2027-02-21","Hiver"],
+  ["2027-04-03","2027-04-18","Printemps"],
+  ["2027-07-03","2027-08-31","Été"],
+];
+const vacancesNeuves = () => VACANCES_C.map(([debut,fin,nom]) => ({ id:cleStable("vac", debut), debut, fin, nom }));
+const vacanceDe = iso => {
+  const v = (db.vacances || []).find(x => iso >= x.debut && iso <= x.fin);
+  return v ? v.nom : null;
+};
+/* « tous les ans », « toutes les 3 semaines », « tous les 2 mois »… */
+function recurrenceEnMots(n, unite){
+  const f = { jour:["tous les","jour","jours"], semaine:["toutes les","semaine","semaines"],
+              mois:["tous les","mois","mois"], an:["tous les","an","ans"] }[unite];
+  if(!f) return "";
+  return n > 1 ? `${f[0]} ${n} ${f[2]}` : `${f[0]} ${f[2]}`;
+}
+const sansAccents = s => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+
+const euro = (n, dec = 2) => (n ?? 0).toLocaleString("fr-FR", { minimumFractionDigits:dec, maximumFractionDigits:dec }) + " €";
+const euroCourt = n => (n ?? 0).toLocaleString("fr-FR", { minimumFractionDigits:0, maximumFractionDigits:0 }) + " €";
+const lireMontant = s => {
+  const v = parseFloat(String(s).replace(/\s/g,"").replace(",","."));
+  return isFinite(v) ? v : null;
+};
+
+/* Liste volontairement vide : les anniversaires sont des données
+   personnelles, ils n'ont rien à faire dans un fichier publié. Ils vivent
+   dans votre carnet, qui reste privé, et se saisissent dans Réglages. */
+const ANNIVERSAIRES = [];
+/* Identifiant déterministe : deux appareils qui créent la même liste par
+   défaut aboutissent aux mêmes identifiants, donc la fusion les reconnaît
+   comme un seul et même élément au lieu de les additionner. */
+const cleStable = (prefixe, ...parts) =>
+  prefixe + "-" + sansAccents(parts.join("-")).replace(/[^a-z0-9-]/g, "");
+const anniversairesNeufs = () => ANNIVERSAIRES.map(([m,j,nom,ic]) =>
+  ({ id:cleStable("an", m, j, nom), mois:m, jour:j, nom, icone: ic === "coeur" ? "coeur" : "gateau" }));
+
+function tacheNeuve(p = {}){
+  return Object.assign({
+    id:uid(), intitule:"", contexte_id:null, dossier_id:null,
+    date_due:null, preavis:0, n:0, unite:"an",
+    statut:"inbox", suivant_le:null, reports:0, en_inbox:false, travail:false,
+    cree_le:jourISO(), fait_le:null, notes:"", journal:[],
+  }, p);
+}
+
+function etatNeuf(){
+  const ctx = [
+    { nom:"En ligne",  alias:["ligne","web","online","ordi"] },
+    { nom:"Dehors",    alias:["dehors","rue","sortie"] },
+    { nom:"Mail",      alias:["mail","email","mel"] },
+    { nom:"Téléphone", alias:["tel","phone","appel"] },
+  ].map(c => ({ id:cleStable("ctx", c.nom), ...c }));
+  const cat = ["Véhicule","Santé","Logement","Transport","Impôts","Banque"]
+    .map(n => ({ id:cleStable("cat", n), nom:n }));
+  const cb = ["Courses","Restaurant","Transport","Maison","Santé","Loisirs","Divers"]
+    .map(n => ({ id:cleStable("cdep", n), nom:n }));
+  const dVan = uid(), dAss = uid(), dMut = uid();
+  const dans = n => jourISO(new Date(Date.now() + n*86400000));
+  return {
+    version_schema: VERSION_SCHEMA,
+    contextes: ctx,
+    categories: cat,
+    categories_depense: cb,
+    dossiers: [
+      { id:dVan, nom:"Le van", categorie_id:cat[0].id, url:"", identifiant:"", contrat:"", lignes:[],
+        montant:null, periodicite:"", notes:"Fiat Ducato L2H2 · 2016 · AB-123-CD\nGazole, 90 L\nClé de secours : boîte du couloir", demo:true },
+      { id:dAss, nom:"Assurances", categorie_id:cat[0].id, url:"", identifiant:"", contrat:"",
+        montant:null, periodicite:"",
+        lignes:[
+          { id:uid(), libelle:"Auto", montant:610, periodicite:"annuel", jour:12 },
+          { id:uid(), libelle:"Van", montant:284, periodicite:"annuel", jour:12 },
+          { id:uid(), libelle:"Habitation", montant:19.4, periodicite:"mensuel", jour:5 },
+        ],
+        notes:"MAIF · garantie Plénitude\nFranchise 250 €\nAssistance 0 km incluse", demo:true },
+      { id:dMut, nom:"Mutuelle", categorie_id:cat[1].id, url:"", identifiant:"", contrat:"",
+        montant:null, periodicite:"",
+        lignes:[{ id:uid(), libelle:"Cotisation", montant:45, periodicite:"mensuel", jour:8 }], notes:"", demo:true },
+    ],
+    taches: [
+      tacheNeuve({ intitule:"Laver le van", contexte_id:ctx[1].id, dossier_id:dVan, date_due:dans(3), demo:true }),
+      tacheNeuve({ intitule:"Contrôle technique", contexte_id:ctx[1].id, dossier_id:dVan,
+        date_due:dans(120), preavis:45, n:2, unite:"an", demo:true }),
+      tacheNeuve({ intitule:"Changer le joint du lanterneau", contexte_id:ctx[1].id, dossier_id:dVan, demo:true }),
+      tacheNeuve({ intitule:"Renouvellement", contexte_id:ctx[0].id, dossier_id:dAss,
+        date_due:dans(48), preavis:30, n:1, unite:"an", demo:true }),
+      tacheNeuve({ intitule:"Prendre rendez-vous chez le dentiste", contexte_id:ctx[3].id, suivant_le:jourISO(), demo:true }),
+      tacheNeuve({ intitule:"Mettre à jour l'attestation d'assurance", contexte_id:ctx[0].id, demo:true }),
+    ],
+    revenus: [],
+    depenses: [],
+    rendez_vous: [],
+    anniversaires: anniversairesNeufs(),
+    vacances: vacancesNeuves(),
+    rentrees: [],
+    supprimes: [],
+    corbeille: [],
+    reglages: { dernier_bascule:null, dernier_export:null, preavis_defaut:30, exemples:true,
+                jour_debut_mois:1, sphere:"perso" },
+  };
+}
+
+/* Reprise des carnets v1 et v2 */
+function migrer(d){
+  if(!d) return null;
+  let x = d;
+  if((x.version_schema ?? 1) < 2){
+    x = {
+      version_schema:2,
+      contextes:x.contextes || [], categories:x.categories || [],
+      dossiers:(x.organismes || []).map(o => ({
+        id:o.id, nom:o.nom, categorie_id:o.categorie_id, url:o.url || "", identifiant:o.identifiant || "",
+        contrat:o.contrat || "", montant:o.montant ?? null, periodicite:o.periodicite || "", notes:o.notes || "", demo:!!o.demo })),
+      taches:(x.taches || []).filter(t => !t.echeance_id || t.statut === "done").map(t => tacheNeuve({
+        id:t.id, intitule:t.intitule, contexte_id:t.contexte_id, statut:t.statut, suivant_le:t.suivant_le,
+        reports:t.reports || 0, cree_le:t.cree_le, fait_le:t.fait_le, demo:!!t.demo })),
+      corbeille:x.corbeille || [],
+      reglages:x.reglages || {},
+    };
+    (d.echeances || []).forEach(e => x.taches.push(tacheNeuve({
+      intitule:e.intitule, contexte_id:e.contexte_id, dossier_id:e.organisme_id || null,
+      date_due:e.date_due, preavis:e.preavis ?? 30, n:e.n || 0, unite:e.unite || "an", notes:e.notes || "", demo:!!e.demo })));
+  }
+  if((x.version_schema ?? 2) < 3){
+    x.version_schema = 3;
+    x.categories_depense = x.categories_depense || etatNeuf().categories_depense;
+    x.revenus = x.revenus || [];
+    x.depenses = x.depenses || [];
+    x.reglages = Object.assign({ jour_debut_mois:1 }, x.reglages || {});
+  }
+  if((x.version_schema ?? 3) < 4){
+    x.version_schema = 4;
+    x.rendez_vous = x.rendez_vous || [];
+    x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
+  }
+  if((x.version_schema ?? 7) < 8){
+    x.version_schema = 8;
+    x.rentrees = x.rentrees || [];
+  }
+  if((x.version_schema ?? 6) < 7){
+    x.version_schema = 7;
+    x.supprimes = x.supprimes || [];
+  }
+  if((x.version_schema ?? 5) < 6){
+    x.version_schema = 6;
+    x.vacances = (x.vacances && x.vacances.length) ? x.vacances : vacancesNeuves();
+  }
+  if((x.version_schema ?? 4) < 5){
+    x.version_schema = 5;
+    (x.dossiers || []).forEach(d => {
+      if(!d.lignes) d.lignes = [];
+      if(d.montant && d.periodicite && !d.lignes.length){
+        d.lignes.push({ id:uid(), libelle:d.nom, montant:d.montant, periodicite:d.periodicite, jour:null });
+      }
+      d.montant = null; d.periodicite = "";
+    });
+  }
+  return x;
+}
+
+/* Collections fusionnables : chaque élément y porte un identifiant unique,
+   ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
+const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
+                     "anniversaires","vacances","contextes","categories","categories_depense"];
+
+/* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
+   élément modifié des deux côtés, on retient celui du carnet le plus
+   récemment touché. Les suppressions font foi grâce au registre. */
+function fusionner(a, b) {
+  const aPlusRecent = (a.modifie_le || "") >= (b.modifie_le || "");
+  const fort = aPlusRecent ? a : b, faible = aPlusRecent ? b : a;
+  const out = Object.assign({}, faible, fort);
+
+  const supprimes = [...(a.supprimes || []), ...(b.supprimes || [])];
+  const vus = new Set(), registre = [];
+  supprimes.forEach(x => { if(x && x.id && !vus.has(x.id)){ vus.add(x.id); registre.push(x); } });
+
+  /* Pour un élément présent des deux côtés, c'est sa propre date de
+     modification qui décide, pas celle du carnet qui le porte. On ne
+     retombe sur la règle globale que si aucun des deux n'est horodaté. */
+  const departager = (a, b) => {
+    if(!a) return b;
+    if(!b) return a;
+    if(a.maj_le && b.maj_le) return a.maj_le >= b.maj_le ? a : b;
+    if(a.maj_le) return a;
+    if(b.maj_le) return b;
+    return null;
+  };
+  COLLECTIONS.forEach(col => {
+    const carte = new Map();
+    (faible[col] || []).forEach(x => { if(x && x.id) carte.set(x.id, x); });
+    (fort[col]   || []).forEach(x => {
+      if(!x || !x.id) return;
+      const autre = carte.get(x.id);
+      carte.set(x.id, autre ? (departager(x, autre) || x) : x);
+    });
+    out[col] = [...carte.values()].filter(x => !vus.has(x.id));
+  });
+
+  const cb = new Map();
+  [...(faible.corbeille || []), ...(fort.corbeille || [])].forEach(x => { if(x && x.id) cb.set(x.id, x); });
+  out.corbeille = [...cb.values()].sort((x,y) => (y.le||"").localeCompare(x.le||"")).slice(0,200);
+
+  out.supprimes = registre.slice(-1000);
+  out.reglages = Object.assign({}, faible.reglages || {}, fort.reglages || {});
+  out.modifie_le = (a.modifie_le || "") > (b.modifie_le || "") ? a.modifie_le : b.modifie_le;
+  return out;
+}
+
+/* Date de dernière modification d'un élément précis. C'est ce qui permet à
+   la fusion de trancher tâche par tâche plutôt que carnet par carnet : sans
+   elle, une modification faite ici pouvait être écrasée par un appareil qui
+   n'avait fait que synchroniser. */
+function touche(...objets){
+  const t = new Date().toISOString();
+  objets.forEach(o => { if(o && typeof o === "object") o.maj_le = t; });
+  return objets[0];
+}
+
+/* Nom lisible de l'appareil, pour savoir qui a écrit en dernier. */
+function nomAppareil(){
+  const u = navigator.userAgent;
+  if(/iPhone/.test(u)) return "iPhone";
+  if(/iPad/.test(u)) return "iPad";
+  if(/Android/.test(u)) return "Android";
+  if(/Mac/.test(u)) return "Mac";
+  if(/Windows/.test(u)) return "PC";
+  return "Ordinateur";
+}
+
+let db = null;
+/* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
+const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
+              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
+              moisAgenda:null, surligne:null };
+
+let tempo = null;
+/* marquer=false pour les écritures de normalisation au démarrage :
+   elles ne doivent pas faire croire à une modification. */
+function sauver(marquer = true){
+  if(marquer){
+    Sync.noterGeste();
+    db.version_app = VERSION_APP;
+    db.modifie_le = new Date().toISOString();
+    db.dernier_appareil = nomAppareil();
+    delete db.vierge;   /* dès la première saisie, ce carnet compte */
+  }
+  clearTimeout(tempo);
+  tempo = setTimeout(() => {
+    Stockage.ecrire(structuredClone(db));
+    if(marquer) Sync.planifier();
+  }, 180);
+}
+const maj = () => { sauver(); rendre(); };
+
+const ctxDe  = id => db.contextes.find(c => c.id === id) || null;
+const dossDe = id => db.dossiers.find(d => d.id === id) || null;
+const catDe  = id => db.categories.find(c => c.id === id) || null;
+const cdepDe = id => db.categories_depense.find(c => c.id === id) || null;
+
+/* ---- Règles d'affichage des tâches ---- */
+const mure = (t, j = jourISO()) => !t.date_due || ecartJours(j, t.date_due) <= (t.preavis || 0);
+const enVeille = t => t.statut !== "done" && !mure(t);
+function dansInbox(t){
+  if(t.statut === "done") return false;
+  /* Cocher le carré est une décision explicite : elle prime sur le préavis
+     et sur le rangement en dossier. Sans cela, une tâche datée du 20 avec
+     un préavis à 0 restait invisible alors qu'on venait de la choisir. */
+  if(t.suivant_le) return true;
+  if(!mure(t)) return false;
+  if(!t.dossier_id) return true;
+  return t.en_inbox || !!t.date_due;
+}
+/* Perso et travail cohabitent sans se mélanger : le filtre est mémorisé,
+   pour ne pas avoir à le remettre à chaque ouverture. */
+const sphere = () => db.reglages.sphere === "travail" ? "travail" : "perso";
+/* Où ira la prochaine tâche saisie. Par défaut on suit la liste affichée,
+   sauf choix explicite : ainsi ce qu'on voit et ce qu'on écrit concordent. */
+const destinationTravail = () =>
+  vue.saisieTravail == null ? sphere() === "travail" : !!vue.saisieTravail;
+/* Deux mondes étanches : en mode perso on ne voit jamais le travail, et
+   réciproquement. Rien ne les mélange, nulle part. */
+const passeSphere = t => sphere() === "travail" ? !!t.travail : !t.travail;
+
+const enCours   = () => db.taches.filter(t => t.statut !== "done");
+const inbox     = () => db.taches.filter(dansInbox);
+const suivantes = () => inbox().filter(t => t.suivant_le)
+                   .sort((a,b) => b.reports - a.reports || (a.date_due||"9").localeCompare(b.date_due||"9"));
+const aTrier    = () => inbox().filter(t => !t.suivant_le)
+                   .sort((a,b) => (a.date_due||"9").localeCompare(b.date_due||"9") || b.cree_le.localeCompare(a.cree_le));
+const datees    = () => enCours().filter(t => t.date_due).sort((a,b) => a.date_due.localeCompare(b.date_due));
+const faitesLe  = j => db.taches.filter(t => t.statut === "done" && t.fait_le === j);
+const reglees   = () => db.taches.filter(t => t.statut === "done")
+                   .sort((a,b) => (b.fait_le||"").localeCompare(a.fait_le||""));
+const duDossier = id => db.taches.filter(t => t.dossier_id === id && t.statut !== "done");
+const rdvDu = iso => (db.rendez_vous||[]).filter(r => r.date === iso)
+                      .sort((a,b) => (a.heure||"99").localeCompare(b.heure||"99"));
+const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5,7) && a.jour === +iso.slice(8,10));
+const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
+
+const prochaineDe = id => { const l = duDossier(id).filter(t => t.date_due).map(t => t.date_due).sort(); return l[0] || null; };
+
+/* =====================================================================
+   3. BUDGET
+   Le mois budgétaire commence au jour choisi (1er par défaut).
+   Les charges viennent des dossiers qui ont un montant + une périodicité.
+   ===================================================================== */
+function debutPeriode(decalage = 0, ref = jourISO()){
+  const d = versDate(ref), jd = Math.min(28, Math.max(1, db.reglages.jour_debut_mois || 1));
+  let y = d.getFullYear(), m = d.getMonth();
+  if(d.getDate() < jd){ m--; if(m < 0){ m = 11; y--; } }
+  m += decalage;
+  const base = new Date(y, m, 1);
+  const dim = new Date(base.getFullYear(), base.getMonth()+1, 0).getDate();
+  return jourISO(new Date(base.getFullYear(), base.getMonth(), Math.min(jd, dim)));
+}
+/* Combien de mois séparent la période d'une date de la période en cours.
+   Sert à ouvrir le budget au bon endroit quand on saisit une dépense
+   antérieure ou postérieure au mois affiché. */
+/* Une période est nommée par son mois de fin : « 27 janvier → 26 février »
+   s'appelle février. Cette règle doit être unique, sinon deux périodes
+   voisines finissent par porter le même nom. */
+function nomDeLaPeriode(decalage){
+  const d = versDate(finPeriode(debutPeriode(decalage)));
+  return `${MOIS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function decalagePeriode(iso){
+  const a = versDate(debutPeriode(0));
+  const b = versDate(debutPeriode(0, iso));
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+const finPeriode = deb => jourISO(new Date(versDate(ajouterPeriode(deb, 1, "mois")).getTime() - 86400000));
+
+/* Une charge est une ligne d'un dossier : un dossier « Assurances » peut en
+   porter plusieurs (auto, van, habitation). Tout est ramené au mois. */
+const parMois = x => {
+  const p = PERIODES[x && x.periodicite];
+  return x && x.montant && p ? x.montant / p : 0;
+};
+const lignesDe = d => d.lignes || [];
+const parMoisDossier = d => lignesDe(d).reduce((s,l) => s + parMois(l), 0);
+const toutesLignes = () => db.dossiers.flatMap(d => lignesDe(d)
+  .filter(l => l.montant && PERIODES[l.periodicite]).map(l => ({ l, d })));
+const chargesDossiers = () => db.dossiers.filter(d => parMoisDossier(d) > 0);
+const totalCharges = () => toutesLignes().reduce((s,x) => s + parMois(x.l), 0);
+const totalRevenus = () => (db.revenus || []).reduce((s,r) => s + parMois(r), 0);
+
+/* Date de prélèvement d'une ligne mensuelle à l'intérieur de la période
+   budgétaire, qui ne coïncide pas forcément avec le mois calendaire. */
+function datePrelevement(l, deb, fin){
+  if(PERIODES[l.periodicite] !== 1 || !l.jour) return null;
+  for(const base of [versDate(deb), versDate(fin)]){
+    const dim = new Date(base.getFullYear(), base.getMonth()+1, 0).getDate();
+    const iso = jourISO(new Date(base.getFullYear(), base.getMonth(), Math.min(l.jour, dim)));
+    if(iso >= deb && iso <= fin) return iso;
+  }
+  return null;
+}
+
+/* Toutes les occurrences d'une charge à l'intérieur d'une période.
+   Une charge mensuelle se repère au seul jour ; au-delà du mois, il faut
+   aussi le mois d'ancrage — sans quoi on ignore quand elle tombe. */
+function datesPrelevement(l, deb, fin){
+  const p = PERIODES[l.periodicite];
+  if(!p || !l.jour) return [];
+  if(p === 1){ const d = datePrelevement(l, deb, fin); return d ? [d] : []; }
+  if(!l.mois) return [];
+  /* Ancrage fixe : sans année de référence, une charge bisannuelle donnerait
+     un résultat différent selon la période interrogée. On part donc toujours
+     du même point, et on avance jusqu'à la période demandée. */
+  const out = [];
+  const debut = versDate(deb), limite = versDate(fin);
+  let curseur = new Date(2000, l.mois - 1, 1);
+  const bonds = Math.max(0, Math.floor(((debut.getFullYear() - 2000) * 12 + debut.getMonth() - (l.mois - 1)) / p) - 1);
+  curseur = new Date(2000, (l.mois - 1) + bonds * p, 1);
+  let garde = 0;
+  while(curseur <= limite && garde++ < 60){
+    const dim = new Date(curseur.getFullYear(), curseur.getMonth() + 1, 0).getDate();
+    const iso = jourISO(new Date(curseur.getFullYear(), curseur.getMonth(), Math.min(l.jour, dim)));
+    if(iso >= deb && iso <= fin) out.push(iso);
+    curseur = new Date(curseur.getFullYear(), curseur.getMonth() + p, 1);
+  }
+  return out;
+}
+
+/* Sorties réelles de la période : le mensuel toujours, le reste seulement
+   si son échéance tombe dedans. */
+function chargesReelles(deb, fin){
+  return toutesLignes().reduce((s, { l, d }) => {
+    if(PERIODES[l.periodicite] === 1) return s + l.montant;
+    const dates = datesPrelevement(l, deb, fin);
+    if(dates.length) return s + l.montant * dates.length;
+    /* Charge sans mois renseigné : on retombe sur l'échéance du dossier. */
+    if(!l.mois){ const p = prochaineDe(d.id); if(p && p >= deb && p <= fin) return s + l.montant; }
+    return s;
+  }, 0);
+}
+
+/* Ce qui n'est pas encore passé sur le compte d'ici la fin de la période. */
+function resteAPrelever(deb, fin){
+  const j = jourISO();
+  return toutesLignes().reduce((s, { l, d }) => {
+    const dates = datesPrelevement(l, deb, fin);
+    if(dates.length) return s + l.montant * dates.filter(x => x >= j).length;
+    if(!l.mois && PERIODES[l.periodicite] > 1){
+      const p = prochaineDe(d.id);
+      if(p && p >= j && p <= fin) return s + l.montant;
+    }
+    return s;
+  }, 0);
+}
+const depensesDe = (deb, fin) => db.depenses.filter(x => x.date >= deb && x.date <= fin);
+/* Une dépense avancée pour le compte d'un tiers — frais médicaux, note de
+   frais — reste une vraie dépense aujourd'hui. On se contente de la marquer :
+   on ne sait ni quand ni combien on sera remboursé, donc on n'invente aucune
+   rentrée. La question utile est « combien me doit-on, et depuis quand ». */
+const enAttenteRemb = () => db.depenses.filter(x => x.rembourser && !x.rembourse)
+                              .sort((a,b) => a.date.localeCompare(b.date));
+const sommeDep = l => l.reduce((s,x) => s + (x.montant || 0), 0);
+
+function bilan(decalage = 0){
+  const deb = debutPeriode(decalage), fin = finPeriode(deb), j = jourISO();
+  const dep = depensesDe(deb, fin);
+  const revenus = totalRevenus(), charges = totalCharges();
+  /* Une rentrée ponctuelle — remboursement, prime, vente — ne compte qu'une
+     fois encaissée. Tant qu'elle est « à venir », elle est signalée à part
+     sans gonfler le disponible : mieux vaut une bonne surprise. */
+  const rent = db.rentrees || [];
+  const encaissees = rent.filter(r => r.recu && r.date && r.date >= deb && r.date <= fin)
+                         .reduce((s,r) => s + (r.montant||0), 0);
+  const attendues = rent.filter(r => !r.recu).reduce((s,r) => s + (r.montant||0), 0);
+  const attente = enAttenteRemb();
+  const avances = attente.reduce((s,x) => s + (x.montant||0), 0);
+  const disponible = revenus - charges + encaissees;
+  const depense = sommeDep(dep);
+  const reste = disponible - depense;
+  const total = ecartJours(deb, fin) + 1;
+  const ecoules = Math.min(total, Math.max(0, ecartJours(deb, j) + 1));
+  const restants = Math.max(0, total - ecoules) + (j >= deb && j <= fin ? 0 : 0);
+  const encore = j >= deb && j <= fin ? Math.max(1, total - ecoules + 1) : total;
+  return { deb, fin, dep, revenus, charges, disponible, depense, reste, total, ecoules, restants, encore,
+           encaissees, attendues, attente, avances,
+           reel: chargesReelles(deb, fin), courante: j >= deb && j <= fin };
+}
+
+/* =====================================================================
+   4. MÉCANIQUE QUOTIDIENNE
+   ===================================================================== */
+function bascule(){
+  const j = jourISO();
+  if(db.reglages.dernier_bascule === j) return;
+  if(db.reglages.dernier_bascule){
+    db.taches.forEach(t => {
+      if(t.statut !== "done" && t.suivant_le && t.suivant_le < j){ t.reports++; t.suivant_le = j; }
+    });
+  }
+  db.reglages.dernier_bascule = j;
+}
+/* Répare les listes dédoublées par une ancienne fusion. Les références
+   pointant vers un doublon sont reportées sur l'exemplaire conservé, et
+   les identifiants écartés entrent au registre des suppressions pour ne
+   pas revenir à la prochaine synchro. */
+function dedoublonner(){
+  let touche = 0;
+  const passe = (col, cle) => {
+    const vus = new Map(), garde = [], alias = {};
+    (db[col] || []).forEach(x => {
+      if(!x || !x.id) return;
+      const k = cle(x);
+      if(vus.has(k)){ alias[x.id] = vus.get(k); oublier(x.id); touche++; }
+      else { vus.set(k, x.id); garde.push(x); }
+    });
+    db[col] = garde;
+    return alias;
+  };
+  const nom = x => sansAccents(x.nom || "").trim();
+
+  passe("anniversaires", x => `${x.mois}-${x.jour}-${nom(x)}`);
+  passe("vacances", x => `${x.debut}-${x.fin}-${nom(x)}`);
+
+  const aCtx = passe("contextes", nom);
+  db.taches.forEach(t => { if(aCtx[t.contexte_id]) t.contexte_id = aCtx[t.contexte_id]; });
+
+  const aCat = passe("categories", nom);
+  db.dossiers.forEach(d => { if(aCat[d.categorie_id]) d.categorie_id = aCat[d.categorie_id]; });
+
+  const aCdep = passe("categories_depense", nom);
+  db.depenses.forEach(x => { if(aCdep[x.categorie_id]) x.categorie_id = aCdep[x.categorie_id]; });
+
+  return touche;
+}
+
+function purgerCorbeille(){
+  const limite = jourISO(new Date(Date.now() - 30*86400000));
+  db.corbeille = db.corbeille.filter(x => x.le >= limite);
+  /* Le registre des suppressions vit plus longtemps que la corbeille :
+     un appareil resté éteint deux mois ne doit pas ressusciter ses effacés. */
+  const vieux = new Date(Date.now() - 180*86400000).toISOString();
+  db.supprimes = (db.supprimes || []).filter(x => x.le >= vieux).slice(-1000);
+}
+/* Un élément supprimé doit le rester : sans ce registre, la fusion le
+   verrait « présent chez l'autre » et le ferait revenir à chaque synchro. */
+function oublier(id){
+  if(!id) return;
+  db.supprimes = db.supprimes || [];
+  if(!db.supprimes.some(x => x.id === id)) db.supprimes.push({ id, le:new Date().toISOString() });
+}
+function jeter(genre, obj){
+  db.corbeille.unshift({ id:uid(), genre, obj:structuredClone(obj), le:jourISO() });
+  oublier(obj && obj.id);
+}
+
+/* =====================================================================
+   5. SAISIE RAPIDE
+   ===================================================================== */
+const NOMS_JOURS = { dim:0,dimanche:0, lun:1,lundi:1, mar:2,mardi:2, mer:3,mercredi:3,
+                     jeu:4,jeudi:4, ven:5,vendredi:5, sam:6,samedi:6 };
+function lireDate(mot){
+  const m = sansAccents(mot);
+  const j = new Date(); j.setHours(0,0,0,0);
+  if(m === "auj" || m === "aujourdhui") return jourISO(j);
+  if(m === "demain"){ j.setDate(j.getDate()+1); return jourISO(j); }
+  if(m === "apresdemain"){ j.setDate(j.getDate()+2); return jourISO(j); }
+  if(m in NOMS_JOURS){
+    const cible = NOMS_JOURS[m];
+    let d = (cible - j.getDay() + 7) % 7; if(d === 0) d = 7;
+    j.setDate(j.getDate() + d); return jourISO(j);
+  }
+  let x = m.match(/^\+(\d+)(j|s|m)$/);
+  if(x){ const n = +x[1];
+    if(x[2] === "j") j.setDate(j.getDate()+n);
+    if(x[2] === "s") j.setDate(j.getDate()+n*7);
+    if(x[2] === "m") j.setMonth(j.getMonth()+n);
+    return jourISO(j); }
+  x = m.match(/^(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?$/);
+  if(x){
+    const jj = +x[1], mm = +x[2];
+    let aa = x[3] ? +x[3] : j.getFullYear();
+    if(aa < 100) aa += 2000;
+    if(mm < 1 || mm > 12 || jj < 1 || jj > 31) return null;
+    let iso = `${aa}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`;
+    if(!x[3] && iso < jourISO()) iso = `${aa+1}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`;
+    return iso;
+  }
+  return null;
+}
+function analyser(texte){
+  let suivant = false, ctxId = null, dossId = null, date = null;
+  const mots = texte.trim().split(/\s+/).filter(m => {
+    if(m === "!"){ suivant = true; return false; }
+    if(m.startsWith("@") && m.length > 1){
+      const cle = sansAccents(m.slice(1));
+      const c = db.contextes.find(c => sansAccents(c.nom).startsWith(cle) || (c.alias||[]).some(a => sansAccents(a) === cle));
+      if(c){ ctxId = c.id; return false; }
+    }
+    if(m.startsWith("#") && m.length > 1){
+      const cle = sansAccents(m.slice(1));
+      const d = db.dossiers.find(d => sansAccents(d.nom).replace(/\s|^(le|la|les|l')/g,"").startsWith(cle)
+                                   || sansAccents(d.nom).startsWith(cle));
+      if(d){ dossId = d.id; return false; }
+    }
+    if(!date){ const iso = lireDate(m); if(iso){ date = iso; return false; } }
+    return true;
+  });
+  let intitule = mots.join(" ");
+  if(intitule.endsWith("!")){ suivant = true; intitule = intitule.slice(0,-1).trim(); }
+  return { intitule, ctxId, dossId, date, suivant };
+}
+
+/* =====================================================================
+   6. RENDU
+   ===================================================================== */
+const ech = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const CHECK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.3 4.7 9 10 3.2"/></svg>';
+
+const ONGLETS = [
+  { id:"accueil",  nom:"Accueil",   g:"◈" },
+  { id:"taches",   nom:"Tâches",    g:"☐" },
+  { id:"echeances",nom:"Échéances", g:"◷" },
+  { id:"agenda",   nom:"Agenda",    g:"▦" },
+  { id:"budget",   nom:"Budget",    g:"₣" },
+  { id:"suivi",    nom:"Suivi",     g:"▤" },
+  { id:"reglages", nom:"Réglages",  g:"⚙" },
+];
+
+/* ---- Badge d'état de la synchro ---- */
+/* Le rouge et le vert sont réservés aux alertes et aux tâches réglées :
+   les teintes proposées s'en tiennent donc à distance. */
+const TEINTES = [
+  { cle:"petrole", nom:"Bleu pétrole", val:"#1E5A6E", pale:"#DCE8EC" },
+  { cle:"nuit",    nom:"Bleu nuit",    val:"#2B3E6B", pale:"#DEE3F0" },
+  { cle:"prune",   nom:"Prune",        val:"#6B3FA0", pale:"#EBE3F7" },
+  { cle:"brique",  nom:"Terre cuite",  val:"#9A4A2F", pale:"#F2E1D9" },
+];
+function appliquerTeinte(){
+  const t = TEINTES.find(x => x.cle === (db.reglages.accent || "petrole")) || TEINTES[0];
+  const r = document.documentElement;
+  if(r && r.style){ r.style.setProperty("--accent", t.val); r.style.setProperty("--accent-pale", t.pale); }
+}
+
+const ETATS_SYNC = {
+  off:     { g:"",  t:"" },
+  attente: { g:"○", t:"modifications en attente" },
+  occupe:  { g:"◍", t:"synchronisation en cours" },
+  ok:      { g:"●", t:"synchronisé" },
+  conflit: { g:"◐", t:"deux versions différentes" },
+  erreur:  { g:"▲", t:"erreur de synchronisation" },
+};
+let dernierBadge = "";
+function rafraichirBadge(){
+  const e = Sync.lireEtat(), d = ETATS_SYNC[e.statut] || ETATS_SYNC.off;
+  const hh = e.quand ? new Date(e.quand).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" }) : "";
+  const titre = (e.message || d.t) + (hh ? ` · dernière synchro à ${hh}` : "");
+  const html = d.g
+    ? `<span class="sync ${e.statut}" data-act="syncMaintenant" title="${ech(titre)}">${d.g}${hh ? `<span class="heure">${hh}</span>` : ""}</span>`
+    : "";
+  const loupe = `<button class="loupe" data-act="recherche" title="Rechercher" aria-label="Rechercher">⌕</button>`;
+  const roue = `<button class="loupe" data-onglet="reglages" title="Réglages" aria-label="Réglages">⚙</button>`;
+  /* On ne touche au DOM que si l'affichage change réellement : sinon la
+     pastille se reconstruit toutes les secondes pour rien. */
+  const noeuds = document.querySelectorAll(".jour");
+  const dejaPose = noeuds.length && noeuds[0].querySelector && noeuds[0].querySelector(".loupe");
+  const signature = html + "|" + (dejaPose ? "1" : "0");
+  if(signature === dernierBadge && dejaPose) return;
+  dernierBadge = signature;
+  noeuds.forEach(n => {
+    n.querySelectorAll(".sync,.loupe").forEach(x => x.remove());
+    if(html) n.insertAdjacentHTML("beforeend", " " + html);
+    n.insertAdjacentHTML("beforeend", " " + loupe + roue);
+  });
+}
+
+
+/* =====================================================================
+   RECHERCHE
+   Un seul champ qui traverse tout le carnet : tâches, dossiers et leurs
+   notes, charges, rendez-vous, dépenses, anniversaires.
+   ===================================================================== */
+function chercher(q){
+  const t = sansAccents(q).trim();
+  if(t.length < 2) return [];
+  const mots = t.split(/\s+/);
+  const colle = (...ch) => sansAccents(ch.filter(Boolean).join(" "));
+  const ok = txt => mots.every(m => txt.includes(m));
+  const r = [];
+
+  db.taches.forEach(x => {
+    if(!ok(colle(x.intitule, x.notes))) return;
+    const d = dossDe(x.dossier_id), c = ctxDe(x.contexte_id);
+    r.push({ genre:"Tâche", titre:x.intitule, fini:x.statut === "done",
+      detail:[d && d.nom, c && c.nom, x.date_due && dateCourte(x.date_due)].filter(Boolean).join(" · "),
+      aller:() => { if(d){ vue.onglet = "suivi"; vue.dossier = d.id; } else { vue.onglet = "taches"; vue.filtreCtx = null; vue.filtreDoss = null; } } });
+  });
+  db.dossiers.forEach(x => {
+    const dansLignes = lignesDe(x).some(l => ok(sansAccents(l.libelle || "")));
+    if(!ok(colle(x.nom, x.notes, x.identifiant, x.contrat)) && !dansLignes) return;
+    r.push({ genre:"Dossier", titre:x.nom,
+      detail:[catDe(x.categorie_id)?.nom, parMoisDossier(x) ? euro(parMoisDossier(x),2) + "/mois" : null,
+              (x.notes||"").split("\n")[0]].filter(Boolean).join(" · "),
+      aller:() => { vue.onglet = "suivi"; vue.dossier = x.id; } });
+  });
+  (db.rendez_vous||[]).forEach(x => {
+    if(!ok(colle(x.intitule, x.notes))) return;
+    r.push({ genre:"Rendez-vous", titre:x.intitule,
+      detail:[dateLongue(x.date), x.heure, (x.cote||"perso") === "pro" ? "Pro" : "Perso"].filter(Boolean).join(" · "),
+      aller:() => { vue.onglet = "agenda"; vue.moisAgenda = x.date.slice(0,7); } });
+  });
+  db.depenses.forEach(x => {
+    if(!ok(colle(x.libelle, cdepDe(x.categorie_id)?.nom))) return;
+    r.push({ genre:"Dépense", titre:x.libelle || cdepDe(x.categorie_id)?.nom || "Dépense",
+      detail:[dateCourte(x.date), euro(x.montant,2)].filter(Boolean).join(" · "),
+      aller:() => { vue.onglet = "budget"; vue.decalage = decalagePeriode(x.date); vue.surligne = x.id; } });
+  });
+  (db.rentrees||[]).forEach(x => {
+    if(!ok(sansAccents(x.libelle || ""))) return;
+    r.push({ genre:"Rentrée", titre:x.libelle,
+      detail:[x.montant == null ? "montant inconnu" : euro(x.montant,2),
+              x.recu ? "encaissé" : "à venir", x.date && dateCourte(x.date)].filter(Boolean).join(" · "),
+      aller:() => { vue.onglet = "budget";
+        if(x.date) vue.decalage = decalagePeriode(x.date);
+        vue.surligne = x.id; } });
+  });
+  (db.anniversaires||[]).forEach(x => {
+    if(!ok(sansAccents(x.nom))) return;
+    r.push({ genre:"Anniversaire", titre:(x.icone === "coeur" ? "❤️ " : "🎂 ") + x.nom,
+      detail:`${String(x.jour).padStart(2,"0")} ${MOIS[x.mois-1]}`,
+      aller:() => { vue.onglet = "agenda"; vue.moisAgenda = `${new Date().getFullYear()}-${String(x.mois).padStart(2,"0")}`; } });
+  });
+  return r.sort((a,b) => (a.fini?1:0) - (b.fini?1:0)).slice(0, 40);
+}
+
+let resultatsCourants = [];
+function dessinerResultats(q){
+  const zone = document.getElementById("resultats");
+  if(!zone) return;
+  resultatsCourants = chercher(q);
+  if(sansAccents(q).trim().length < 2){
+    zone.innerHTML = `<p class="rech-vide">Tapez au moins deux lettres.</p>`; return;
+  }
+  if(!resultatsCourants.length){
+    zone.innerHTML = `<p class="rech-vide">Rien trouvé pour « ${ech(q)} ».</p>`; return;
+  }
+  zone.innerHTML = `<div class="fiche liste">${resultatsCourants.map((x,i) =>
+    `<div class="ligne" data-res="${i}" style="cursor:pointer">
+      <div class="corps"><div class="intitule" ${x.fini?'style="color:var(--encre-3);text-decoration:line-through"':""}>${ech(x.titre)}</div>
+        <div class="meta"><span class="puce ctx">${ech(x.genre)}</span>
+        ${x.detail ? `<span class="puce">${ech(x.detail)}</span>` : ""}</div></div></div>`).join("")}</div>`;
+}
+
+/* Une seule zone de saisie, ouverte d'un geste depuis l'accueil : on note
+   la tâche et on referme, sans changer d'écran. */
+function ouvrirAjoutRapide(){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-c" style="padding:14px 15px">
+      <input id="eclair" class="champ-rech" placeholder="Nouvelle tâche…" autocomplete="off" enterkeyhint="done">
+      <div class="boites" style="margin:11px 0 0">
+        <span class="boite-note">Classer dans</span>
+        <div class="segments" id="segEclair">
+          <button class="seg ${!vue.eclairTravail?"on":""}" data-act="eclairPerso">Perso</button>
+          <button class="seg ${vue.eclairTravail?"on":""}" data-act="eclairTravail">Travail</button>
+        </div></div>
+      <p class="aide" style="margin:10px 2px 0"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>!</b> à faire</p>
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini creux" id="eclairNon">Annuler</button>
+      <button type="button" class="btn mini" id="eclairOui">Ajouter</button></div>`;
+  dlg.showModal();
+  /* La destination repart de la liste affichée à chaque ouverture, pour
+     éviter qu'un choix fait la veille ne classe une tâche à notre insu. */
+  vue.eclairTravail = sphere() === "travail";
+  const champ = document.getElementById("eclair");
+  const valider = () => {
+    const a = analyser(champ.value || "");
+    if(!a.intitule){ champ.focus(); return; }
+    const t = tacheNeuve({
+      intitule:a.intitule, contexte_id:a.ctxId || null, dossier_id:a.dossId || null,
+      date_due:a.date || null, suivant_le:a.suivant ? jourISO() : null,
+      travail: !!vue.eclairTravail,
+    });
+    db.taches.push(touche(t));
+    vue.surligne = t.id;
+    dlg.close();
+    maj();
+  };
+  dlg.querySelector("#eclairOui").onclick = valider;
+  dlg.querySelector("#eclairNon").onclick = () => dlg.close();
+  champ.onkeydown = ev => { if(ev.key === "Enter"){ ev.preventDefault(); valider(); } };
+  setTimeout(() => champ.focus(), 40);
+}
+
+/* Même geste que pour les tâches : un bouton, un montant, une catégorie,
+   et c'est noté sans quitter l'écran. */
+function ouvrirDepenseRapide(){
+  if(dlg.open) dlg.close();
+  const chips = () => db.categories_depense.map(c =>
+    `<button class="filtre ${vue.catDep===c.id?"on":""}" data-catdep="${c.id}">${ech(c.nom)}</button>`).join("");
+  dlg.innerHTML = `<div class="dlg-c" style="padding:14px 15px">
+      <div class="saisie" style="margin-bottom:10px">
+        <input id="dep-eclair-montant" class="champ-rech" style="flex:0 0 120px" inputmode="decimal"
+          placeholder="0,00" autocomplete="off" enterkeyhint="done">
+        <input id="dep-eclair-libelle" class="champ-rech" placeholder="Libellé (facultatif)"
+          autocomplete="off" enterkeyhint="done">
+      </div>
+      <div class="filtres" id="catsEclair" style="margin-bottom:2px">${chips()}</div>
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini creux" id="depNon">Annuler</button>
+      <button type="button" class="btn mini" id="depOui">Ajouter</button></div>`;
+  dlg.showModal();
+  const im = document.getElementById("dep-eclair-montant");
+  const il = document.getElementById("dep-eclair-libelle");
+  const valider = () => {
+    const m = lireMontant(im.value);
+    if(m === null || m === 0){ im.focus(); return; }
+    const x = touche({ id:uid(), date:jourISO(), montant:Math.abs(m),
+      categorie_id:vue.catDep || null, libelle:(il.value || "").trim(), dossier_id:null });
+    db.depenses.push(x);
+    vue.decalage = 0;
+    vue.surligne = x.id;
+    dlg.close();
+    if(vue.onglet !== "budget") vue.onglet = "budget";
+    maj();
+  };
+  dlg.querySelector("#depOui").onclick = valider;
+  dlg.querySelector("#depNon").onclick = () => dlg.close();
+  [im, il].forEach(ch => ch.onkeydown = ev => { if(ev.key === "Enter"){ ev.preventDefault(); valider(); } });
+  dlg.__chips = chips;
+  setTimeout(() => im.focus(), 40);
+}
+
+function ouvrirRecherche(){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-c" style="padding:14px 15px">
+      <input id="rech" class="champ-rech" placeholder="Chercher dans tout le carnet…" autocomplete="off" enterkeyhint="search">
+      <div id="resultats" style="margin-top:12px"></div>
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini creux" id="rechNon">Fermer</button></div>`;
+  dlg.showModal();
+  dessinerResultats("");
+  const champ = document.getElementById("rech");
+  champ.oninput = () => dessinerResultats(champ.value);
+  dlg.querySelector("#rechNon").onclick = () => dlg.close();
+  setTimeout(() => champ.focus(), 40);
+}
+
+function rendreNav(){
+  const j = jourISO();
+  const c = { taches:inbox().filter(passeSphere).length,
+              echeances:datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 60).length };
+  document.getElementById("nav").innerHTML = ONGLETS.map((o,i) => {
+    const n = c[o.id] || 0;
+    return `<button data-onglet="${o.id}" class="${vue.onglet===o.id?"on":""}">
+      <span class="n">${String(i+1).padStart(2,"0")}</span><span>${o.nom}</span>
+      ${n ? `<span class="pastille">${n}</span>` : ""}</button>`;
+  }).join("");
+  /* Réglages quitte la barre du bas : six entrées au lieu de sept, donc
+     chacune gagne un sixième de largeur. Il reste accessible par la roue
+     dentée placée à côté de la date. */
+  document.getElementById("barre").innerHTML = ONGLETS.filter(o => o.id !== "reglages").map(o =>
+    `<button data-onglet="${o.id}" class="${vue.onglet===o.id?"on":""}">
+      <span class="g">${o.g}</span><span>${o.nom}</span></button>`).join("");
+  document.getElementById("jourRail").textContent = dateLongue(j);
+}
+
+function ligneTache(t, opts = {}){
+  const j = jourISO();
+  const c = ctxDe(t.contexte_id), d = dossDe(t.dossier_id);
+  const faite = t.statut === "done";
+  const meta = [];
+  if(c) meta.push(`<span class="puce ctx">${ech(c.nom)}</span>`);
+  if(t.travail) meta.push(`<span class="puce trav">Travail</span>`);
+  if(d && !opts.sansDossier) meta.push(`<span class="puce doss">${ech(d.nom)}</span>`);
+  if(t.date_due){
+    const n = ecartJours(j, t.date_due);
+    meta.push(`<span class="puce date ${!faite && n<=2 ? "chaud":""}">${dateCourte(t.date_due)} · ${resteEnMots(t.date_due)}</span>`);
+  }
+  if(t.n > 0) meta.push(`<span class="puce">${recurrenceEnMots(t.n, t.unite)}</span>`);
+  if(enVeille(t) && opts.veille) meta.push(`<span class="puce veille">sort ${resteEnMots(ajouterPeriode(t.date_due, -(t.preavis||0), "jour"))}</span>`);
+  if(!faite && t.reports >= 3) meta.push(`<span class="repousse ${t.reports>=5?"chaud":""}">repoussé ×${t.reports}</span>`);
+  if(faite && t.fait_le) meta.push(`<span class="puce date">${dateCourte(t.fait_le)}</span>`);
+  const retard = !faite && t.date_due && ecartJours(j, t.date_due) < 0;
+  const monter = d && !t.date_due && !faite
+    ? (t.en_inbox ? `<button class="ico mont" data-act="renvoyer" title="Renvoyer dans le dossier">↩</button>`
+                  : `<button class="ico mont" data-act="rapatrier" title="Remonter dans l'inbox">↑</button>`) : "";
+  return `<div class="ligne ${faite?"faite":""}" data-tache="${t.id}">
+    <div class="cases">
+      <button class="case carre ${faite?"coche":""}" data-act="fait" title="Fait" aria-label="Marquer comme fait">${CHECK}</button>
+      ${opts.sansSuivant ? "" : `<button class="case fleche ${t.suivant_le?"coche":""}" data-act="suivant" title="À faire" aria-label="Mettre dans À faire">↑</button>`}
+    </div>
+    <div class="corps">
+      <div class="intitule">${retard?'<span class="point-retard" title="Date dépassée"></span>':""}${ech(t.intitule)}</div>
+      ${meta.length ? `<div class="meta">${meta.join("")}</div>` : ""}
+    </div>
+    <div class="outils">${opts.reglee
+      ? `<button class="ico mont" data-act="remettre" title="Remettre dans l'inbox">↩</button>
+         <button class="ico sup" data-act="supprimerDef" title="Supprimer définitivement">✕</button>`
+      : `${monter}
+         <button class="ico" data-act="editer" title="Modifier">✎</button>
+         <button class="ico sup" data-act="jeter" title="Corbeille">✕</button>`}</div>
+  </div>`;
+}
+
+const vide = (t,x) => `<div class="vide"><b>${t}</b>${x}</div>`;
+const groupe = (t,c,x) => `<div class="oeil">${t}${c!=null?` <span class="cpt">${c}</span>`:""}</div>${x}`;
+const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
+
+/* ---- Accueil ---- */
+function vueAccueil(){
+  const j = jourISO();
+  const suiv = suivantes().filter(passeSphere);
+  const dejaFaire = new Set(suiv.map(t => t.id));
+  const proches = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 60 && !dejaFaire.has(t.id));
+  const retard = proches.filter(t => ecartJours(j, t.date_due) < 0);
+  const b = bilan(0);
+  const dj = versDate(j);
+  const h = [];
+  if(sphere() === "travail")
+    h.push(`<button class="filet-rappel doux" data-sphere="perso" style="margin:0 0 12px">
+      ▪ Mode travail — revenir au perso</button>`);
+  h.push(`<div class="entete-mob"><h1 class="titre grand-jour">
+      <span class="sem">${JOURS[dj.getDay()]}</span>
+      <span class="chiffre">${dj.getDate()}</span>
+      <span class="mois">${MOIS[dj.getMonth()]}</span></h1><div class="jour"></div></div>`);
+  h.push(`<p class="sous">${suiv.length} en cours, ${proches.length} échéance${proches.length>1?"s":""} d'ici 60 jours.</p>`);
+
+  if(!Stockage.persistant())
+    h.push(`<div class="bandeau alerte"><div class="g"><b>Stockage indisponible ici.</b> Rien ne sera conservé. Téléchargez le fichier et ouvrez-le dans votre navigateur.</div></div>`);
+  if(retard.length)
+    h.push(`<button class="filet-rappel doux" data-aller="echeances">
+      <span class="point-retard"></span>${retard.length} échéance${retard.length>1?"s":""} à rattraper, à votre rythme</button>`);
+  const versionAncienne = Sync.versionEnRetard && Sync.versionEnRetard();
+  if(versionAncienne)
+    h.push(`<div class="bandeau alerte"><div class="g">
+      <b>Un de vos appareils est resté sur une version ancienne</b> (version ${versionAncienne}, celui-ci est en ${VERSION_APP}).
+      Mettez-le à jour : tant qu'il écrit, vos saisies risquent d'être écrasées.</div></div>`);
+
+  const dep = db.reglages.dernier_export ? ecartJours(db.reglages.dernier_export, j) : null;
+  if(dep === null || dep >= 7)
+    h.push(`<button class="filet-rappel" data-act="exporter">
+      ${dep === null ? "jamais exporté" : `export il y a ${dep} j`} · sauvegarder</button>`);
+
+  if(b.revenus || b.charges || b.depense){
+    const masque = "•••";
+    h.push(`<button class="prive" data-act="voirArgent" title="Afficher ou masquer">
+      <span class="oeilleton">${vue.voirArgent ? "◉" : "◎"}</span>
+      <span>il reste</span>
+      <span class="v ${vue.voirArgent && b.reste<0 ? "neg":""}">${vue.voirArgent ? euroCourt(b.reste) : masque}</span>
+      <span>·</span>
+      <span class="v">${vue.voirArgent ? euroCourt(b.reste / b.encore) + "/j" : masque}</span>
+      <span>·</span>
+      <span>à prélever</span>
+      <span class="v">${vue.voirArgent ? euroCourt(resteAPrelever(b.deb, b.fin)) : masque}</span>
+    </button>`);
+  }
+
+  /* Rendez-vous et anniversaires du jour et du lendemain */
+  const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
+  const paquet = iso => ({ rdv:rdvDu(iso), anni:anniDu(iso) });
+  const auj = paquet(j), dem = paquet(demain);
+  if(auj.rdv.length || auj.anni.length || dem.rdv.length || dem.anni.length){
+    const bloc = (p, quand) => {
+      if(!p.rdv.length && !p.anni.length) return "";
+      const l = [];
+      p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-act="editerRdv">
+        <div class="heure-c">${r.heure ? ech(r.heure) : "—"}</div>
+        <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
+          <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
+            <span class="puce date">${quand}</span></div></div></div>`));
+      p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
+        <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
+        <div class="corps"><div class="intitule">${ech(a.nom)}</div>
+          <div class="meta"><span class="puce date">${quand}</span></div></div></div>`));
+      return l.join("");
+    };
+    const contenu = bloc(auj, "aujourd'hui") + bloc(dem, "demain");
+    h.push(groupe("À venir", null, enFiche([contenu])));
+  }
+
+  h.push(groupe("À faire", suiv.length || null, suiv.length ? enFiche(suiv.map(t => ligneTache(t)))
+    : vide("Rien en attente", "La flèche ↑ y place une tâche.")));
+  h.push(groupe("Échéances · 60 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
+    : vide("Aucune échéance en vue", "Rien ne tombe dans les deux mois qui viennent.")));
+  const f = faitesLe(j).filter(passeSphere);
+  if(f.length) h.push(groupe("Réglé aujourd'hui", f.length, enFiche(f.map(t => ligneTache(t, { reglee:true })))));
+  h.push(`<div class="pied">
+    <button data-onglet="reglages">⚙ Réglages</button>
+    <span class="pied-version" title="Si ce numéro diffère d'un appareil à l'autre, l'un des deux n'a pas la dernière version">version ${VERSION_APP}</span>
+  </div>`);
+  h.push(`<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`);
+  return h.join("");
+}
+
+/* ---- Tâches ---- */
+function vueTaches(){
+  const j = jourISO();
+  const passe = t => passeSphere(t)
+                  && (!vue.filtreCtx || t.contexte_id === vue.filtreCtx)
+                  && (!vue.filtreDoss || t.dossier_id === vue.filtreDoss);
+  const suiv = suivantes().filter(passe), tri = aTrier().filter(passe), reg = reglees().filter(passe);
+  const h = [`<div class="entete-mob"><h1 class="titre">Tâches</h1><div class="jour">${dateCourte(j)}</div></div>`,
+    `<p class="sous">La case coche ce qui est fait, la flèche remplit « À faire ».</p>`,
+    `<div class="saisie"><input id="saisie" placeholder="Ajouter une tâche…" autocomplete="off" enterkeyhint="done">
+      <button class="btn" data-act="ajouter">Ajouter</button></div>`,
+    `<div class="boites">
+      <span class="boite-note">Classer dans</span>
+      <div class="segments">
+        <button class="seg ${!destinationTravail()?"on":""}" data-act="saisiePerso">Perso</button>
+        <button class="seg ${destinationTravail()?"on":""}" data-act="saisieTravail">Travail</button>
+      </div>
+    </div>`,
+    `<p class="aide"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>!</b> à faire</p>`];
+
+  const nPerso = inbox().filter(t => !t.travail).length;
+  const nTravail = inbox().filter(t => t.travail).length;
+  h.push(`<div class="filtres spheres">
+    <button class="filtre ${sphere()==="perso"?"on":""}" data-sphere="perso">Perso <span class="n">${nPerso}</span></button>
+    <button class="filtre ${sphere()==="travail"?"on":""}" data-sphere="travail">Travail <span class="n">${nTravail}</span></button>
+  </div>`);
+
+  const cCtx = id => inbox().filter(t => passeSphere(t) && t.contexte_id === id).length;
+  h.push(`<div class="filtres">
+    <button class="filtre ${!vue.filtreCtx?"on":""}" data-fctx="">Tout <span class="n">${inbox().filter(passeSphere).length}</span></button>
+    ${db.contextes.map(c => `<button class="filtre ${vue.filtreCtx===c.id?"on":""}" data-fctx="${c.id}">${ech(c.nom)} <span class="n">${cCtx(c.id)}</span></button>`).join("")}
+  </div>`);
+  const avecInbox = db.dossiers.filter(d => inbox().some(t => t.dossier_id === d.id));
+  if(avecInbox.length) h.push(`<div class="filtres">
+    <button class="filtre doss ${!vue.filtreDoss?"on":""}" data-fdoss="">Tous dossiers</button>
+    ${avecInbox.map(d => `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)} <span class="n">${inbox().filter(t=>t.dossier_id===d.id).length}</span></button>`).join("")}
+  </div>`);
+
+  h.push(groupe("À faire", suiv.length || null, suiv.length ? enFiche(suiv.map(t => ligneTache(t)))
+    : vide("Liste vide", "La flèche ↑ y place une tâche.")));
+  h.push(groupe("À trier", tri.length || null, tri.length ? enFiche(tri.map(t => ligneTache(t)))
+    : vide("Rien à trier", "Tout est rangé.")));
+  if(reg.length){
+    const recentes = reg.filter(t => !t.fait_le || ecartJours(t.fait_le, j) <= 7);
+    const aff = vue.toutReglees ? reg.slice(0,200) : recentes.slice(0,25);
+    h.push(`<div class="oeil">Réglées <span class="cpt">${reg.length}</span>
+      <span class="a-droite">${vue.toutReglees ? "tout l'historique" : "7 derniers jours"}</span></div>`);
+    h.push(aff.length ? enFiche(aff.map(t => ligneTache(t, { reglee:true })))
+      : vide("Rien de réglé cette semaine", "L'historique complet est un cran plus bas."));
+    const boutons = [];
+    if(reg.length > aff.length || vue.toutReglees)
+      boutons.push(`<button class="btn mini creux" data-act="toutReglees">${vue.toutReglees ? "Réduire" : `Tout voir (${reg.length})`}</button>`);
+    boutons.push(`<button class="btn mini danger" data-act="viderReglees">Vider les réglées</button>`);
+    h.push(`<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">${boutons.join("")}</div>`);
+  }
+  return h.join("");
+}
+
+/* ---- Échéances ---- */
+function vueEcheances(){
+  const j = jourISO(), l = datees().filter(passeSphere);
+  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 30 ? 1 : n <= 90 ? 2 : 3; };
+  const noms = ["En retard","30 jours","90 jours","Plus tard"];
+  const h = [`<div class="entete-mob"><h1 class="titre">Échéances</h1><div class="jour">${dateCourte(j)}</div></div>`,
+    `<p class="sous">Toutes les tâches qui ont une date. Elle remonte dans l'inbox au préavis, et se reconduit toute seule si elle est récurrente.</p>`,
+    `<div style="margin-bottom:6px"><button class="btn" data-act="nouvelleEcheance">Nouvelle échéance</button></div>`];
+  if(!l.length) return h.join("") + vide("Aucune échéance", "Contrôle technique, mutuelle, assurance… ajoutez la première.");
+  for(let s = 0; s < 4; s++){
+    const g = l.filter(t => seau(t) === s);
+    if(g.length) h.push(groupe(noms[s], g.length, enFiche(g.map(t => ligneTache(t, { veille:true })))));
+  }
+  return h.join("");
+}
+
+
+/* ---- Agenda ----
+   Semaines entières : la page démarre au lundi de la semaine du 1er et finit
+   au dimanche de la semaine du dernier jour. Aucune semaine n'est coupée,
+   les jours débordants apparaissent en gris. */
+const LETTRES = ["D","L","M","M","J","V","S"];
+function grilleMois(annee, mois){
+  const premier = new Date(annee, mois, 1);
+  const debut = new Date(premier);
+  debut.setDate(debut.getDate() - ((premier.getDay() + 6) % 7));
+  const dernier = new Date(annee, mois + 1, 0);
+  const fin = new Date(dernier);
+  fin.setDate(fin.getDate() + (7 - ((dernier.getDay() + 6) % 7) - 1));
+  const jours = [];
+  for(let d = new Date(debut); d <= fin; d.setDate(d.getDate() + 1)) jours.push(jourISO(d));
+  return jours;
+}
+
+function vueAgenda(){
+  const j = jourISO();
+  if(!vue.moisAgenda) vue.moisAgenda = j.slice(0,7);
+  const [an, mo] = vue.moisAgenda.split("-").map(Number);
+  const jours = grilleMois(an, mo - 1);
+  const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1><div class="jour">${dateCourte(j)}</div></div>`];
+
+  h.push(`<div class="nav-mois">
+    <button class="btn mini creux" data-mois="-1">←</button>
+    <button class="btn mini creux" data-mois="0">Aujourd'hui</button>
+    <button class="btn mini creux" data-mois="1">→</button>
+    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button></div>`);
+
+  const lignes = [];
+  let semaine = -1;
+  jours.forEach((iso, i) => {
+    const d = versDate(iso), dow = d.getDay();
+    const horsMois = +iso.slice(5,7) !== mo;
+    const we = dow === 0 || dow === 6;
+    const ferie = ferieDe(iso), vac = vacanceDe(iso), auj = iso === j;
+    if(i % 7 === 0 && i > 0) lignes.push(`<div class="sep-sem"></div>`);
+
+    const marques = [];
+    anniDu(iso).forEach(a => marques.push(
+      `<span class="anniv">${a.icone === "coeur" ? "❤️" : "🎂"} ${ech(a.nom)}</span>`));
+    if(ferie) marques.push(`<span class="ferie">${ech(ferie)}</span>`);
+
+    const bloc = cote => rdvDu(iso).filter(r => (r.cote || "perso") === cote).map(r =>
+      `<div class="rdv" data-rdv="${r.id}" data-act="editerRdv" title="Modifier">
+         <span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${r.heure ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}</span>
+         <button class="ico sup" data-act="jeter" title="Supprimer">✕</button></div>`).join("");
+
+    const taches = cote => cote === "perso" ? tachesDu(iso).map(t =>
+      `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)}</div>`).join("") : "";
+
+    lignes.push(`<div class="jour-l ${we?"we":""} ${horsMois?"hors":""} ${auj?"auj":""} ${vac?"envac":""}"
+      data-jourdate="${iso}"${vac?` title="Vacances ${ech(vac)}"`:""}>
+      <div class="date-c">
+        <span class="lettre">${LETTRES[dow]}</span>
+        <span class="num">${d.getDate()}</span>
+        <button class="plus" data-act="rdvJour" title="Ajouter un rendez-vous">+</button>
+      </div>
+      <div class="col perso">${bloc("perso")}${taches("perso")}${marques.length?`<div class="marques">${marques.join("")}</div>`:""}</div>
+      <div class="col pro">${bloc("pro")}</div>
+    </div>`);
+  });
+
+  h.push(`<div class="fiche agenda">
+    <div class="entete-cols"><span></span><span>Perso</span><span>Pro</span></div>
+    ${lignes.join("")}</div>`);
+  return h.join("");
+}
+
+/* ---- Budget ---- */
+function vueBudget(){
+  const b = bilan(vue.decalage), j = jourISO();
+  const h = [`<div class="entete-mob"><h1 class="titre">Budget</h1><div class="jour">${dateCourte(j)}</div></div>`];
+
+  /* Le mois consulté est l'information la plus structurante de cet écran :
+     tous les chiffres en dépendent. Il doit donc s'imposer, et se distinguer
+     nettement du mois en cours quand on navigue ailleurs. */
+  const nomPeriode = nomDeLaPeriode(vue.decalage);
+  h.push(`<div class="barre-mois ${b.courante ? "" : "ailleurs"}">
+    <button class="btn mini creux" data-periode="-1">←</button>
+    <div class="titre-mois">
+      <span class="nom">${nomPeriode}</span>
+      <span class="plage">${dateMoyenne(b.deb)} → ${dateMoyenne(b.fin)}${
+        b.courante ? "" : (vue.decalage < 0 ? " · mois passé" : " · mois à venir")}</span>
+    </div>
+    <button class="btn mini creux" data-periode="1">→</button>
+    ${vue.decalage!==0?`<button class="btn mini creux" data-periode="0">Revenir au mois en cours</button>`:""}
+  </div>`);
+
+  if(!b.revenus && !b.charges && !db.depenses.length){
+    h.push(vide("Le budget est vide",
+      "Commencez par renseigner vos revenus dans Réglages. Vos factures et abonnements se saisissent dans les dossiers du Suivi."));
+  }else{
+    const pc = b.disponible > 0 ? Math.min(100, (b.depense / b.disponible) * 100) : (b.depense > 0 ? 100 : 0);
+    const aPrel = resteAPrelever(b.deb, b.fin);
+    h.push(`<div class="compteur">
+      <div class="etiq">${b.courante ? "Il reste" : "Il resterait sur " + nomPeriode}</div>
+      <div class="grand ${b.reste<0?"neg":""}">${euro(b.reste,0).replace(" €",'<span class="u"> €</span>')}</div>
+      <div class="parjour">${b.courante
+        ? `pour finir le mois, soit <b>${euro(b.reste / b.encore, 0)}</b> par jour pendant ${b.encore} jours`
+        : `sur la période close · ${b.total} jours`}</div>
+      <div class="jauge"><i class="${b.depense>b.disponible?"trop":""}" style="width:${pc}%"></i></div>
+      <div class="petit-detail">${euro(b.depense,0)} dépensés ${
+        b.courante ? "ce mois-ci" : "sur " + nomPeriode}${
+        aPrel > 0 && b.courante
+          ? ` · les ${euro(aPrel,0)} qui doivent encore être prélevés sont déjà retirés de ce montant`
+          : ""}</div>
+    </div>`);
+    h.push(`<div class="bilan">
+      <div><div class="e">Ce qu'il y avait au départ</div><div class="v">${euroCourt(b.disponible)}</div></div>
+      <div><div class="e">Factures et abonnements</div><div class="v moins">${euroCourt(b.charges)}</div></div>
+      <div><div class="e">Dépenses du quotidien</div><div class="v moins">${euroCourt(b.depense)}</div></div>
+    </div>`);
+    h.push(`<button class="aide-q" data-act="voirExplication">${
+      vue.voirExplication ? "Masquer l'explication" : "Comment ce calcul fonctionne ?"}</button>`);
+    if(vue.voirExplication)
+      h.push(`<p class="explique">
+        « Ce qu'il y avait au départ », ce sont vos revenus une fois les factures et abonnements retirés.
+        Vos dépenses du quotidien viennent s'y soustraire au fil du mois : ce qu'il reste est le montant ci-dessus.
+        ${Math.abs(b.reel - b.charges) > 1
+          ? `Une précision : ce mois-ci ${euro(b.reel,0)} partent réellement de votre compte, alors que ${euro(b.charges,0)} sont comptés.
+             La différence est mise de côté pour les factures qui ne tombent qu'une fois par an.`
+          : ""}</p>`);
+  }
+
+  /* Saisie d'une dépense */
+  h.push(`<div class="oeil">Ajouter une dépense</div>`);
+  h.push(`<div class="saisie">
+    <input id="dep-montant" class="court" inputmode="decimal" placeholder="0,00" autocomplete="off" enterkeyhint="done">
+    <input id="dep-libelle" placeholder="Libellé (facultatif)" autocomplete="off" enterkeyhint="done">
+    <button class="btn" data-act="ajouterDepense">Ajouter</button></div>`);
+  h.push(`<div class="filtres">${db.categories_depense.map(c =>
+    `<button class="filtre ${vue.catDep===c.id?"on":""}" data-cdep="${c.id}">${ech(c.nom)}</button>`).join("")}</div>`);
+
+
+  /* Ce que l'on attend : remboursements en cours, puis rentrées annoncées */
+  if(b.attente.length){
+    const age = ecartJours(b.attente[0].date, j);
+    h.push(`<div class="oeil">En attente de remboursement<span class="a-droite">${euro(b.avances,0)} avancés</span></div>`);
+    h.push(`<p style="font-family:var(--mono);font-size:11px;color:var(--encre-3);margin:0 0 8px">
+      ${b.attente.length} dépense${b.attente.length>1?"s":""} · la plus ancienne remonte à ${age} jour${age>1?"s":""}.</p>`);
+    h.push(enFiche(b.attente.map(x => { const c = cdepDe(x.categorie_id); return `<div class="ligne" data-depense="${x.id}">
+      <div class="cases"><button class="case carre" data-act="rembourser"
+        title="J'ai été remboursé" aria-label="Encaisser le remboursement">${CHECK}</button></div>
+      <div class="corps"><div class="intitule">${ech(x.libelle) || (c ? ech(c.nom) : "Dépense")}</div>
+        <div class="meta"><span class="puce date">avancé le ${dateCourte(x.date)}</span>
+          ${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}</div></div>
+      <div class="somme">${euro(x.montant,2)}</div>
+      <div class="outils"><button class="ico" data-act="marquerRemb" title="Retirer de l'attente">⟲</button></div></div>`; })));
+  }
+
+  const rentrees = [...(db.rentrees||[])].sort((a,c) =>
+    (a.recu?1:0) - (c.recu?1:0) || (a.date||"9").localeCompare(c.date||"9"));
+  h.push(`<div class="oeil">Rentrées ponctuelles${b.attendues ? `<span class="a-droite">${euro(b.attendues,0)} à venir</span>` : ""}</div>`);
+  h.push(rentrees.length ? enFiche(rentrees.map(r => `<div class="ligne" data-rentree="${r.id}">
+      <div class="cases"><button class="case carre ${r.recu?"coche":""}" data-act="encaisser"
+        title="${r.recu?"Encaissé":"Marquer comme encaissé"}" aria-label="Encaisser">${CHECK}</button></div>
+      <div class="corps"><div class="intitule">${ech(r.libelle)}</div>
+        <div class="meta">${r.recu
+          ? `<span class="puce date">encaissé le ${dateCourte(r.date)}</span>`
+          : `<span class="puce ctx">${r.date ? "prévu le " + dateCourte(r.date) : "à venir"}</span>`}</div></div>
+      <div class="somme">${r.montant == null ? "?" : euro(r.montant,2)}</div>
+      <div class="outils"><button class="ico" data-act="editer">✎</button>
+        <button class="ico sup" data-act="jeter">✕</button></div></div>`))
+    : vide("Aucune rentrée", "Remboursement, prime, vente… date et montant facultatifs."));
+  h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
+
+  /* Dépenses de la période, par jour */
+  const parJour = {};
+  b.dep.forEach(x => (parJour[x.date] = parJour[x.date] || []).push(x));
+  const jours = Object.keys(parJour).sort().reverse();
+  h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
+    ${b.dep.length?`<span class="cpt">${euro(b.depense,2)}</span>`:""}</div>`);
+  if(!jours.length){
+    /* Rien ce mois-ci, mais peut-être ailleurs : sans ce repère, une dépense
+       datée d'un autre mois reste introuvable autrement qu'à la loupe. */
+    const ailleurs = [...new Set(db.depenses.map(x => decalagePeriode(x.date)))]
+      .filter(n => n !== vue.decalage)
+      .sort((a,z) => Math.abs(a - vue.decalage) - Math.abs(z - vue.decalage))
+      .slice(0, 5);
+    h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
+      ailleurs.length
+        ? `Vous en avez enregistré sur d'autres mois : ${ailleurs.map(n =>
+            `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
+          ).join(" · ")}`
+        : "La première saisie se fait en deux gestes : un montant, une catégorie."));
+  }
+  else h.push(jours.map(d => {
+    const l = parJour[d], s = sommeDep(l);
+    return `<div class="oeil" style="margin:14px 0 6px">${d===j?"Aujourd'hui":dateLongue(d)}<span class="a-droite">${euro(s,2)}</span></div>
+    ${enFiche(l.map(x => { const c = cdepDe(x.categorie_id); return `<div class="ligne" data-depense="${x.id}">
+      <div class="corps"><div class="intitule">${ech(x.libelle) || (c ? ech(c.nom) : "Dépense")}</div>
+        <div class="meta">${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}
+          ${x.rembourser && !x.rembourse ? `<span class="puce ctx">à rembourser</span>` : ""}
+          ${x.rembourse ? `<span class="puce">remboursé</span>` : ""}</div></div>
+      <div class="somme">${euro(x.montant,2)}</div>
+      <div class="outils">
+        <button class="ico ${x.rembourser?"actif":""}" data-act="marquerRemb"
+          title="${x.rembourser?"Ne plus attendre de remboursement":"À se faire rembourser"}">⟲</button>
+        <button class="ico" data-act="editer">✎</button>
+        <button class="ico sup" data-act="jeter">✕</button></div></div>`; }))}`;
+  }).join(""));
+
+  /* Répartition */
+  if(b.dep.length){
+    const tot = {};
+    b.dep.forEach(x => tot[x.categorie_id || "?"] = (tot[x.categorie_id || "?"] || 0) + x.montant);
+    const lignes = Object.entries(tot).sort((a,c) => c[1] - a[1]);
+    const max = lignes[0][1];
+    h.push(`<div class="oeil">Répartition</div><div class="fiche" style="padding:6px 0">
+      ${lignes.map(([id,v]) => `<div class="barre-cat">
+        <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
+        <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
+        <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
+  }
+
+  /* Charges fixes, rangées par jour de prélèvement */
+  const lg = toutesLignes().sort((a,c) =>
+    (a.l.jour || 99) - (c.l.jour || 99) || parMois(c.l) - parMois(a.l));
+  const aPrelever = resteAPrelever(b.deb, b.fin);
+  h.push(`<div class="oeil">Factures et abonnements<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  if(!lg.length) h.push(vide("Aucune facture enregistrée",
+    "Loyer, mutuelle, abonnements : ouvrez le dossier concerné dans Suivi et ajoutez-le dans « Charges »."));
+  else{
+    if(b.courante && aPrelever > 0)
+      if(b.courante) h.push(`<p class="petit-detail" style="margin:0 0 8px">
+        ${euro(aPrelever,0)} n'ont pas encore été prélevés d'ici le ${dateMoyenne(b.fin)}.</p>`);
+    h.push(enFiche(lg.map(({ l, d }) => {
+      /* Une pastille violette annonce un prélèvement encore à venir dans la
+         période ; une pastille grise, un prélèvement déjà passé. Les charges
+         annuelles suivent la même règle via l'échéance de leur dossier. */
+      const dp = datesPrelevement(l, b.deb, b.fin)[0]
+        || (PERIODES[l.periodicite] > 1 && !l.mois ? prochaineDe(d.id) : null);
+      const aVenir = dp && dp >= jourISO() && dp <= b.fin;
+      const passe = !aVenir;
+      return `<div class="ligne" data-dossier="${d.id}">
+        <div class="jour-prel ${passe?"passe":""}" ${l.mois?`title="le ${l.jour} ${MOIS[l.mois-1]}"`:""}>${l.jour ? String(l.jour).padStart(2,"0") : "—"}</div>
+        <div class="corps">
+          <button class="nom" data-act="ouvrir" style="background:none;border:0;padding:0;text-align:left;font-weight:540">${ech(l.libelle || d.nom)}</button>
+          <div class="meta"><span class="puce doss">${ech(d.nom)}</span>
+            <span class="puce">${ech(l.periodicite)}</span>
+            ${PERIODES[l.periodicite] > 1 ? `<span class="puce date">${euro(l.montant,0)}${
+              l.mois ? ` le ${l.jour} ${MOIS[l.mois-1]}` : ` tous les ${PERIODES[l.periodicite]} mois`}</span>` : ""}
+            ${passe ? `<span class="puce">prélevé</span>` : ""}</div></div>
+        <div class="somme">${euro(parMois(l),2)}</div></div>`;
+    })));
+  }
+
+  h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
+
+  /* Les revenus se règlent dans Réglages, hors de vue */
+  if(!totalRevenus())
+    h.push(`<div class="bandeau" style="margin:22px 0 0"><div class="g">Aucun revenu saisi : sans lui, le calcul n'a pas de sens. Il se renseigne dans Réglages.</div>
+      <button class="btn mini creux" data-aller="reglages">Réglages</button></div>`);
+  return h.join("");
+}
+
+/* ---- Suivi ---- */
+function vueSuivi(){
+  if(vue.dossier) return vueDossier();
+  const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
+    `<p class="sous">Un dossier par sujet : le van, la mutuelle, l'assurance. Notes, tâches et échéances au même endroit.</p>`,
+    `<div style="margin-bottom:16px"><button class="btn" data-act="nouveauDossier">Nouveau dossier</button></div>`];
+  if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
+  const tri = [...db.dossiers].sort((a,b) =>
+    (catDe(a.categorie_id)?.nom||"zz").localeCompare(catDe(b.categorie_id)?.nom||"zz") || a.nom.localeCompare(b.nom));
+  const info = d => {
+    const p = prochaineDe(d.id);
+    /* Le compte doit correspondre à ce que la fiche montrera réellement,
+       sinon on annonce 21 tâches et on en affiche zéro. */
+    const n = duDossier(d.id).filter(passeSphere).length;
+    return { p, n, c:catDe(d.categorie_id),
+      lien: d.url ? `<a class="lien" href="${ech(d.url)}" target="_blank" rel="noopener">Ouvrir ↗</a>` : `<span style="color:var(--encre-3)">—</span>`,
+      cout: parMoisDossier(d) ? `${euro(parMoisDossier(d),2)} / mois` : "—" };
+  };
+  h.push(`<div class="fiche"><table class="tab"><thead><tr>
+    <th>Dossier</th><th>Catégorie</th><th>Accès</th><th>Identifiant</th><th>N° contrat</th><th>Coût</th><th>Prochaine</th><th>Tâches</th><th></th>
+    </tr></thead><tbody>${tri.map(d => { const x = info(d); return `<tr data-dossier="${d.id}">
+      <td><button class="nom" data-act="ouvrir">${ech(d.nom)}</button>
+        ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</td>
+      <td>${x.c ? ech(x.c.nom) : "—"}</td><td>${x.lien}</td>
+      <td class="num">${ech(d.identifiant) || "—"}</td><td class="num">${ech(d.contrat) || "—"}</td>
+      <td class="num">${x.cout}</td><td class="num">${x.p ? dateCourte(x.p) : "—"}</td>
+      <td class="num">${x.n || "—"}</td>
+      <td><span class="outils" style="opacity:1">
+        <button class="ico" data-act="editer" title="Modifier">✎</button>
+        <button class="ico sup" data-act="jeter" title="Corbeille">✕</button></span></td>
+    </tr>`; }).join("")}</tbody></table></div>`);
+  h.push(`<div class="fiche liste cartes">${tri.map(d => { const x = info(d); return `<div class="ligne" data-dossier="${d.id}">
+    <div class="corps"><button class="nom" data-act="ouvrir" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(d.nom)}</button>
+      <div class="meta">${x.c ? `<span class="puce">${ech(x.c.nom)}</span>` : ""}
+        ${x.n ? `<span class="puce">${x.n} tâche${x.n>1?"s":""}</span>` : ""}
+        ${parMoisDossier(d) ? `<span class="puce date">${x.cout}</span>` : ""}
+        ${x.p ? `<span class="puce date">${dateCourte(x.p)}</span>` : ""}</div>
+      ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</div>
+    <div class="outils"><button class="ico" data-act="editer">✎</button><button class="ico sup" data-act="jeter">✕</button></div>
+  </div>`; }).join("")}</div>`);
+
+  /* Récapitulatif mensuel par catégorie */
+  const parCat = {};
+  toutesLignes().forEach(({ l, d }) => {
+    const k = d.categorie_id || "?";
+    parCat[k] = (parCat[k] || 0) + parMois(l);
+  });
+  const rangs = Object.entries(parCat).sort((a,c) => c[1] - a[1]);
+  if(rangs.length){
+    const total = rangs.reduce((s,[,v]) => s + v, 0), max = rangs[0][1];
+    h.push(`<div class="oeil">Charges par catégorie<span class="a-droite">${euro(total,2)} / mois</span></div>
+      <div class="fiche" style="padding:6px 0">${rangs.map(([id,v]) => `<div class="barre-cat">
+        <span class="nom">${ech(catDe(id)?.nom || "Sans catégorie")}</span>
+        <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
+        <span class="v">${euro(v,0)}</span></div>`).join("")}</div>
+      <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">
+        Montants lissés au mois : une charge annuelle compte pour un douzième.</p>`);
+  }
+  return h.join("");
+}
+
+function vueDossier(){
+  const d = dossDe(vue.dossier);
+  if(!d){ vue.dossier = null; return vueSuivi(); }
+  const c = catDe(d.categorie_id);
+  const tousDuDossier = db.taches.filter(t => t.dossier_id === d.id);
+  const toutes = tousDuDossier.filter(passeSphere);
+  const masquees = tousDuDossier.length - toutes.length;
+  const ech_ = toutes.filter(t => t.statut !== "done" && t.date_due).sort((a,b) => a.date_due.localeCompare(b.date_due));
+  const todo = toutes.filter(t => t.statut !== "done" && !t.date_due);
+  const fait = toutes.filter(t => t.statut === "done").sort((a,b) => (b.fait_le||"").localeCompare(a.fait_le||""));
+  const meta = [];
+  if(c) meta.push(`<span class="puce">${ech(c.nom)}</span>`);
+  if(d.identifiant) meta.push(`<span class="puce">id ${ech(d.identifiant)}</span>`);
+  if(d.contrat) meta.push(`<span class="puce">n° ${ech(d.contrat)}</span>`);
+  if(parMoisDossier(d)) meta.push(`<span class="puce date">${euro(parMoisDossier(d),2)} par mois</span>`);
+  if(d.url) meta.push(`<a class="lien" href="${ech(d.url)}" target="_blank" rel="noopener">Ouvrir le site ↗</a>`);
+
+  const h = [`<button class="retour" data-act="fermerDossier">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">${ech(d.nom)}</h1>
+      <button class="btn mini creux" data-dossier="${d.id}" data-act="editer">Modifier la fiche</button></div>`,
+    meta.length ? `<div class="meta" style="margin:0 0 22px">${meta.join("")}</div>` : `<div style="height:16px"></div>`];
+
+  const lgs = lignesDe(d);
+  if(masquees) h.push(`<button class="filet-rappel doux" data-sphere="${sphere()==="travail"?"perso":"travail"}"
+      style="margin:0 0 14px">${masquees} tâche${masquees>1?"s":""} ${sphere()==="travail"?"perso":"de travail"}
+      ${masquees>1?"sont masquées":"est masquée"} — passer en ${sphere()==="travail"?"perso":"travail"}</button>`);
+
+  h.push(`<div class="oeil">Charges${lgs.length?` <span class="cpt">${euro(parMoisDossier(d),2)} / mois</span>`:""}</div>`);
+  h.push(lgs.length ? enFiche(lgs.map(l => `<div class="ligne" data-charge="${l.id}" data-dossier="${d.id}">
+      <div class="jour-prel">${l.jour ? String(l.jour).padStart(2,"0") : "—"}</div>
+      <div class="corps"><div class="intitule">${ech(l.libelle)}</div>
+        <div class="meta"><span class="puce">${ech(l.periodicite)}</span>
+          ${PERIODES[l.periodicite] > 1 ? `<span class="puce date">${euro(l.montant,2)}${
+            l.mois ? ` · le ${l.jour} ${MOIS[l.mois-1]}` : ""}</span>` : ""}
+          ${PERIODES[l.periodicite] > 1 && !l.mois ? `<span class="puce chaud">mois à préciser</span>` : ""}</div></div>
+      <div class="somme">${euro(parMois(l),2)}</div>
+      <div class="outils"><button class="ico" data-act="editerCharge">✎</button>
+        <button class="ico sup" data-act="jeterCharge">✕</button></div></div>`))
+    : vide("Aucune charge", "Un dossier « Assurances » peut porter plusieurs lignes : auto, van, habitation."));
+  h.push(`<div style="margin:9px 0 0"><button class="btn mini creux" data-act="nouvelleCharge" data-dossier="${d.id}">Ajouter une charge</button></div>`);
+
+  h.push(`<div class="oeil">Échéances${ech_.length?` <span class="cpt">${ech_.length}</span>`:""}</div>`);
+  h.push(ech_.length ? enFiche(ech_.map(t => ligneTache(t, { sansDossier:true, veille:true })))
+    : vide("Aucune échéance", "Contrôle technique, renouvellement, révision…"));
+
+  h.push(`<div class="oeil">À faire${todo.length?` <span class="cpt">${todo.length}</span>`:""}</div>`);
+  h.push(`<div class="saisie" style="margin-top:0">
+    <input id="saisieDoss" data-dossier="${d.id}" placeholder="Ajouter au dossier…" autocomplete="off" enterkeyhint="done">
+    <button class="btn" data-act="ajouterDoss" data-dossier="${d.id}">Ajouter</button></div>`);
+  h.push(todo.length ? enFiche(todo.map(t => ligneTache(t, { sansDossier:true })))
+    : vide("Liste vide", "La flèche ↑ remonte une tâche dans l'inbox."));
+
+  if(fait.length){
+    const jj = jourISO();
+    const duJour = fait.filter(t => t.fait_le === jj);
+    h.push(`<div class="oeil" style="cursor:pointer" data-act="basculerFaites">Historique <span class="cpt">${fait.length}</span> ${vue.voirFaites?"−":"+"}</div>`);
+    /* Ce qui vient d'être réglé reste visible sans avoir à déplier :
+       une tâche cochée ne doit jamais sembler s'être volatilisée. */
+    if(vue.voirFaites) h.push(enFiche(fait.slice(0,40).map(t => ligneTache(t, { sansDossier:true, reglee:true }))));
+    else if(duJour.length) h.push(enFiche(duJour.map(t => ligneTache(t, { sansDossier:true, reglee:true }))));
+  }
+
+  /* Les notes ferment la fiche : c'est la zone la plus libre, elle a donc
+     besoin de place, et rien ne doit être repoussé au-delà. */
+  h.push(`<div class="oeil">Notes</div>
+    <div class="bloc-notes grand"><textarea id="notesDoss" data-dossier="${d.id}"
+      placeholder="MAIF · garantie Plénitude&#10;Franchise 250 €&#10;Numéro d'assistance&#10;Identifiant espace client…">${ech(d.notes)}</textarea></div>`);
+  return h.join("");
+}
+
+/* ---- Réglages ---- */
+function vueReglages(){
+  const j = jourISO();
+  const listeMod = (titre, items, genre) => `<div class="bloc">
+    <div class="oeil">${titre}</div>
+    <div class="fiche liste">${items.map(x => `<div class="ligne" data-${genre}="${x.id}">
+      <div class="corps"><div class="intitule">${ech(x.nom)}</div>
+      ${x.alias?.length ? `<div class="meta"><span class="repousse">@${x.alias.join(" · @")}</span></div>` : ""}</div>
+      <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`).join("")}</div>
+    <div style="margin-top:9px"><button class="btn mini creux" data-act="ajouter-${genre}">Ajouter</button></div></div>`;
+
+  const c = Sync.lireCfg(), es = Sync.lireEtat();
+  const motEtat = { off:"inactive", attente:"modifications en attente", occupe:"en cours…",
+                    ok:"à jour", conflit:"deux versions différentes", erreur:"erreur" }[es.statut] || "";
+  const blocSync = `<div class="bloc"><div class="oeil">Synchronisation
+      <span class="a-droite">${Sync.estActif() ? motEtat : "inactive"}</span></div>
+    <div class="fiche" style="padding:14px">
+      ${Sync.estActif() ? `
+        <p style="margin:0 0 10px;font-size:13.5px;color:var(--encre-2)">
+          Dépôt <b>${ech(c.owner)}/${ech(c.repo)}</b>, fichier <b>${ech(c.chemin)}</b> sur <b>${ech(c.branche)}</b>.
+          Chaque modification part en commit quelques secondes après votre dernière saisie.</p>
+        ${es.message ? `<p style="margin:0 0 10px;font-size:12.5px;color:var(--rouge)">${ech(es.message)}</p>` : ""}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn mini" data-act="syncMaintenant">Synchroniser maintenant</button>
+          <button class="btn mini danger" data-act="syncDeconnecter">Déconnecter</button></div>`
+      : `
+        <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
+          Le carnet devient un fichier JSON dans un dépôt privé. Tous vos appareils lisent et écrivent le même fichier,
+          et chaque écriture est un commit — donc un historique complet et un retour en arrière possible.</p>
+        <div class="duo">
+          <label class="champ"><span>Propriétaire</span><input id="gh-owner" placeholder="votre-pseudo" autocomplete="off"></label>
+          <label class="champ"><span>Dépôt</span><input id="gh-repo" placeholder="carnet" autocomplete="off"></label>
+        </div>
+        <div class="duo">
+          <label class="champ"><span>Chemin du fichier</span><input id="gh-chemin" value="carnet.json" autocomplete="off"></label>
+          <label class="champ"><span>Branche</span><input id="gh-branche" value="main" autocomplete="off"></label>
+        </div>
+        <label class="champ"><span>Jeton d'accès</span>
+          <input id="gh-jeton" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+        <button class="btn" data-act="syncConnecter">Connecter</button>
+        <p style="margin:12px 0 0;font-size:12.5px;color:var(--encre-3)">
+          Créez un jeton <b>fine-grained</b> limité à ce seul dépôt, avec l'autorisation <b>Contents : Read and write</b>.
+          Il reste dans ce navigateur, n'apparaît jamais dans l'export, et devra être ressaisi sur chaque appareil.
+          Pensez à sa date d'expiration : le jour où il expire, la synchro s'arrête sans prévenir.</p>`}
+    </div></div>`;
+
+  const dep = db.reglages.dernier_export;
+  return `<div class="entete-mob"><h1 class="titre">Réglages</h1><div class="jour">${dateCourte(j)}</div></div>
+  <p class="sous">Tout est stocké dans ce navigateur. L'export est votre sauvegarde ; la synchro, votre continuité entre appareils.</p>
+
+  ${blocSync}
+
+  <div class="bloc"><div class="oeil">Sauvegarde</div>
+    <div class="fiche" style="padding:14px">
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
+        ${dep ? `Dernier export : ${dateLongue(dep)} (il y a ${ecartJours(dep,j)} j).` : "Aucun export effectué."}
+        Le fichier est un JSON lisible — posez-le dans iCloud ou Drive.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" data-act="exporter">Exporter le carnet</button>
+        <button class="btn creux" data-act="importer">Importer un fichier</button></div>
+      <p style="margin:12px 0 0;font-size:12.5px;color:var(--encre-3)">
+        Application en <b>version ${VERSION_APP}</b>. Si un autre appareil affiche un numéro inférieur,
+        fermez-y l'application et rouvrez-la : elle garde parfois l'ancienne version en cache.<br>
+        Stockage : ${Stockage.persistant() ? "IndexedDB, actif." : "indisponible — session en mémoire seulement."}
+        Sur iPhone, ajoutez le site à l'écran d'accueil : sans ça, Safari efface les données après 7 jours d'inactivité.</p>
+    </div></div>
+
+  <div class="bloc"><div class="oeil">Couleur d'accent</div>
+    <div class="fiche" style="padding:14px">
+      <div class="teintes">${TEINTES.map(t => `<button class="teinte ${(db.reglages.accent||"petrole")===t.cle?"on":""}"
+        data-teinte="${t.cle}" title="${ech(t.nom)}" style="background:${t.val}"></button>`).join("")}</div>
+      <p style="margin:11px 0 0;font-size:12.5px;color:var(--encre-3)">
+        ${ech(TEINTES.find(t => t.cle === (db.reglages.accent||"petrole"))?.nom || "")} —
+        le rouge des retards et le vert des tâches réglées ne changent pas.</p>
+    </div></div>
+
+  <div class="bloc"><div class="oeil">Réglages du budget</div>
+    <div class="fiche" style="padding:14px">
+      <div class="duo">
+        <label class="champ"><span>Le mois commence le</span>
+          <input type="number" min="1" max="28" value="${db.reglages.jour_debut_mois || 1}" data-act="jourDebut"></label>
+        <label class="champ"><span>Préavis par défaut (jours)</span>
+          <input type="number" min="0" max="365" value="${db.reglages.preavis_defaut}" data-act="preavis"></label>
+      </div>
+      <p style="margin:0;font-size:12.5px;color:var(--encre-3)">Mettez le jour de votre paie si le mois calendaire ne correspond pas à votre cycle réel.</p>
+    </div></div>
+
+  <div class="bloc"><div class="oeil">Revenus<span class="a-droite">${(db.revenus||[]).length} ligne${(db.revenus||[]).length>1?"s":""}</span></div>
+    <button class="prive" data-act="voirRevenus" style="margin:0 0 10px">
+      <span class="oeilleton">${vue.voirRevenus ? "◉" : "◎"}</span>
+      <span>${vue.voirRevenus ? "masquer" : "afficher"}</span>
+      <span class="v">${vue.voirRevenus ? euro(totalRevenus(),2) + " / mois" : "•••"}</span></button>
+    ${vue.voirRevenus ? `
+      ${(db.revenus||[]).length ? `<div class="fiche liste">${db.revenus.map(r => `<div class="ligne" data-revenu="${r.id}">
+        <div class="corps"><div class="intitule">${ech(r.libelle)}</div>
+          <div class="meta"><span class="puce">${ech(r.periodicite)}</span></div></div>
+        <div class="somme">${euro(parMois(r),2)}</div>
+        <div class="outils"><button class="ico" data-act="editer">✎</button>
+          <button class="ico sup" data-act="jeter">✕</button></div></div>`).join("")}</div>` : ""}
+      <div style="margin-top:9px"><button class="btn mini creux" data-act="nouveauRevenu">Ajouter un revenu</button></div>` : ""}
+  </div>
+
+  ${listeMod("Contextes de tâche", db.contextes, "contexte")}
+  ${listeMod("Catégories de dossier", db.categories, "categorie")}
+  ${listeMod("Catégories de dépense", db.categories_depense, "cdepense")}
+
+  <div class="bloc"><div class="oeil">Vacances scolaires
+      <span class="a-droite">zone C</span></div>
+    <div class="fiche liste">${[...(db.vacances||[])]
+      .sort((a,b) => a.debut.localeCompare(b.debut))
+      .map(v => { const passe = v.fin < j; return `<div class="ligne" data-vac="${v.id}" ${passe?'style="opacity:.5"':""}>
+        <div class="corps"><div class="intitule">${ech(v.nom)}</div>
+          <div class="meta"><span class="puce date">${dateCourte(v.debut)} → ${dateCourte(v.fin)}</span>
+          <span class="puce">${ecartJours(v.debut, v.fin) + 1} jours</span></div></div>
+        <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`; }).join("")}</div>
+    <div style="margin-top:9px"><button class="btn mini creux" data-act="nouvellesVacances">Ajouter une période</button></div>
+    <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">
+      Renseignées jusqu'à l'été 2027, dernier calendrier publié au Journal officiel.
+      Indiquez le dernier jour de congé, pas le jour de la rentrée. Les jours fériés, eux, sont calculés.</p></div>
+
+  <div class="bloc"><div class="oeil">Anniversaires
+      <span class="a-droite">${(db.anniversaires||[]).length}</span></div>
+    <div class="fiche liste">${[...(db.anniversaires||[])]
+      .sort((a,b) => a.mois - b.mois || a.jour - b.jour)
+      .map(a => `<div class="ligne" data-anniv="${a.id}">
+        <div class="corps"><div class="intitule">${a.icone === "coeur" ? "❤️" : "🎂"} ${ech(a.nom)}</div>
+          <div class="meta"><span class="puce date">${String(a.jour).padStart(2,"0")} ${MOIS[a.mois-1]}</span></div></div>
+        <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`).join("")}</div>
+    <div style="margin-top:9px"><button class="btn mini creux" data-act="nouvelAnniversaire">Ajouter</button></div>
+    <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">
+      Les jours fériés et les vacances de la zone C sont calculés automatiquement, il n'y a rien à saisir.</p></div>
+
+  ${db.corbeille.length ? `<div class="bloc"><div class="oeil">Corbeille <span class="cpt">${db.corbeille.length}</span></div>
+    <div class="fiche liste">${db.corbeille.slice(0,40).map(x => `<div class="ligne" data-corbeille="${x.id}">
+      <div class="corps"><div class="intitule">${ech(x.obj.intitule || x.obj.nom || x.obj.libelle || "—")}</div>
+      <div class="meta"><span class="puce">${x.genre}</span><span class="puce date">${dateCourte(x.le)}</span></div></div>
+      <div class="outils"><button class="btn mini creux" data-act="restaurer">Restaurer</button>
+        <button class="ico sup" data-act="detruire" title="Supprimer définitivement">✕</button></div></div>`).join("")}</div>
+    <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn mini danger" data-act="viderCorbeille">Vider la corbeille</button></div>
+    <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">Vidée automatiquement après 30 jours.</p></div>` : ""}
+
+  <div class="bloc"><div class="oeil">Zone sensible</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${db.reglages.exemples ? `<button class="btn mini danger" data-act="viderExemples">Effacer les exemples</button>` : ""}
+      <button class="btn mini danger" data-act="toutEffacer">Tout effacer</button></div></div>`;
+}
+
+let dernierEcran = { onglet:null, dossier:null, mois:null, decalage:null, sphere:null };
+
+function rendre(){
+  figerSaisieEnCours();
+  rendreNav();
+  const cible = document.getElementById("vue");
+  /* On ne remonte en haut que si l'on a changé d'écran. */
+  const memeEcran = dernierEcran.onglet === vue.onglet && dernierEcran.dossier === vue.dossier
+    && dernierEcran.mois === vue.moisAgenda && dernierEcran.decalage === vue.decalage
+    && dernierEcran.sphere === sphere();
+  const y = window.scrollY || window.pageYOffset || 0;
+  dernierEcran = { onglet:vue.onglet, dossier:vue.dossier, mois:vue.moisAgenda,
+                   decalage:vue.decalage, sphere:sphere() };
+  const a = document.activeElement;
+  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle"];
+  const memo = a && gardes.includes(a.id) ? { id:a.id, val:a.value, pos:a.selectionStart } : null;
+
+  cible.innerHTML = ({ accueil:vueAccueil, taches:vueTaches, echeances:vueEcheances, agenda:vueAgenda,
+                       budget:vueBudget, suivi:vueSuivi, reglages:vueReglages })[vue.onglet]();
+
+  if(memo){
+    const e = document.getElementById(memo.id);
+    if(e){ e.value = memo.val; e.focus(); try{ e.setSelectionRange(memo.pos, memo.pos); }catch(x){} }
+  }else if(memeEcran){
+    /* On reste au même endroit : cocher une tâche en bas de liste ne doit
+       pas renvoyer en haut de page. */
+    window.scrollTo({ top:y, behavior:"instant" });
+  }else{
+    window.scrollTo({ top:0, behavior:"instant" });
+  }
+  /* On amène l'écran sur l'élément qu'on vient de créer et on le fait
+     clignoter une seconde : plus de doute sur « est-ce que c'est enregistré ». */
+  if(vue.surligne){
+    const n = document.querySelector(`[data-tache="${vue.surligne}"], [data-rdv="${vue.surligne}"],
+      [data-rentree="${vue.surligne}"], [data-dossier="${vue.surligne}"], [data-depense="${vue.surligne}"]`);
+    vue.surligne = null;
+    if(n){
+      n.classList.add("neuf");
+      /* On ne défile que si l'élément est hors de vue : sinon le simple fait
+         d'ajouter une tâche visible ferait bouger la page pour rien. */
+      try{
+        const r = n.getBoundingClientRect();
+        if(r.top < 60 || r.bottom > (window.innerHeight || 800) - 60)
+          n.scrollIntoView({ block:"center", behavior:"smooth" });
+      }catch(e){}
+      setTimeout(() => n.classList.remove("neuf"), 1600);
+    }
+  }
+  rafraichirBadge();
+}
+
+/* =====================================================================
+   7. FORMULAIRES
+   ===================================================================== */
+const dlg = document.getElementById("dlg");
+function formulaire(titre, champs, valeurs, onOk, onSup){
+  const ligne = c => {
+    const v = valeurs[c.cle] ?? c.defaut ?? "";
+    if(c.type === "select")
+      return `<label class="champ"><span>${c.nom}</span><select name="${c.cle}">
+        ${c.options.map(o => `<option value="${ech(o.v)}" ${String(o.v)===String(v)?"selected":""}>${ech(o.n)}</option>`).join("")}</select></label>`;
+    if(c.type === "textarea")
+      return `<label class="champ"><span>${c.nom}</span><textarea name="${c.cle}" placeholder="${ech(c.ph||"")}">${ech(v)}</textarea></label>`;
+    return `<label class="champ"><span>${c.nom}</span><input name="${c.cle}" type="${c.type||"text"}"
+      ${c.step?`step="${c.step}"`:""} ${c.min!=null?`min="${c.min}"`:""} ${c.mode?`inputmode="${c.mode}"`:""}
+      value="${ech(v)}" placeholder="${ech(c.ph||"")}"></label>`;
+  };
+  const corps = [];
+  for(let i = 0; i < champs.length; i++){
+    if(champs[i].duo && champs[i+1]){ corps.push(`<div class="duo">${ligne(champs[i])}${ligne(champs[i+1])}</div>`); i++; }
+    else corps.push(ligne(champs[i]));
+  }
+  dlg.innerHTML = `<form method="dialog">
+    <div class="dlg-t">${ech(titre)}</div>
+    <div class="dlg-c">${corps.join("")}</div>
+    <div class="dlg-p">
+      ${onSup ? `<button type="button" class="btn mini danger esp" id="dlgSup">Supprimer</button>` : ""}
+      <button type="button" class="btn mini creux" id="dlgNon">Annuler</button>
+      <button type="submit" class="btn mini">Enregistrer</button>
+    </div></form>`;
+  const f = dlg.querySelector("form");
+  f.onsubmit = ev => { ev.preventDefault();
+    const d = {}; new FormData(f).forEach((v,k) => d[k] = typeof v === "string" ? v.trim() : v);
+    dlg.close(); onOk(d); };
+  dlg.querySelector("#dlgNon").onclick = () => dlg.close();
+  if(onSup) dlg.querySelector("#dlgSup").onclick = () => { dlg.close(); onSup(); };
+  dlg.showModal();
+  setTimeout(() => dlg.querySelector("input,select,textarea")?.focus(), 40);
+}
+
+const optCtx  = () => [{v:"",n:"— aucun —"}, ...db.contextes.map(c => ({v:c.id,n:c.nom}))];
+const optCat  = () => [{v:"",n:"— aucune —"}, ...db.categories.map(c => ({v:c.id,n:c.nom}))];
+const optDoss = () => [{v:"",n:"— aucun —"}, ...db.dossiers.map(d => ({v:d.id,n:d.nom}))];
+const optCdep = () => [{v:"",n:"— aucune —"}, ...db.categories_depense.map(c => ({v:c.id,n:c.nom}))];
+const optUnite = [{v:"jour",n:"jour(s)"},{v:"semaine",n:"semaine(s)"},{v:"mois",n:"mois"},{v:"an",n:"an(s)"}];
+
+function editerTache(t, neuve = false){
+  const o = t || tacheNeuve({ date_due:jourISO(), preavis:db.reglages.preavis_defaut, n:1, unite:"an" });
+  formulaire(neuve ? "Nouvelle échéance" : "Modifier la tâche", [
+    { cle:"intitule", nom:"Intitulé" },
+    { cle:"dossier_id", nom:"Dossier", type:"select", options:optDoss(), duo:true },
+    { cle:"contexte_id", nom:"Contexte", type:"select", options:optCtx() },
+    { cle:"travail", nom:"Classer dans", type:"select",
+      options:[{v:"",n:"Perso"},{v:"1",n:"Travail"}] },
+    { cle:"date_due", nom:"Date (facultative)", type:"date", duo:true },
+    { cle:"preavis", nom:"Préavis (jours)", type:"number", min:0 },
+    { cle:"n", nom:"Revient tous les", type:"number", min:0, duo:true },
+    { cle:"unite", nom:"Unité", type:"select", options:optUnite },
+    { cle:"notes", nom:"Notes", type:"textarea" },
+  ], { ...o, travail: o.travail ? "1" : "" }, d => {
+    if(!d.intitule) return;
+    Object.assign(o, { intitule:d.intitule, dossier_id:d.dossier_id || null, contexte_id:d.contexte_id || null,
+      date_due:d.date_due || null, preavis:Number(d.preavis) || 0, n:Number(d.n) || 0, unite:d.unite,
+      notes:d.notes, travail: d.travail === "1", demo:false });
+    touche(o);
+    if(neuve) db.taches.push(o);
+    vue.surligne = o.id;
+    maj();
+  }, neuve ? null : () => { jeter("tâche", o); db.taches = db.taches.filter(x => x.id !== o.id); maj(); });
+}
+
+/* Saisie de l'heure au clavier : « 9h30 », « 9:30 », « 930 », « 9h » → 09:30 */
+function lireHeure(v){
+  const t = String(v||"").trim().toLowerCase().replace(/\s/g,"");
+  if(!t) return "";
+  let m = t.match(/^(\d{1,2})[h:.,]?(\d{2})?$/);
+  if(!m){ m = t.match(/^(\d{2})(\d{2})$/); if(m) m = [t, m[1], m[2]]; }
+  if(!m) return null;
+  const H = +m[1], M = m[2] ? +m[2] : 0;
+  if(H > 23 || M > 59) return null;
+  return String(H).padStart(2,"0") + ":" + String(M).padStart(2,"0");
+}
+
+function editerRdv(r, dateProposee){
+  const neuf = !r;
+  const base = dateProposee || jourISO();
+  const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"" };
+  const an = +x.date.slice(0,4), courant = new Date().getFullYear();
+  const annees = [];
+  for(let a = courant - 1; a <= courant + 3; a++) annees.push({ v:a, n:String(a) });
+  formulaire(neuf ? "Nouveau rendez-vous" : "Modifier le rendez-vous", [
+    { cle:"intitule", nom:"Intitulé", ph:"Dentiste, réunion, dîner…" },
+    { cle:"jour", nom:"Jour", type:"text", mode:"numeric", duo:true },
+    { cle:"heure", nom:"Heure", type:"text", ph:"9h30" },
+    { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })), duo:true },
+    { cle:"annee", nom:"Année", type:"select", options:annees },
+    { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
+    { cle:"couleur", nom:"Surligneur", type:"select", options:[
+        {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
+    { cle:"notes", nom:"Notes", type:"textarea" },
+  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an }, d => {
+    const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
+    if(!d.intitule){ alert("Il faut un intitulé."); return; }
+    const dim = new Date(aa, mm, 0).getDate();
+    if(!(jj >= 1 && jj <= dim)){ alert(`Jour invalide : ${MOIS[mm-1]} ${aa} compte ${dim} jours.`); return; }
+    const H = lireHeure(d.heure);
+    if(H === null){ alert("Heure incomprise. Écrivez par exemple 9h30, 9:30 ou 930."); return; }
+    Object.assign(x, {
+      date: `${aa}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`,
+      heure: H, intitule: d.intitule, cote: d.cote, couleur: d.couleur || "", notes: d.notes,
+    });
+    touche(x);
+    if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
+    vue.moisAgenda = x.date.slice(0,7);
+    vue.surligne = x.id;
+    maj();
+  }, neuf ? null : () => { jeter("rendez-vous", x); db.rendez_vous = db.rendez_vous.filter(y => y.id !== x.id); maj(); });
+}
+
+function editerVacances(v){
+  const neuf = !v;
+  const x = v || { id:uid(), nom:"", debut:jourISO(), fin:jourISO() };
+  formulaire(neuf ? "Nouvelle période de vacances" : "Modifier la période", [
+    { cle:"nom", nom:"Nom", ph:"Toussaint, Hiver, Été…" },
+    { cle:"debut", nom:"Premier jour", type:"date", duo:true },
+    { cle:"fin", nom:"Dernier jour", type:"date" },
+  ], x, d => {
+    if(!d.nom || !d.debut || !d.fin) return;
+    if(d.fin < d.debut){ alert("Le dernier jour est avant le premier."); return; }
+    Object.assign(x, { nom:d.nom, debut:d.debut, fin:d.fin });
+    touche(x);
+    if(neuf) (db.vacances = db.vacances || []).push(x);
+    maj();
+  }, neuf ? null : () => { jeter("vacances", x); db.vacances = db.vacances.filter(y => y.id !== x.id); maj(); });
+}
+
+function editerAnniversaire(a){
+  const neuf = !a;
+  const x = a || { id:uid(), jour:1, mois:1, nom:"", icone:"gateau" };
+  formulaire(neuf ? "Nouvel anniversaire" : "Modifier l'anniversaire", [
+    { cle:"nom", nom:"Prénom" },
+    { cle:"jour", nom:"Jour", type:"text", mode:"numeric", duo:true },
+    { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })) },
+    { cle:"icone", nom:"Symbole", type:"select", options:[{v:"gateau",n:"🎂 Gâteau"},{v:"coeur",n:"❤️ Cœur"}] },
+  ], x, d => {
+    const jj = parseInt(d.jour,10);
+    if(!d.nom || !(jj >= 1 && jj <= 31)) return;
+    Object.assign(x, { nom:d.nom, jour:jj, mois:+d.mois, icone:d.icone });
+    touche(x);
+    if(neuf) (db.anniversaires = db.anniversaires || []).push(x);
+    maj();
+  }, neuf ? null : () => { jeter("anniversaire", x); db.anniversaires = db.anniversaires.filter(y => y.id !== x.id); maj(); });
+}
+
+function editerDossier(d){
+  const neuf = !d;
+  const x = d || { id:uid(), nom:"", categorie_id:db.categories[0]?.id||null, url:"", identifiant:"", contrat:"",
+                   montant:null, periodicite:"", lignes:[], notes:"" };
+  formulaire(neuf ? "Nouveau dossier" : "Modifier le dossier", [
+    { cle:"nom", nom:"Nom", ph:"Le van, Mutuelle, Loyer…" },
+    { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCat() },
+    { cle:"url", nom:"Lien vers le site", type:"url", ph:"https://" },
+    { cle:"identifiant", nom:"Identifiant", duo:true },
+    { cle:"contrat", nom:"N° de contrat" },
+    { cle:"notes", nom:"Notes", type:"textarea", ph:"MAIF · garantie Plénitude · franchise 250 €" },
+  ], { ...x }, f => {
+    if(!f.nom) return;
+    Object.assign(x, { nom:f.nom, categorie_id:f.categorie_id || null,
+      url:f.url && !/^https?:\/\//i.test(f.url) ? "https://" + f.url : f.url,
+      identifiant:f.identifiant, contrat:f.contrat, notes:f.notes, demo:false });
+    x.lignes = x.lignes || [];
+    touche(x);
+    if(neuf) db.dossiers.push(x);
+    maj();
+  }, neuf ? null : () => {
+    if(!confirm(`Mettre « ${x.nom} » à la corbeille ? Ses tâches seront détachées, pas supprimées.`)) return;
+    jeter("dossier", x);
+    db.dossiers = db.dossiers.filter(y => y.id !== x.id);
+    db.taches.forEach(t => { if(t.dossier_id === x.id){ t.dossier_id = null; t.en_inbox = false; } });
+    if(vue.dossier === x.id) vue.dossier = null;
+    maj();
+  });
+}
+
+function editerCharge(d, l){
+  const neuf = !l;
+  const x = l || { id:uid(), libelle:"", montant:null, periodicite:"mensuel", jour:null, mois:null };
+  formulaire(neuf ? `Nouvelle charge · ${d.nom}` : "Modifier la charge", [
+    { cle:"libelle", nom:"Libellé", ph:"Auto, Van, Habitation…" },
+    { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
+    { cle:"periodicite", nom:"Périodicité", type:"select", options:Object.keys(PERIODES).map(k => ({v:k,n:k})) },
+    { cle:"jour", nom:"Jour du prélèvement", type:"text", mode:"numeric", ph:"12", duo:true },
+    { cle:"mois", nom:"Mois (si pas mensuel)", type:"select",
+      options:[{v:"",n:"— sans objet —"}, ...MOIS.map((m,i) => ({v:i+1,n:m}))] },
+  ], { ...x, montant:x.montant ?? "", jour:x.jour ?? "", mois:x.mois ?? "" }, f => {
+    const m = lireMontant(f.montant);
+    if(!f.libelle || m === null){ alert("Il faut un libellé et un montant."); return; }
+    let jr = parseInt(f.jour, 10);
+    if(!(jr >= 1 && jr <= 31)) jr = null;
+    const mo = f.mois === "" ? null : Number(f.mois);
+    if(PERIODES[f.periodicite] > 1 && jr && !mo){
+      alert("Pour une charge qui ne tombe pas tous les mois, indiquez aussi le mois du prélèvement.");
+      return;
+    }
+    Object.assign(x, { libelle:f.libelle, montant:Math.abs(m), periodicite:f.periodicite, jour:jr, mois:mo });
+    if(neuf) (d.lignes = d.lignes || []).push(x);
+    touche(d);   /* une charge vit dans son dossier : c'est lui qu'on horodate */
+    d.demo = false;
+    maj();
+  }, neuf ? null : () => { jeter("charge", { ...x, dossier_id:d.id });
+    d.lignes = d.lignes.filter(y => y.id !== x.id); touche(d); maj(); });
+}
+
+function editerRentree(r){
+  const neuf = !r;
+  const x = r || { id:uid(), libelle:"", montant:null, date:"", recu:false };
+  formulaire(neuf ? "Nouvelle rentrée" : "Modifier la rentrée", [
+    { cle:"libelle", nom:"Libellé", ph:"Remboursement mutuelle, prime…" },
+    { cle:"montant", nom:"Montant (facultatif)", type:"number", step:"0.01", duo:true },
+    { cle:"date", nom:"Date (facultative)", type:"date" },
+  ], { ...x, montant:x.montant ?? "" }, d => {
+    const m = d.montant === "" ? null : lireMontant(d.montant);
+    if(!d.libelle){ alert("Il faut au moins un libellé."); return; }
+    Object.assign(x, { libelle:d.libelle, montant: m === null ? null : Math.abs(m), date:d.date || "" });
+    if(x.recu && !x.date) x.date = jourISO();
+    touche(x);
+    if(neuf) (db.rentrees = db.rentrees || []).push(x);
+    vue.surligne = x.id;
+    maj();
+  }, neuf ? null : () => { jeter("rentrée", x); db.rentrees = db.rentrees.filter(y => y.id !== x.id); maj(); });
+}
+
+/* Renseigne le montant réellement reçu au moment où l'argent arrive. */
+function encaisserRentree(r){
+  formulaire("Encaisser · " + r.libelle, [
+    { cle:"montant", nom:"Montant reçu (€)", type:"number", step:"0.01", duo:true },
+    { cle:"date", nom:"Date", type:"date" },
+  ], { montant:"", date:jourISO() }, d => {
+    const m = lireMontant(d.montant);
+    if(m === null){ alert("Il faut un montant."); return; }
+    Object.assign(r, { montant:Math.abs(m), date:d.date || jourISO(), recu:true });
+    touche(r);
+    vue.surligne = r.id;
+    maj();
+  });
+}
+
+/* Le remboursement d'une dépense avancée : montant proposé à hauteur de
+   l'avance, corrigeable si la prise en charge est partielle. */
+function encaisserRemboursement(x){
+  const c = cdepDe(x.categorie_id);
+  const nom = x.libelle || (c ? c.nom : "dépense");
+  formulaire("Remboursement · " + nom, [
+    { cle:"montant", nom:"Montant reçu (€)", type:"number", step:"0.01", duo:true },
+    { cle:"date", nom:"Date", type:"date" },
+  ], { montant:x.montant ?? "", date:jourISO() }, d => {
+    const m = lireMontant(d.montant);
+    if(m === null){ alert("Il faut un montant."); return; }
+    const r = { id:uid(), libelle:"Remboursement · " + nom, montant:Math.abs(m),
+                date:d.date || jourISO(), recu:true, depense_id:x.id };
+    (db.rentrees = db.rentrees || []).push(touche(r));
+    x.rembourse = true;
+    touche(x);
+    vue.surligne = r.id;
+    maj();
+  });
+}
+
+function editerRevenu(r){
+  const neuf = !r;
+  const x = r || { id:uid(), libelle:"", montant:null, periodicite:"mensuel" };
+  formulaire(neuf ? "Nouveau revenu" : "Modifier le revenu", [
+    { cle:"libelle", nom:"Libellé", ph:"Salaire, APL, pension…" },
+    { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
+    { cle:"periodicite", nom:"Périodicité", type:"select", options:Object.keys(PERIODES).map(k => ({v:k,n:k})) },
+  ], { ...x, montant:x.montant ?? "" }, d => {
+    if(!d.libelle || d.montant === "") return;
+    Object.assign(x, { libelle:d.libelle, montant:Number(d.montant), periodicite:d.periodicite });
+    touche(x);
+    if(neuf) (db.revenus = db.revenus || []).push(x);
+    maj();
+  }, neuf ? null : () => { jeter("revenu", x); db.revenus = db.revenus.filter(y => y.id !== x.id); maj(); });
+}
+
+function editerDepense(x){
+  formulaire("Modifier la dépense", [
+    { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
+    { cle:"date", nom:"Date", type:"date" },
+    { cle:"libelle", nom:"Libellé" },
+    { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCdep(), duo:true },
+    { cle:"rembourser", nom:"À se faire rembourser", type:"select",
+      options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
+  ], { ...x, rembourser: x.rembourser ? "1" : "" }, d => {
+    const m = lireMontant(d.montant);
+    if(m === null) return;
+    Object.assign(x, { montant:m, date:d.date || x.date, libelle:d.libelle,
+      categorie_id:d.categorie_id || null, rembourser: d.rembourser === "1" });
+    touche(x);
+    /* Si la date renvoie à un autre mois, on y emmène l'écran : sinon la
+       dépense semble s'être évaporée. */
+    vue.decalage = decalagePeriode(x.date);
+    vue.surligne = x.id;
+    if(!x.rembourser) x.rembourse = false;
+    maj();
+  }, () => { jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); maj(); });
+}
+
+function editerListe(genre, item){
+  const neuf = !item;
+  const x = item || (genre === "contexte" ? { id:uid(), nom:"", alias:[] } : { id:uid(), nom:"" });
+  const champs = [{ cle:"nom", nom:"Nom" }];
+  if(genre === "contexte") champs.push({ cle:"alias", nom:"Alias de saisie (virgules)", ph:"tel, phone, appel" });
+  const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense" }[genre];
+  formulaire(neuf ? "Nouvel élément" : "Modifier", champs, { ...x, alias:(x.alias||[]).join(", ") }, d => {
+    if(!d.nom) return;
+    x.nom = d.nom;
+    if(genre === "contexte") x.alias = (d.alias||"").split(",").map(s => sansAccents(s.trim())).filter(Boolean);
+    touche(x);
+    if(neuf) db[tas].push(x);
+    maj();
+  }, neuf ? null : () => {
+    jeter(genre, x);
+    db[tas] = db[tas].filter(y => y.id !== x.id);
+    if(genre === "contexte"){
+      db.taches.forEach(t => { if(t.contexte_id === x.id) t.contexte_id = null; });
+      if(vue.filtreCtx === x.id) vue.filtreCtx = null;
+    }else if(genre === "categorie"){
+      db.dossiers.forEach(d => { if(d.categorie_id === x.id) d.categorie_id = null; });
+    }else{
+      db.depenses.forEach(p => { if(p.categorie_id === x.id) p.categorie_id = null; });
+      if(vue.catDep === x.id) vue.catDep = null;
+    }
+    maj();
+  });
+}
+
+/* =====================================================================
+   8. ACTIONS
+   ===================================================================== */
+function ajouterDepuis(champ, dossierId){
+  const s = document.getElementById(champ);
+  if(!s || !s.value.trim()) return;
+  const a = analyser(s.value);
+  if(!a.intitule) return;
+  const nouvelle = tacheNeuve({
+    intitule:a.intitule,
+    contexte_id:a.ctxId || vue.filtreCtx || null,
+    dossier_id:dossierId || a.dossId || vue.filtreDoss || null,
+    date_due:a.date || null,
+    suivant_le:a.suivant ? jourISO() : null,
+    /* Depuis un dossier on ne bascule pas ; ailleurs, la boîte Travail décide,
+       et le filtre en cours sert de repli. */
+    travail: dossierId ? false : destinationTravail(),
+  });
+  db.taches.push(touche(nouvelle));
+  vue.surligne = nouvelle.id;
+  s.value = "";
+  maj();
+  setTimeout(() => document.getElementById(champ)?.focus(), 0);
+}
+
+function ajouterDepense(){
+  const im = document.getElementById("dep-montant"), il = document.getElementById("dep-libelle");
+  if(!im) return;
+  const m = lireMontant(im.value);
+  if(m === null || m === 0){ im.focus(); return; }
+  db.depenses.push(touche({ id:uid(), date:jourISO(), montant:Math.abs(m),
+    categorie_id:vue.catDep || null, libelle:(il?.value || "").trim(), dossier_id:null }));
+  im.value = ""; if(il) il.value = "";
+  vue.decalage = 0;
+  vue.surligne = db.depenses[db.depenses.length-1].id;
+  maj();
+  setTimeout(() => document.getElementById("dep-montant")?.focus(), 0);
+}
+
+function tamponner(elt, texte, apres){
+  const t = document.createElement("span");
+  t.className = "tampon"; t.textContent = texte;
+  elt.appendChild(t);
+  setTimeout(apres, matchMedia("(prefers-reduced-motion: reduce)").matches ? 120 : 640);
+}
+
+function basculerFait(t, elt){
+  if(t.statut === "done"){ t.statut = "inbox"; t.fait_le = null; return maj(); }
+  const j = jourISO();
+  if(t.n > 0 && t.date_due){
+    (t.journal = t.journal || []).unshift(j);
+    t.journal = t.journal.slice(0,12);
+    let d = ajouterPeriode(t.date_due, t.n, t.unite), garde = 0;
+    while(d <= j && garde++ < 300) d = ajouterPeriode(d, t.n, t.unite);
+    t.date_due = d; t.suivant_le = null; t.reports = 0; t.en_inbox = false;
+    sauver(); elt.classList.add("faite");
+    return tamponner(elt, `Réglé · ${dateCourte(j)}`, rendre);
+  }
+  t.statut = "done"; t.fait_le = j; t.suivant_le = null;
+  sauver(); elt.classList.add("faite");
+  tamponner(elt, `Fait · ${dateCourte(j)}`, rendre);
+}
+
+function exporter(){
+  db.reglages.dernier_export = jourISO();
+  const paquet = { ...db, exporte_le:new Date().toISOString(), version_schema:VERSION_SCHEMA };
+  const blob = new Blob([JSON.stringify(paquet, null, 2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `carnet-${jourISO()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  maj();
+}
+
+function importer(){
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "application/json,.json";
+  inp.onchange = () => {
+    const f = inp.files[0]; if(!f) return;
+    const l = new FileReader();
+    l.onload = () => {
+      let d;
+      try{ d = JSON.parse(l.result); }catch(e){ alert("Fichier illisible : ce n'est pas du JSON valide."); return; }
+      if(!d || !Array.isArray(d.taches)){ alert("Fichier non reconnu : il ne contient pas de carnet."); return; }
+      if((d.version_schema ?? 1) > VERSION_SCHEMA){
+        alert(`Ce fichier vient d'une version plus récente (${d.version_schema}). Mettez d'abord l'application à jour.`); return;
+      }
+      const m = migrer(d);
+      const n = (m.taches?.length||0) + (m.dossiers?.length||0) + (m.depenses?.length||0);
+      if(!confirm(`Remplacer le carnet actuel par ce fichier (${n} éléments) ? L'état actuel sera perdu.`)) return;
+      db = Object.assign(etatNeuf(), m);
+      db.version_schema = VERSION_SCHEMA;
+      db.taches = db.taches.map(t => tacheNeuve(t));
+      bascule(); purgerCorbeille(); vue.dossier = null; maj();
+    };
+    l.readAsText(f);
+  };
+  inp.click();
+}
+
+/* =====================================================================
+   9. ÉVÉNEMENTS
+   ===================================================================== */
+const trouver = (c, attr) => { const e = c.closest(`[data-${attr}]`); return e ? { elt:e, id:e.getAttribute(`data-${attr}`) } : null; };
+
+document.addEventListener("click", ev => {
+  const c = ev.target;
+
+  const bO = c.closest("[data-onglet]");
+  if(bO){ vue.onglet = bO.dataset.onglet; if(vue.onglet !== "suivi") vue.dossier = null; return rendre(); }
+  const bA = c.closest("[data-aller]");
+  if(bA){ vue.onglet = bA.dataset.aller; return rendre(); }
+  const bC = c.closest("[data-fctx]");
+  if(bC){ vue.filtreCtx = bC.dataset.fctx || null; return rendre(); }
+  const bD = c.closest("[data-fdoss]");
+  if(bD){ vue.filtreDoss = bD.dataset.fdoss || null; return rendre(); }
+  const bS = c.closest("[data-sphere]");
+  if(bS){ db.reglages.sphere = bS.dataset.sphere; vue.saisieTravail = null; return maj(); }
+  const bT = c.closest("[data-teinte]");
+  if(bT){ db.reglages.accent = bT.dataset.teinte; appliquerTeinte(); return maj(); }
+  const bCat = c.closest("[data-catdep]");
+  if(bCat){
+    vue.catDep = vue.catDep === bCat.dataset.catdep ? null : bCat.dataset.catdep;
+    const z = document.getElementById("catsEclair");
+    if(z && dlg.__chips) z.innerHTML = dlg.__chips();
+    return;
+  }
+  const bK = c.closest("[data-cdep]");
+  if(bK){ vue.catDep = vue.catDep === bK.dataset.cdep ? null : bK.dataset.cdep; return rendre(); }
+  const bM = c.closest("[data-mois]");
+  if(bM){
+    const v = +bM.dataset.mois;
+    if(v === 0) vue.moisAgenda = jourISO().slice(0,7);
+    else {
+      const [a,m] = (vue.moisAgenda || jourISO().slice(0,7)).split("-").map(Number);
+      const d = new Date(a, m - 1 + v, 1);
+      vue.moisAgenda = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    }
+    return rendre();
+  }
+  const bJ = c.closest("[data-saut]");
+  if(bJ){ vue.decalage = +bJ.dataset.saut; return rendre(); }
+  const bP = c.closest("[data-periode]");
+  if(bP){ const v = +bP.dataset.periode;
+    vue.decalage = v === 0 ? 0 : vue.decalage + v; return rendre(); }
+
+  /* Traité avant le garde-fou ci-dessous : une ligne de résultat ne porte
+     pas de data-act, elle serait sinon purement et simplement ignorée. */
+  const lres0 = c.closest("[data-res]");
+  if(lres0){
+    const x = resultatsCourants[+lres0.dataset.res];
+    if(x){ dlg.close(); x.aller(); return rendre(); }
+    return;
+  }
+
+  const b = c.closest("[data-act]");
+  if(!b){
+    const lj = c.closest("[data-jourdate]");
+    if(lj && vue.onglet === "agenda" && !c.closest("[data-rdv]") && !c.closest("[data-tache]"))
+      return editerRdv(null, lj.dataset.jourdate);
+    return;
+  }
+  const act = b.dataset.act;
+
+  if(act === "ajouter") return ajouterDepuis("saisie", null);
+  if(act === "ajouterDoss") return ajouterDepuis("saisieDoss", b.dataset.dossier);
+  if(act === "ajouterDepense") return ajouterDepense();
+  if(act === "exporter") return exporter();
+  if(act === "importer") return importer();
+  if(act === "syncMaintenant") return Sync.synchroniser(true);
+  if(act === "syncDeconnecter"){
+    if(!confirm("Déconnecter la synchronisation ? Le carnet reste sur cet appareil et le fichier reste sur GitHub.")) return;
+    return Sync.deconnecter();
+  }
+  if(act === "syncConnecter"){
+    const v = id => (document.getElementById(id)?.value || "").trim();
+    const owner = v("gh-owner"), repo = v("gh-repo"), jeton = v("gh-jeton");
+    if(!owner || !repo || !jeton){ alert("Propriétaire, dépôt et jeton sont nécessaires."); return; }
+    Sync.connecter({ owner, repo, jeton,
+      chemin: v("gh-chemin") || "carnet.json",
+      branche: v("gh-branche") || "main" }).then(rendre);
+    return;
+  }
+  if(act === "nouvelleEcheance") return editerTache(null, true);
+  if(act === "nouveauDossier") return editerDossier(null);
+  if(act === "nouveauRevenu") return editerRevenu(null);
+  if(act === "nouvelleRentree") return editerRentree(null);
+  if(act === "nouvelleCharge"){
+    const d = dossDe(b.dataset.dossier); if(d) return editerCharge(d, null);
+    return;
+  }
+  if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
+  if(act === "nouvelAnniversaire") return editerAnniversaire(null);
+  if(act === "nouvellesVacances") return editerVacances(null);
+  if(act === "recherche") return ouvrirRecherche();
+  if(act === "ajoutRapide") return ouvrirAjoutRapide();
+  if(act === "depenseRapide") return ouvrirDepenseRapide();
+  if(act === "saisiePerso"){ vue.saisieTravail = false; return rendre(); }
+  if(act === "saisieTravail"){ vue.saisieTravail = true; return rendre(); }
+  if(act === "eclairPerso" || act === "eclairTravail"){
+    vue.eclairTravail = act === "eclairTravail";
+    const z = document.getElementById("segEclair");
+    if(z) z.innerHTML = `<button class="seg ${!vue.eclairTravail?"on":""}" data-act="eclairPerso">Perso</button>
+      <button class="seg ${vue.eclairTravail?"on":""}" data-act="eclairTravail">Travail</button>`;
+    return;
+  }
+  if(act === "viderCorbeille"){
+    if(!confirm(`Vider la corbeille ? ${db.corbeille.length} élément(s) définitivement perdus.`)) return;
+    db.corbeille = [];
+    return maj();
+  }
+  if(act === "rdvJour"){
+    const l = c.closest("[data-jourdate]");
+    return editerRdv(null, l ? l.dataset.jourdate : jourISO());
+  }
+  if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
+  if(act === "ajouter-contexte") return editerListe("contexte", null);
+  if(act === "ajouter-categorie") return editerListe("categorie", null);
+  if(act === "ajouter-cdepense") return editerListe("cdepense", null);
+  if(act === "basculerFaites"){ vue.voirFaites = !vue.voirFaites; return rendre(); }
+  if(act === "voirArgent"){ vue.voirArgent = !vue.voirArgent; return rendre(); }
+  if(act === "voirRevenus"){ vue.voirRevenus = !vue.voirRevenus; return rendre(); }
+  if(act === "voirExplication"){ vue.voirExplication = !vue.voirExplication; return rendre(); }
+  if(act === "toutReglees"){ vue.toutReglees = !vue.toutReglees; return rendre(); }
+  if(act === "viderReglees"){
+    const n = reglees().length;
+    if(!n) return;
+    if(!confirm(`Supprimer définitivement ${n} tâche${n>1?"s":""} réglée${n>1?"s":""} ? Elles ne passeront pas par la corbeille.`)) return;
+    db.taches.filter(t => t.statut === "done").forEach(t => oublier(t.id));
+    db.taches = db.taches.filter(t => t.statut !== "done");
+    vue.toutReglees = false;
+    return maj();
+  }
+  if(act === "viderExemples"){
+    db.taches.filter(t => t.demo).forEach(t => oublier(t.id));
+    db.dossiers.filter(d => d.demo).forEach(d => oublier(d.id));
+    db.taches = db.taches.filter(t => !t.demo);
+    db.dossiers = db.dossiers.filter(d => !d.demo);
+    db.reglages.exemples = false; vue.dossier = null;
+    return maj();
+  }
+  if(act === "toutEffacer"){
+    if(!confirm("Effacer la totalité du carnet ? Cette action est définitive.")) return;
+    if(!confirm("Dernière confirmation : tout sera perdu, y compris la corbeille.")) return;
+    db = etatNeuf(); db.reglages.exemples = false;
+    db.taches = []; db.dossiers = []; db.depenses = []; db.revenus = []; vue.dossier = null;
+    return maj();
+  }
+
+  const lt = trouver(c, "tache");
+  if(lt){
+    const t = db.taches.find(x => x.id === lt.id); if(!t) return;
+    if(act === "fait"){ touche(t); return basculerFait(t, lt.elt); }
+    if(act === "suivant"){
+      t.suivant_le = t.suivant_le ? null : jourISO();
+      touche(t);
+      if(!t.suivant_le) t.reports = 0;
+      /* Cocher depuis un dossier remonte aussi la tâche dans l'inbox : sans
+         cela, la décocher la renverrait aussitôt dans son dossier et elle
+         semblerait disparaître de l'onglet Tâches. */
+      else if(t.dossier_id) t.en_inbox = true;
+      return maj();
+    }
+    if(act === "rapatrier"){ t.en_inbox = true; touche(t); return maj(); }
+    if(act === "renvoyer"){ t.en_inbox = false; t.suivant_le = null; touche(t); return maj(); }
+    if(act === "remettre"){ t.statut = "inbox"; t.fait_le = null; if(t.dossier_id) t.en_inbox = true; touche(t); return maj(); }
+    if(act === "supprimerDef"){
+      if(!confirm(`Supprimer définitivement « ${t.intitule} » ? Elle ne passera pas par la corbeille.`)) return;
+      oublier(t.id); db.taches = db.taches.filter(x => x.id !== t.id); return maj();
+    }
+    if(act === "editer") return editerTache(t);
+    if(act === "jeter"){ jeter("tâche", t); db.taches = db.taches.filter(x => x.id !== t.id); return maj(); }
+  }
+
+  const lch = trouver(c, "charge");
+  if(lch && (act === "editerCharge" || act === "jeterCharge")){
+    const dd = dossDe(lch.elt.dataset.dossier);
+    const l = dd && lignesDe(dd).find(y => y.id === lch.id);
+    if(!l) return;
+    if(act === "editerCharge") return editerCharge(dd, l);
+    jeter("charge", { ...l, dossier_id:dd.id });
+    dd.lignes = dd.lignes.filter(y => y.id !== l.id);
+    return maj();
+  }
+
+  const lv = trouver(c, "rdv");
+  if(lv){
+    const r = (db.rendez_vous||[]).find(y => y.id === lv.id); if(!r) return;
+    if(act === "jeter"){ jeter("rendez-vous", r); db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id); return maj(); }
+    if(act === "editerRdv") return editerRdv(r);
+    return;
+  }
+  const lvac = trouver(c, "vac");
+  if(lvac && act === "editer"){
+    const v = (db.vacances||[]).find(y => y.id === lvac.id);
+    if(v) return editerVacances(v);
+  }
+  const la = trouver(c, "anniv");
+  if(la){
+    const a = (db.anniversaires||[]).find(y => y.id === la.id);
+    if(a && act === "editer") return editerAnniversaire(a);
+  }
+
+  const lx = trouver(c, "depense");
+  if(lx){
+    const x = db.depenses.find(y => y.id === lx.id); if(!x) return;
+    if(act === "editer") return editerDepense(x);
+    if(act === "marquerRemb"){
+      x.rembourser = !x.rembourser;
+      if(!x.rembourser) x.rembourse = false;
+      touche(x);
+      return maj();
+    }
+    if(act === "rembourser") return encaisserRemboursement(x);
+    if(act === "jeter"){ jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); return maj(); }
+  }
+
+  const lrt = trouver(c, "rentree");
+  if(lrt){
+    const r = (db.rentrees||[]).find(y => y.id === lrt.id); if(!r) return;
+    if(act === "encaisser"){
+      if(r.recu){ r.recu = false; touche(r); return maj(); }
+      /* On ne peut encaisser sans savoir combien : si le montant était
+         inconnu, c'est le moment de le renseigner. */
+      if(r.montant == null) return encaisserRentree(r);
+      r.recu = true;
+      if(!r.date) r.date = jourISO();
+      touche(r);
+      return maj();
+    }
+    if(act === "editer") return editerRentree(r);
+    if(act === "jeter"){ jeter("rentrée", r); db.rentrees = db.rentrees.filter(y => y.id !== r.id); return maj(); }
+  }
+
+  const lr = trouver(c, "revenu");
+  if(lr){
+    const r = db.revenus.find(y => y.id === lr.id); if(!r) return;
+    if(act === "editer") return editerRevenu(r);
+    if(act === "jeter"){ jeter("revenu", r); db.revenus = db.revenus.filter(y => y.id !== r.id); return maj(); }
+  }
+
+  const ld = trouver(c, "dossier");
+  if(ld){
+    const d = dossDe(ld.id); if(!d) return;
+    if(act === "ouvrir"){ vue.onglet = "suivi"; vue.dossier = d.id; vue.voirFaites = false; return rendre(); }
+    if(act === "editer") return editerDossier(d);
+    if(act === "jeter"){
+      if(!confirm(`Mettre « ${d.nom} » à la corbeille ? Ses tâches seront détachées, pas supprimées.`)) return;
+      jeter("dossier", d);
+      db.dossiers = db.dossiers.filter(x => x.id !== d.id);
+      db.taches.forEach(t => { if(t.dossier_id === d.id){ t.dossier_id = null; t.en_inbox = false; } });
+      if(vue.dossier === d.id) vue.dossier = null;
+      return maj();
+    }
+  }
+
+  for(const genre of ["contexte","categorie","cdepense"]){
+    const l = trouver(c, genre);
+    if(l && act === "editer"){
+      const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense" }[genre];
+      const item = db[tas].find(x => x.id === l.id);
+      if(item) return editerListe(genre, item);
+    }
+  }
+
+  const lc = trouver(c, "corbeille");
+  if(lc && act === "detruire"){
+    db.corbeille = db.corbeille.filter(x => x.id !== lc.id);
+    return maj();
+  }
+  if(lc && act === "restaurer"){
+    const i = db.corbeille.findIndex(x => x.id === lc.id); if(i < 0) return;
+    const x = db.corbeille[i];
+    /* Une charge ne vit pas dans une collection à part : elle appartient
+       aux lignes de son dossier. Sans ce cas particulier, la restaurer
+       la faisait simplement disparaître. */
+    if(x.genre === "charge"){
+      const d = dossDe(x.obj.dossier_id);
+      if(!d){ alert("Le dossier de cette charge n'existe plus."); return; }
+      const { dossier_id, ...ligne } = x.obj;
+      (d.lignes = d.lignes || []).push(ligne);
+    }else{
+      const cible = { "tâche":"taches", "dossier":"dossiers", "contexte":"contextes", "categorie":"categories",
+                      "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
+                      "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
+                      "rentrée":"rentrees" }[x.genre];
+      if(cible) db[cible].push(x.obj);
+    }
+    db.supprimes = (db.supprimes||[]).filter(y => y.id !== (x.obj && x.obj.id));
+    db.corbeille.splice(i,1);
+    return maj();
+  }
+});
+
+document.addEventListener("keydown", ev => {
+  const saisie = /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName);
+  if((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k"){ ev.preventDefault(); return ouvrirRecherche(); }
+  if(ev.key === "/" && !saisie){ ev.preventDefault(); return ouvrirRecherche(); }
+  if(ev.key !== "Enter") return;
+  if(ev.target.id === "saisie"){ ev.preventDefault(); ajouterDepuis("saisie", null); }
+  if(ev.target.id === "saisieDoss"){ ev.preventDefault(); ajouterDepuis("saisieDoss", ev.target.dataset.dossier); }
+  if(ev.target.id === "dep-montant" || ev.target.id === "dep-libelle"){ ev.preventDefault(); ajouterDepense(); }
+});
+
+document.addEventListener("input", ev => {
+  Sync.noterGeste();
+  if(ev.target.id === "notesDoss"){
+    const d = dossDe(ev.target.dataset.dossier);
+    if(d){ d.notes = ev.target.value; d.demo = false; touche(d); sauver(); }
+  }
+});
+
+/* Filet de sécurité : avant tout redessin, on recopie dans les données ce
+   qui est en cours de frappe dans une zone de texte. Sans cela, un rendu
+   déclenché au mauvais moment pouvait ne garder qu'une partie de la phrase. */
+function figerSaisieEnCours(){
+  const z = document.getElementById("notesDoss");
+  if(!z || !z.dataset) return;
+  const d = dossDe(z.dataset.dossier);
+  if(d && typeof z.value === "string" && d.notes !== z.value){
+    d.notes = z.value; d.demo = false; touche(d); sauver();
+  }
+}
+document.addEventListener("change", ev => {
+  const a = ev.target.dataset?.act;
+  if(a === "preavis"){ db.reglages.preavis_defaut = Math.max(0, Number(ev.target.value) || 0); sauver(); }
+  if(a === "jourDebut"){ db.reglages.jour_debut_mois = Math.min(28, Math.max(1, Number(ev.target.value) || 1)); maj(); }
+});
+
+function verifierJour(){
+  const avant = db.reglages.dernier_bascule;
+  bascule();
+  if(avant !== db.reglages.dernier_bascule) maj();
+}
+document.addEventListener("visibilitychange", () => { if(!document.hidden){ verifierJour(); Sync.auRetour(); } });
+window.addEventListener("online", () => Sync.auRetour());
+setInterval(verifierJour, 60000);
+
+/* =====================================================================
+   10. DÉMARRAGE
+   ===================================================================== */
+(async function demarrer(){
+  await Stockage.init();
+  const sauve = await Stockage.lire();
+  const m = migrer(sauve);
+  const vierge = !(m && Array.isArray(m.taches));
+  db = vierge ? etatNeuf() : Object.assign(etatNeuf(), m);
+  /* Un appareil qui découvre l'appli affiche des exemples pour ne pas être
+     vide. Tant qu'on n'y a rien saisi, ce carnet n'a aucune valeur : à la
+     première synchro il s'efface devant la version distante au lieu de
+     déverser ses exemples dans le carnet partagé. */
+  db.vierge = vierge;
+  db.version_schema = VERSION_SCHEMA;
+  db.corbeille = db.corbeille || [];
+  db.dossiers = db.dossiers || [];
+  db.revenus = db.revenus || [];
+  db.depenses = db.depenses || [];
+  db.rendez_vous = db.rendez_vous || [];
+  db.rentrees = db.rentrees || [];
+  db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
+  db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
+  db.anniversaires = (db.anniversaires && db.anniversaires.length) ? db.anniversaires : anniversairesNeufs();
+  db.categories_depense = db.categories_depense?.length ? db.categories_depense : etatNeuf().categories_depense;
+  db.taches = db.taches.map(t => tacheNeuve(t));
+  if(!db.modifie_le) db.modifie_le = new Date().toISOString();
+  appliquerTeinte();
+  bascule(); purgerCorbeille();
+  if(dedoublonner()) sauver();   /* une réparation compte comme une modification */
+  else sauver(false);
+  rendre();
+  await Sync.charger();
+  rendre();
+  Sync.synchroniser(false);
+  Sync.lancerVeille();
+})();
+</script>
+</body>
+</html>
