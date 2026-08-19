@@ -709,7 +709,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 8;
-const VERSION_APP = 46;
+const VERSION_APP = 47;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2056,13 +2056,15 @@ function vueBudget(){
       Dont ${euro(b.sortiePonctuelle,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} :
       ${ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ")}.</p>`);
   if(!jours.length){
+    /* On ne propose que les mois à venir : une facture annuelle a autant
+       d'occurrences passées que futures, et les remonter n'aide en rien. */
     const ailleurs = moisAvecMouvement()
-      .filter(n => n !== vue.decalage)
-      .sort((a,z) => Math.abs(a - vue.decalage) - Math.abs(z - vue.decalage))
+      .filter(n => n > 0 && n !== vue.decalage)
+      .sort((a,z) => a - z)
       .slice(0, 6);
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
       ailleurs.length
-        ? `Des mouvements sont enregistrés sur d'autres mois : ${ailleurs.map(n =>
+        ? `À venir sur d'autres mois : ${ailleurs.map(n =>
             `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
           ).join(" · ")}`
         : "La première saisie se fait en deux gestes : un montant, une catégorie."));
