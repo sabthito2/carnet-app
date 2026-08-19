@@ -228,6 +228,7 @@
   .hab-ligne{padding:5px 0;border-top:1px solid var(--filet)}
   .hab-nom{font-size:13.5px;padding-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hab-nom .serie{font-family:var(--mono);font-style:normal;font-size:10px;color:var(--accent);margin-left:6px}
+  .hab-nom .bilan-mois{font-family:var(--mono);font-style:normal;font-size:10px;color:var(--encre-3);margin-left:6px}
   .rond{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--filet-fort);background:transparent;
     padding:0;justify-self:center}
   .rond:hover{border-color:var(--encre-2)}
@@ -360,6 +361,7 @@
   @media(hover:none){.rdv .ico{opacity:.5}}
   .rdv .jalon{font-family:var(--mono);font-size:10px;font-style:normal;color:var(--encre-3);
     border:1px solid var(--filet);border-radius:2px;padding:0 3px}
+  .note-rdv{font-size:12.5px;color:var(--encre-2);line-height:1.45;margin-top:4px;white-space:pre-wrap}
   .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
   .rdv.tache:hover{opacity:.9}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
@@ -728,7 +730,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 9;
-const VERSION_APP = 49;
+const VERSION_APP = 50;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1113,6 +1115,25 @@ const duDossier = id => db.taches.filter(t => t.dossier_id === id && t.statut !=
 /* Un rendez-vous peut s'étendre sur plusieurs jours : on le fait alors
    apparaître sur chacun d'eux, sans avoir à le ressaisir. */
 const finRdv = r => ajouterPeriode(r.date, Math.max(1, r.duree || 1) - 1, "jour");
+
+/* Un rendez-vous peut se répéter. Plutôt que d'en créer huit copies, on
+   garde une seule fiche et on calcule les occurrences ; une date écartée
+   entre dans la liste des exceptions, ce qui permet d'annuler un seul
+   mercredi sans toucher aux autres. */
+function debutOccurrence(r, iso){
+  const duree = Math.max(1, r.duree || 1);
+  const pas = r.repete === "quinzaine" ? 14 : 7;
+  if(!r.repete) return (iso >= r.date && iso <= finRdv(r)) ? r.date : null;
+  if(iso < r.date) return null;
+  const fin = r.repete_fin || ajouterPeriode(r.date, 2, "mois");
+  const ecart = ecartJours(r.date, iso);
+  const reste = ecart % pas;
+  if(reste >= duree) return null;
+  const debut = ajouterPeriode(r.date, ecart - reste, "jour");
+  if(debut > fin) return null;
+  if((r.exceptions || []).includes(debut)) return null;
+  return debut;
+}
 /* Le suivi d'habitudes. L'identifiant d'une case cochée est déduit de
    l'habitude et du jour : deux appareils qui cochent le même jour créent
    donc le même élément, et la fusion n'en garde qu'un. */
@@ -1128,6 +1149,16 @@ function basculerHabitude(hid, iso){
     (db.habitudes_faites = db.habitudes_faites || []).push(touche({ id:cle, habitude_id:hid, date:iso }));
   }
 }
+/* Bilan du mois en cours : combien de jours cochés sur ceux écoulés. */
+function moisHabitude(hid, ref = jourISO()){
+  const d = versDate(ref);
+  const prefixe = ref.slice(0,7);
+  const ecoules = d.getDate();
+  const faits = (db.habitudes_faites || [])
+    .filter(x => x.habitude_id === hid && x.date.slice(0,7) === prefixe).length;
+  return { faits, ecoules };
+}
+
 /* Nombre de jours consécutifs jusqu'à aujourd'hui. */
 function serieHabitude(hid){
   let n = 0, d = new Date();
@@ -1147,9 +1178,9 @@ const semaineDe = iso => {
   });
 };
 
-const rdvDu = iso => (db.rendez_vous||[]).filter(r => iso >= r.date && iso <= finRdv(r))
+const rdvDu = iso => (db.rendez_vous||[]).filter(r => debutOccurrence(r, iso))
                       .sort((a,b) => (a.heure||"99").localeCompare(b.heure||"99"));
-const rangRdv = (r, iso) => ecartJours(r.date, iso) + 1;
+const rangRdv = (r, iso) => ecartJours(debutOccurrence(r, iso) || r.date, iso) + 1;
 const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5,7) && a.jour === +iso.slice(8,10));
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
 
@@ -1779,7 +1810,7 @@ function vueAccueil(){
       <span class="sem">${JOURS[dj.getDay()]}</span>
       <span class="chiffre">${dj.getDate()}</span>
       <span class="mois">${MOIS[dj.getMonth()]}</span></h1><div class="jour"></div></div>`);
-  h.push(`<p class="sous">${suiv.length} en cours, ${proches.length} échéance${proches.length>1?"s":""} d'ici 60 jours.</p>`);
+  /* Pas de récapitulatif chiffré : on lit les listes elles-mêmes. */
 
   if(!Stockage.persistant())
     h.push(`<div class="bandeau alerte"><div class="g"><b>Stockage indisponible ici.</b> Rien ne sera conservé. Téléchargez le fichier et ouvrez-le dans votre navigateur.</div></div>`);
@@ -1797,6 +1828,31 @@ function vueAccueil(){
     h.push(`<button class="filet-rappel" data-act="exporter">
       ${dep === null ? "jamais exporté" : `export il y a ${dep} j`} · sauvegarder</button>`);
 
+  /* Rendez-vous et anniversaires du jour et du lendemain */
+  const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
+  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso) });
+  const auj = paquet(j), dem = paquet(demain);
+  if(auj.rdv.length || auj.anni.length || dem.rdv.length || dem.anni.length){
+    const bloc = (p, quand) => {
+      if(!p.rdv.length && !p.anni.length) return "";
+      const l = [];
+      p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-rdvjour="${p.iso}" data-act="editerRdv">
+        <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
+        <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
+          <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
+            <span class="puce date">${quand}</span>
+            ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
+          ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div></div>`));
+      p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
+        <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
+        <div class="corps"><div class="intitule">${ech(a.nom)}</div>
+          <div class="meta"><span class="puce date">${quand}</span></div></div></div>`));
+      return l.join("");
+    };
+    const contenu = bloc(auj, "aujourd'hui") + bloc(dem, "demain");
+    h.push(groupe("À venir", null, enFiche([contenu])));
+  }
+
   if(b.revenus || b.charges || b.depense){
     const masque = "•••";
     h.push(`<button class="prive" data-act="voirArgent" title="Afficher ou masquer">
@@ -1811,29 +1867,6 @@ function vueAccueil(){
     </button>`);
   }
 
-  /* Rendez-vous et anniversaires du jour et du lendemain */
-  const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
-  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso) });
-  const auj = paquet(j), dem = paquet(demain);
-  if(auj.rdv.length || auj.anni.length || dem.rdv.length || dem.anni.length){
-    const bloc = (p, quand) => {
-      if(!p.rdv.length && !p.anni.length) return "";
-      const l = [];
-      p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-act="editerRdv">
-        <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
-        <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
-          <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
-            <span class="puce date">${quand}</span></div></div></div>`));
-      p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
-        <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
-        <div class="corps"><div class="intitule">${ech(a.nom)}</div>
-          <div class="meta"><span class="puce date">${quand}</span></div></div></div>`));
-      return l.join("");
-    };
-    const contenu = bloc(auj, "aujourd'hui") + bloc(dem, "demain");
-    h.push(groupe("À venir", null, enFiche([contenu])));
-  }
-
   /* Le suivi d'habitudes vit sur l'accueil : c'est l'écran qu'on ouvre
      chaque matin, et cocher un rond doit tenir en un geste. Aucun onglet
      supplémentaire, donc aucune case du menu à rétrécir. */
@@ -1841,15 +1874,16 @@ function vueAccueil(){
   if(habs.length){
     const sem = semaineDe(j);
     const lettres = ["L","M","M","J","V","S","D"];
-    h.push(`<div class="oeil">Habitudes<span class="a-droite">${
-      MOIS[versDate(sem[0]).getMonth()].slice(0,4)}. ${versDate(sem[0]).getDate()} – ${versDate(sem[6]).getDate()}</span></div>`);
+    h.push(`<div class="oeil">Habitudes<span class="a-droite">semaine · bilan du mois</span></div>`);
     h.push(`<div class="fiche habitudes">
       <div class="hab-entete"><span></span>${sem.map((d,k) =>
         `<span class="${d === j ? "auj" : ""}">${lettres[k]}</span>`).join("")}</div>
       ${habs.map(x => {
         const serie = serieHabitude(x.id);
+        const m = moisHabitude(x.id);
         return `<div class="hab-ligne">
-          <span class="hab-nom">${ech(x.nom)}${serie > 1 ? `<i class="serie">${serie} j</i>` : ""}</span>
+          <span class="hab-nom">${ech(x.nom)}${serie > 1 ? `<i class="serie">${serie} j</i>` : ""}${
+            m.faits ? `<i class="bilan-mois">${m.faits}/${m.ecoules}</i>` : ""}</span>
           ${sem.map(d => `<button class="rond ${habitudeFaite(x.id, d) ? "plein" : ""} ${d === j ? "auj" : ""} ${d > j ? "futur" : ""}"
             data-hab="${x.id}" data-hjour="${d}" aria-label="${ech(x.nom)} ${dateLongue(d)}"
             ${d > j ? "disabled" : ""}></button>`).join("")}
@@ -1992,10 +2026,11 @@ function vueAgenda(){
     if(ferie) marques.push(`<span class="ferie">${ech(ferie)}</span>`);
 
     const bloc = cote => rdvDu(iso).filter(r => (r.cote || "perso") === cote).map(r =>
-      `<div class="rdv" data-rdv="${r.id}" data-act="editerRdv" title="Modifier">
+      `<div class="rdv" data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier">
          <span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${
            (r.duree || 1) > 1 ? `<i class="jalon">${rangRdv(r, iso)}/${r.duree}</i> ` : ""
-         }${r.heure && rangRdv(r, iso) === 1 ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}</span>
+         }${r.heure && rangRdv(r, iso) === 1 ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}${
+           r.repete ? ` <i class="jalon">↻</i>` : ""}${r.notes ? ` <i class="jalon">✎</i>` : ""}</span>
          <button class="ico sup" data-act="jeter" title="Supprimer">✕</button></div>`).join("");
 
     const taches = cote => cote === "perso" ? tachesDu(iso).map(t =>
@@ -2726,10 +2761,39 @@ function lireHeure(v){
   return String(H).padStart(2,"0") + ":" + String(M).padStart(2,"0");
 }
 
+/* Pour un rendez-vous répété, supprimer doit demander : ce jour-là, ou
+   toute la série ? Sans cette question, annuler un mercredi de vacances
+   effacerait tous les mercredis. */
+function choisirPortee(r, debut){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-t">Supprimer « ${ech(r.intitule)} »</div>
+    <div class="dlg-c"><p style="margin:0;font-size:13.5px;color:var(--encre-2)">
+      Ce rendez-vous se répète. Voulez-vous retirer seulement celui du
+      ${dateLongue(debut)}, ou toute la série ?</p></div>
+    <div class="dlg-p">
+      <button type="button" class="btn mini creux esp" id="pNon">Annuler</button>
+      <button type="button" class="btn mini danger" id="pTout">Toute la série</button>
+      <button type="button" class="btn mini" id="pUn">Ce jour seulement</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  dlg.querySelector("#pNon").onclick = () => dlg.close();
+  dlg.querySelector("#pUn").onclick = () => {
+    dlg.close();
+    r.exceptions = [...new Set([...(r.exceptions || []), debut])];
+    touche(r); maj();
+  };
+  dlg.querySelector("#pTout").onclick = () => {
+    dlg.close();
+    jeter("rendez-vous", r);
+    db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id);
+    maj();
+  };
+}
+
 function editerRdv(r, dateProposee){
   const neuf = !r;
   const base = dateProposee || jourISO();
-  const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"", duree:1 };
+  const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"",
+                   duree:1, repete:null, repete_fin:null, exceptions:[] };
   const an = +x.date.slice(0,4), courant = new Date().getFullYear();
   const annees = [];
   for(let a = courant - 1; a <= courant + 3; a++) annees.push({ v:a, n:String(a) });
@@ -2740,11 +2804,15 @@ function editerRdv(r, dateProposee){
     { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })), duo:true },
     { cle:"annee", nom:"Année", type:"select", options:annees },
     { cle:"duree", nom:"Durée (jours)", type:"text", mode:"numeric", ph:"1", duo:true },
+    { cle:"repete", nom:"Répéter", type:"select", options:[
+        {v:"",n:"Non"},{v:"semaine",n:"Chaque semaine"},{v:"quinzaine",n:"Une semaine sur deux"}] },
+    { cle:"repete_fin", nom:"Répéter jusqu'au", type:"date" },
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
     { cle:"couleur", nom:"Surligneur", type:"select", options:[
         {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
-  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1 }, d => {
+  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1,
+       repete:x.repete || "", repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois") }, d => {
     const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
     const dim = new Date(aa, mm, 0).getDate();
@@ -2755,6 +2823,9 @@ function editerRdv(r, dateProposee){
       date: `${aa}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`,
       heure: H, intitule: d.intitule, cote: d.cote, couleur: d.couleur || "", notes: d.notes,
       duree: Math.min(60, Math.max(1, parseInt(d.duree, 10) || 1)),
+      repete: d.repete || null,
+      repete_fin: d.repete ? (d.repete_fin || ajouterPeriode(x.date, 2, "mois")) : null,
+      exceptions: x.exceptions || [],
     });
     touche(x);
     if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
@@ -3287,7 +3358,14 @@ document.addEventListener("click", ev => {
   const lv = trouver(c, "rdv");
   if(lv){
     const r = (db.rendez_vous||[]).find(y => y.id === lv.id); if(!r) return;
-    if(act === "jeter"){ jeter("rendez-vous", r); db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id); return maj(); }
+    if(act === "jeter"){
+      const jourVise = lv.elt.dataset.rdvjour || null;
+      if(r.repete && jourVise){
+        const debut = debutOccurrence(r, jourVise) || jourVise;
+        return choisirPortee(r, debut);
+      }
+      jeter("rendez-vous", r); db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id); return maj();
+    }
     if(act === "editerRdv") return editerRdv(r);
     return;
   }
