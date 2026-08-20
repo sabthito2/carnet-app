@@ -65,6 +65,12 @@
   .ligne{display:flex;align-items:flex-start;gap:11px;padding:10px 12px;position:relative;background:var(--fiche)}
   .ligne:first-child{border-top-left-radius:var(--r);border-top-right-radius:var(--r)}
   .ligne:last-child{border-bottom-left-radius:var(--r);border-bottom-right-radius:var(--r)}
+  /* La poignée est le seul point de prise : ailleurs, le doigt fait défiler
+     la page comme d'habitude. */
+  .poignee{background:none;border:0;color:var(--filet-fort);font-size:15px;line-height:1;
+    padding:2px 4px 2px 0;flex:none;cursor:grab;touch-action:none;align-self:center}
+  .poignee:hover{color:var(--encre-2)}
+  .ligne.glisse{opacity:.55;background:var(--accent-pale)}
   .cases{display:flex;gap:6px;padding-top:1px;flex:none}
   .case{width:22px;height:22px;border:1.5px solid var(--filet-fort);background:transparent;display:grid;place-items:center;
     padding:0;color:transparent;flex:none;border-radius:3px}
@@ -213,8 +219,8 @@
   .teinte{width:34px;height:34px;border-radius:50%;border:2px solid transparent;padding:0;
     box-shadow:inset 0 0 0 1px rgba(28,34,48,.12)}
   .teinte.on{border-color:var(--encre);box-shadow:inset 0 0 0 2px var(--papier)}
-  .loupe{background:none;border:0;padding:2px 5px;color:var(--encre-2);font-size:19px;line-height:1;
-    cursor:pointer;vertical-align:-3px;border-radius:var(--r)}
+  .loupe{background:none;border:0;padding:2px 6px;color:var(--encre-2);font-size:22px;line-height:1;
+    cursor:pointer;vertical-align:-4px;border-radius:var(--r)}
   .loupe:hover{color:var(--accent);background:var(--fiche-2)}
   .champ-rech{width:100%;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);
     padding:11px 13px;font-size:16px}
@@ -285,6 +291,7 @@
   .bloc-notes textarea{width:100%;background:transparent;border:0;padding:12px 13px;min-height:96px;resize:vertical;
     font-family:var(--sans);font-size:14px;line-height:1.55;display:block}
   .bloc-notes.grand textarea{min-height:300px}
+  #blocTexte{min-height:230px}
   @media(max-width:820px){ .bloc-notes.grand textarea{min-height:340px} }
   .bloc-notes textarea:focus{outline:none}
   .bloc-notes textarea::placeholder{color:var(--encre-3)}
@@ -325,6 +332,27 @@
   .surl-jaune{background:#F0E39B}
   .surl-rose{background:#F3CFDA}
   .surl-vert{background:#C8E0C4}
+
+  /* ---------- Semaine type ---------- */
+  .edt-cadre{overflow-x:auto;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche);padding:6px}
+  .edt-grille{display:grid;gap:1px;min-width:430px;position:relative;
+    grid-template-columns:34px repeat(7, minmax(52px, 1fr))}
+  .edt-coin{grid-column:1;grid-row:1}
+  .edt-jour{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--encre-3);text-align:center;align-self:center}
+  .edt-heure{grid-column:1;font-family:var(--mono);font-size:9.5px;color:var(--encre-3);
+    text-align:right;padding-right:5px;align-self:start;margin-top:-4px}
+  .edt-fond{border-top:1px solid var(--fiche-2)}
+  .edt-fond.pleine{border-top-color:var(--filet)}
+  .edt-bloc{background:var(--accent-pale);border-left:3px solid var(--accent);border-radius:2px;
+    padding:2px 5px;overflow:hidden;cursor:pointer;z-index:1;display:flex;flex-direction:column;justify-content:center}
+  .edt-bloc:hover{filter:brightness(.97)}
+  .edt-bloc b{font-size:11.5px;font-weight:600;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .edt-bloc i{font-family:var(--mono);font-style:normal;font-size:9.5px;color:var(--encre-2);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .edt-bloc.surl-jaune{background:#F0E39B;border-left-color:#C9A93A}
+  .edt-bloc.surl-rose{background:#F3CFDA;border-left-color:#C2708D}
+  .edt-bloc.surl-vert{background:#C8E0C4;border-left-color:#6E9E68}
 
   /* ---------- Agenda ---------- */
   .nav-mois{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
@@ -373,6 +401,12 @@
   .ferie{color:var(--rouge)}
   .vac{color:var(--accent)}
 
+  /* Un carré, rien de plus : vide quand il n'y a rien, plein quand un mot
+     attend. Placé près de la date, il ne réclame aucune place. */
+  .mini-carre{width:17px;height:17px;border:1.5px solid var(--filet-fort);border-radius:2px;
+    background:transparent;padding:0;vertical-align:-3px;margin-right:14px}
+  .mini-carre:hover{border-color:var(--accent)}
+  .mini-carre.rempli{background:var(--accent);border-color:var(--accent)}
   .fab{position:fixed;right:22px;bottom:26px;z-index:45;width:52px;height:52px;border-radius:50%;
     background:var(--accent);color:#fff;border:0;font-size:27px;line-height:1;font-weight:300;
     box-shadow:0 4px 14px rgba(28,34,48,.22);display:grid;place-items:center;padding:0 0 3px}
@@ -396,8 +430,11 @@
     .barre button.on{color:var(--accent)}
     /* Sur téléphone ces deux boutons sont le seul accès à la recherche et
        aux réglages : ils doivent se voir et se toucher sans viser. */
-    .loupe{font-size:24px;padding:5px 9px;color:var(--encre-2)}
-    .entete-mob .jour{display:flex;align-items:center;gap:2px}
+    /* La loupe est le seul accès à la recherche sur téléphone : elle doit
+       se voir et s'atteindre sans viser. */
+    .loupe{font-size:29px;padding:6px 10px;color:var(--encre-2)}
+    .entete-mob .jour{display:flex;align-items:center;gap:4px}
+    .mini-carre{width:20px;height:20px;margin-right:16px}
     .fab{right:16px;bottom:calc(70px + env(safe-area-inset-bottom));width:56px;height:56px;font-size:29px}
     .entete-mob{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
     .entete-mob .jour{margin:0}
@@ -742,8 +779,8 @@ const Sync = (() => {
 /* =====================================================================
    2. MODÈLE
    ===================================================================== */
-const VERSION_SCHEMA = 9;
-const VERSION_APP = 55;
+const VERSION_SCHEMA = 10;
+const VERSION_APP = 60;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -917,6 +954,8 @@ function etatNeuf(){
     rentrees: [],
     habitudes: [],
     habitudes_faites: [],
+    emplois: [],
+    bloc_notes: "",
     supprimes: [],
     corbeille: [],
     reglages: { dernier_bascule:null, dernier_export:null, preavis_defaut:30, exemples:true,
@@ -957,6 +996,10 @@ function migrer(d){
     x.rendez_vous = x.rendez_vous || [];
     x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
   }
+  if((x.version_schema ?? 9) < 10){
+    x.version_schema = 10;
+    x.emplois = x.emplois || [];
+  }
   if((x.version_schema ?? 8) < 9){
     x.version_schema = 9;
     x.habitudes = x.habitudes || [];
@@ -990,7 +1033,7 @@ function migrer(d){
 /* Collections fusionnables : chaque élément y porte un identifiant unique,
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
-                     "habitudes","habitudes_faites",
+                     "habitudes","habitudes_faites","emplois",
                      "anniversaires","vacances","contextes","categories","categories_depense"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
@@ -1065,7 +1108,7 @@ let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
-              moisAgenda:null, surligne:null, filtreCtxDoss:null };
+              moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -1117,9 +1160,15 @@ const passeSphere = t => sphere() === "travail" ? !!t.travail : !t.travail;
 
 const enCours   = () => db.taches.filter(t => t.statut !== "done");
 const inbox     = () => db.taches.filter(dansInbox);
+/* « À faire » se range à la main : dès qu'on y a glissé une ligne, l'ordre
+   choisi l'emporte sur tout classement automatique. Les tâches jamais
+   déplacées gardent le classement d'origine et se rangent à la suite. */
 const suivantes = () => inbox().filter(t => t.suivant_le)
-                   .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
-                     || b.reports - a.reports || (a.date_due||"9").localeCompare(b.date_due||"9"));
+                   .sort((a,b) =>
+                     (a.ordre ?? 1e9) - (b.ordre ?? 1e9)
+                     || (b.urgent?1:0) - (a.urgent?1:0)
+                     || b.reports - a.reports
+                     || (a.date_due||"9").localeCompare(b.date_due||"9"));
 const aTrier    = () => inbox().filter(t => !t.suivant_le)
                    .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
                      || (a.date_due||"9").localeCompare(b.date_due||"9") || b.cree_le.localeCompare(a.cree_le));
@@ -1538,6 +1587,10 @@ function analyser(texte){
       const cle = sansAccents(m.slice(1));
       const c = db.contextes.find(c => sansAccents(c.nom).startsWith(cle) || (c.alias||[]).some(a => sansAccents(a) === cle));
       if(c){ ctxId = c.id; return false; }
+      /* Aucun contexte de ce nom : peut-être une date. « @samedi » place
+         la tâche au samedi suivant, comme « samedi » seul, mais sans risque
+         de confusion avec un mot de l'intitulé. */
+      if(!date){ const iso = lireDate(m.slice(1)); if(iso){ date = iso; return false; } }
     }
     if(m.startsWith("#") && m.length > 1){
       const cle = sansAccents(m.slice(1));
@@ -1735,6 +1788,24 @@ function ouvrirAjoutRapide(){
 
 /* Même geste que pour les tâches : un bouton, un montant, une catégorie,
    et c'est noté sans quitter l'écran. */
+/* Le bloc-notes : une zone de texte, rien d'autre. Pour les pensées qui
+   passent, avant qu'on décide si elles méritent mieux. */
+function ouvrirBlocNotes(){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-t">Bloc-notes</div>
+    <div class="dlg-c" style="padding:12px 15px">
+      <div class="bloc-notes"><textarea id="blocTexte"
+        placeholder="Une idée qui passe…">${ech(db.bloc_notes || "")}</textarea></div>
+    </div>
+    <div class="dlg-p">
+      <button type="button" class="btn mini" id="blocFermer">Fermer</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  const z = document.getElementById("blocTexte");
+  z.oninput = () => { db.bloc_notes = z.value; sauver(); };
+  dlg.querySelector("#blocFermer").onclick = () => { db.bloc_notes = z.value; dlg.close(); maj(); };
+  setTimeout(() => z.focus(), 40);
+}
+
 function ouvrirDepenseRapide(){
   if(dlg.open) dlg.close();
   const chips = () => db.categories_depense.map(c =>
@@ -1827,6 +1898,8 @@ function ligneTache(t, opts = {}){
     ? (t.en_inbox ? `<button class="ico mont" data-act="renvoyer" title="Renvoyer dans le dossier">↩</button>`
                   : `<button class="ico mont" data-act="rapatrier" title="Remonter dans l'inbox">↑</button>`) : "";
   return `<div class="ligne ${faite?"faite":""}" data-tache="${t.id}">
+    ${opts.rangeable ? `<button class="poignee" data-glisser="${t.id}"
+      title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>` : ""}
     <div class="cases">
       <button class="case carre ${faite?"coche":""}" data-act="fait" title="Fait" aria-label="Marquer comme fait">${CHECK}</button>
       ${opts.sansSuivant ? "" : `<button class="case fleche ${t.suivant_le?"coche":""}" data-act="suivant" title="À faire" aria-label="Mettre dans À faire">↑</button>`}
@@ -1871,7 +1944,9 @@ function vueAccueil(){
   h.push(`<div class="entete-mob"><h1 class="titre grand-jour">
       <span class="sem">${JOURS[dj.getDay()]}</span>
       <span class="chiffre">${dj.getDate()}</span>
-      <span class="mois">${MOIS[dj.getMonth()]}</span></h1><div class="jour"></div></div>`);
+      <span class="mois">${MOIS[dj.getMonth()]}</span></h1>
+    <div class="jour"><button class="mini-carre ${db.bloc_notes.trim() ? "rempli" : ""}"
+      data-act="blocNotes" title="Bloc-notes" aria-label="Bloc-notes"></button></div></div>`);
   /* Pas de récapitulatif chiffré : on lit les listes elles-mêmes. */
 
   if(!Stockage.persistant())
@@ -1961,7 +2036,8 @@ function vueAccueil(){
       }).join("")}</div>`);
   }
 
-  h.push(groupe("À faire", suiv.length || null, suiv.length ? enFiche(suiv.map(t => ligneTache(t)))
+  h.push(groupe("À faire", suiv.length || null, suiv.length
+    ? `<div class="fiche liste rangeable">${suiv.map(t => ligneTache(t, { rangeable:true })).join("")}</div>`
     : vide("Rien en attente", "La flèche ↑ y place une tâche.")));
   h.push(groupe("Échéances · 60 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
     : vide("Aucune échéance en vue", "Rien ne tombe dans les deux mois qui viennent.")));
@@ -2013,7 +2089,8 @@ function vueTaches(){
     ${avecInbox.map(d => `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)} <span class="n">${inbox().filter(t=>t.dossier_id===d.id).length}</span></button>`).join("")}
   </div>`);
 
-  h.push(groupe("À faire", suiv.length || null, suiv.length ? enFiche(suiv.map(t => ligneTache(t)))
+  h.push(groupe("À faire", suiv.length || null, suiv.length
+    ? `<div class="fiche liste rangeable">${suiv.map(t => ligneTache(t, { rangeable:true })).join("")}</div>`
     : vide("Liste vide", "La flèche ↑ y place une tâche.")));
   h.push(groupe("À trier", tri.length || null, tri.length ? enFiche(tri.map(t => ligneTache(t)))
     : vide("Rien à trier", "Tout est rangé.")));
@@ -2068,6 +2145,7 @@ function grilleMois(annee, mois){
 }
 
 function vueAgenda(){
+  if(vue.edt) return vueEdt();
   const j = jourISO();
   if(!vue.moisAgenda) vue.moisAgenda = j.slice(0,7);
   const [an, mo] = vue.moisAgenda.split("-").map(Number);
@@ -2078,7 +2156,8 @@ function vueAgenda(){
     <button class="btn mini creux" data-mois="-1">←</button>
     <button class="btn mini creux" data-mois="0">Aujourd'hui</button>
     <button class="btn mini creux" data-mois="1">→</button>
-    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button></div>`;
+    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button>
+    <button class="btn mini creux" data-act="ouvrirEdt" title="Emploi du temps de la semaine">▦</button></div>`;
   h.push(navMois);
 
   const lignes = [];
@@ -2126,6 +2205,72 @@ function vueAgenda(){
   h.push(`<div style="margin-top:14px">${navMois}</div>`);
   h.push(`<p class="petit-detail" style="text-align:center;margin:2px 0 0">
     Sur téléphone, balayez l'écran vers la gauche ou la droite pour changer de mois.</p>`);
+  return h.join("");
+}
+
+
+/* ---- Semaine type ----
+   Une grille horaire qui se répète chaque semaine : cours, activités,
+   entraînements. Elle vit à part de l'agenda, qui reste réservé aux
+   rendez-vous datés — trente heures de cours par semaine y noieraient
+   tout le reste. */
+const JOURS_EDT = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+const enMinutes = h => { const [a,b] = String(h||"0:0").split(":").map(Number); return a*60 + (b||0); };
+
+function vueEdt(){
+  const edt = (db.emplois || []).find(x => x.id === vue.edt);
+  if(!edt){ vue.edt = null; return vueAgenda(); }
+  const entrees = (edt.entrees || []).slice()
+    .sort((a,b) => a.jour - b.jour || enMinutes(a.debut) - enMinutes(b.debut));
+
+  /* Les bornes de la journée sont choisies, pas déduites : c'est l'heure
+     d'arrivée le matin et celle de sortie qui structurent la grille. */
+  const hDebut = enMinutes(edt.debut_journee || "08:00");
+  const hFin   = enMinutes(edt.fin_journee || "18:00");
+  const lignes = Math.max(2, Math.round((hFin - hDebut) / 30));
+  const rang = m => Math.min(lignes + 2, Math.max(2, Math.round((m - hDebut) / 30) + 2));
+
+  const h = [`<button class="retour" data-act="fermerEdt">← Agenda</button>`,
+    `<div class="entete-d"><h1 class="titre">${ech(edt.nom)}</h1></div>`,
+    `<div class="meta" style="margin:0 0 16px">
+      <span class="puce date">${ech(edt.debut_journee || "08:00")} → ${ech(edt.fin_journee || "18:00")}</span>
+      <button class="btn mini creux" data-edt="${edt.id}" data-act="editerEdt">Régler</button>
+      <button class="btn mini" data-edt="${edt.id}" data-act="nouveauCreneau">+ Créneau</button>
+    </div>`];
+
+  const cases = [];
+  for(let k = 0; k < lignes; k++){
+    const m = hDebut + k * 30;
+    if(m % 60 === 0) cases.push(`<span class="edt-heure" style="grid-row:${k+2}">${String(Math.floor(m/60)).padStart(2,"0")}h</span>`);
+    cases.push(`<span class="edt-fond ${m % 60 === 0 ? "pleine" : ""}"
+      style="grid-row:${k+2};grid-column:2 / 9"></span>`);
+  }
+  entrees.forEach(e => {
+    const d = enMinutes(e.debut), f = Math.max(enMinutes(e.fin), d + 30);
+    if(f <= hDebut || d >= hFin) return;   /* hors des bornes affichées */
+    cases.push(`<div class="edt-bloc ${e.couleur ? "surl-" + e.couleur : ""}"
+      data-creneau="${e.id}" data-edt="${edt.id}" data-act="editerCreneau"
+      style="grid-column:${e.jour + 2};grid-row:${rang(d)} / ${rang(f)}">
+      <b>${ech(e.intitule)}</b>
+      <i>${ech(e.debut)}–${ech(e.fin)}${e.lieu ? " · " + ech(e.lieu) : ""}</i></div>`);
+  });
+
+  h.push(`<div class="edt-cadre"><div class="edt-grille"
+    style="grid-template-rows:22px repeat(${lignes}, 20px)">
+    <span class="edt-coin"></span>
+    ${JOURS_EDT.map((j,i) => `<span class="edt-jour" style="grid-column:${i+2};grid-row:1">${j.slice(0,3)}</span>`).join("")}
+    ${cases.join("")}
+  </div></div>`);
+
+  const dehors = entrees.filter(e => enMinutes(e.fin) <= hDebut || enMinutes(e.debut) >= hFin);
+  if(dehors.length)
+    h.push(`<p class="petit-detail" style="margin:8px 2px 0">
+      ${dehors.length} créneau${dehors.length>1?"x":""} hors des horaires affichés :
+      ${dehors.map(e => ech(e.intitule)).join(" · ")}. Élargissez la journée pour les voir.</p>`);
+
+  if(!entrees.length)
+    h.push(`<p class="petit-detail" style="margin:10px 2px 0">
+      Grille vide. Ajoutez un premier créneau : un cours, un entraînement, une activité.</p>`);
   return h.join("");
 }
 
@@ -2895,6 +3040,71 @@ function choisirPortee(r, debut){
   };
 }
 
+/* Avec plusieurs emplois du temps, on demande lequel ouvrir. */
+function choisirEdt(liste){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-t">Quel emploi du temps ?</div>
+    <div class="dlg-c"><div class="fiche liste">${liste.map(e =>
+      `<div class="ligne" data-ouvriredt="${e.id}" style="cursor:pointer">
+        <div class="corps"><div class="intitule">${ech(e.nom)}</div>
+          <div class="meta"><span class="puce">${(e.entrees||[]).length} créneau${(e.entrees||[]).length>1?"x":""}</span></div>
+        </div></div>`).join("")}</div></div>
+    <div class="dlg-p">
+      <button type="button" class="btn mini creux esp" id="edtNouveau">Nouveau</button>
+      <button type="button" class="btn mini creux" id="edtNon">Fermer</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  dlg.querySelector("#edtNon").onclick = () => dlg.close();
+  dlg.querySelector("#edtNouveau").onclick = () => { dlg.close(); editerEdt(null); };
+}
+
+function editerEdt(x0){
+  const neuf = !x0;
+  const x = x0 || { id:uid(), nom:"", entrees:[], debut_journee:"08:00", fin_journee:"18:00" };
+  formulaire(neuf ? "Nouvel emploi du temps" : "Régler l'emploi du temps", [
+    { cle:"nom", nom:"Nom" },
+    { cle:"debut_journee", nom:"Début de journée", type:"text", ph:"8h", duo:true },
+    { cle:"fin_journee", nom:"Fin de journée", type:"text", ph:"18h" },
+  ], { ...x, debut_journee:x.debut_journee || "08:00", fin_journee:x.fin_journee || "18:00" }, d => {
+    if(!d.nom) return;
+    const h1 = lireHeure(d.debut_journee), h2 = lireHeure(d.fin_journee);
+    if(h1 === null || h2 === null){ alert("Heure incomprise. Écrivez par exemple 8h, 8h30 ou 8:30."); return; }
+    if(enMinutes(h2) <= enMinutes(h1)){ alert("La fin de journée doit suivre le début."); return; }
+    x.nom = d.nom; x.debut_journee = h1; x.fin_journee = h2; touche(x);
+    if(neuf){ (db.emplois = db.emplois || []).push(x); vue.edt = x.id; }
+    maj();
+  }, neuf ? null : () => {
+    if(!confirm(`Supprimer « ${x.nom} » et tous ses créneaux ?`)) return;
+    jeter("semaine type", x);
+    db.emplois = db.emplois.filter(y => y.id !== x.id);
+    vue.edt = null; maj();
+  });
+}
+
+function editerCreneau(edt, e0){
+  const neuf = !e0;
+  const e = e0 || { id:uid(), jour:0, debut:"08:00", fin:"09:00", intitule:"", lieu:"", couleur:"" };
+  formulaire(neuf ? "Nouveau créneau" : "Modifier le créneau", [
+    { cle:"intitule", nom:"Intitulé", ph:"Mathématiques, Judo…" },
+    { cle:"jour", nom:"Jour", type:"select", options:JOURS_EDT.map((j,i) => ({ v:i, n:j })) },
+    { cle:"debut", nom:"De", type:"text", ph:"8h30", duo:true },
+    { cle:"fin", nom:"À", type:"text", ph:"9h25" },
+    { cle:"lieu", nom:"Lieu (facultatif)", duo:true },
+    { cle:"couleur", nom:"Couleur", type:"select", options:[
+        {v:"",n:"— aucune —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
+  ], e, d => {
+    const h1 = lireHeure(d.debut), h2 = lireHeure(d.fin);
+    if(!d.intitule){ alert("Il faut un intitulé."); return; }
+    if(h1 === null || h2 === null){ alert("Heure incomprise. Écrivez par exemple 8h30 ou 8:30."); return; }
+    if(enMinutes(h2) <= enMinutes(h1)){ alert("L'heure de fin doit suivre celle de début."); return; }
+    Object.assign(e, { intitule:d.intitule, jour:+d.jour, debut:h1, fin:h2, lieu:d.lieu, couleur:d.couleur });
+    touche(edt);
+    if(neuf) (edt.entrees = edt.entrees || []).push(e);
+    maj();
+  }, neuf ? null : () => {
+    edt.entrees = edt.entrees.filter(y => y.id !== e.id); touche(edt); maj();
+  });
+}
+
 function editerRdv(r, dateProposee){
   const neuf = !r;
   const base = dateProposee || jourISO();
@@ -3299,6 +3509,8 @@ document.addEventListener("click", ev => {
   if(bPr){ db.reglages.compter_prelevements = bPr.dataset.prelev === "1"; return maj(); }
   const bArch = c.closest("[data-archiver]");
   if(bArch) return archiver(bArch.dataset.archiver);
+  const bEdt = c.closest("[data-ouvriredt]");
+  if(bEdt){ if(dlg.open) dlg.close(); vue.onglet = "agenda"; vue.edt = bEdt.dataset.ouvriredt; return rendre(); }
   const bFD = c.closest("[data-fctxdoss]");
   if(bFD){ vue.filtreCtxDoss = bFD.dataset.fctxdoss || null; return rendre(); }
   const bH = c.closest("[data-hab]");
@@ -3370,12 +3582,37 @@ document.addEventListener("click", ev => {
     return;
   }
   if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
+  if(act === "nouvelEdt") return editerEdt(null);
+  if(act === "ouvrirEdt"){
+    const l = db.emplois || [];
+    if(!l.length) return editerEdt(null);
+    if(l.length === 1){ vue.edt = l[0].id; return rendre(); }
+    return choisirEdt(l);
+  }
+  if(act === "fermerEdt"){ vue.edt = null; return rendre(); }
+  if(act === "editerEdt"){
+    const x = (db.emplois||[]).find(y => y.id === b.dataset.edt);
+    if(x) return editerEdt(x);
+    return;
+  }
+  if(act === "nouveauCreneau"){
+    const x = (db.emplois||[]).find(y => y.id === b.dataset.edt);
+    if(x) return editerCreneau(x, null);
+    return;
+  }
+  if(act === "editerCreneau"){
+    const x = (db.emplois||[]).find(y => y.id === b.dataset.edt);
+    const e = x && (x.entrees||[]).find(y => y.id === b.dataset.creneau);
+    if(x && e) return editerCreneau(x, e);
+    return;
+  }
   if(act === "nouvelAnniversaire") return editerAnniversaire(null);
   if(act === "nouvellesVacances") return editerVacances(null);
   if(act === "nouvelleHabitude") return editerHabitude(null);
   if(act === "recherche") return ouvrirRecherche();
   if(act === "ajoutRapide") return ouvrirAjoutRapide();
   if(act === "depenseRapide") return ouvrirDepenseRapide();
+  if(act === "blocNotes") return ouvrirBlocNotes();
   if(act === "saisiePerso"){ vue.saisieTravail = false; return rendre(); }
   if(act === "saisieTravail"){ vue.saisieTravail = true; return rendre(); }
   if(act === "eclairPerso" || act === "eclairTravail"){
@@ -3433,7 +3670,13 @@ document.addEventListener("click", ev => {
     const t = db.taches.find(x => x.id === lt.id); if(!t) return;
     if(act === "fait"){ touche(t); return basculerFait(t, lt.elt); }
     if(act === "suivant"){
-      t.suivant_le = t.suivant_le ? null : jourISO();
+      const etaitDedans = !!t.suivant_le;
+      t.suivant_le = etaitDedans ? null : jourISO();
+      if(!etaitDedans){
+        /* Elle rejoint la fin de la liste, à une place prévisible. */
+        const rangs = suivantes().map(x => x.ordre).filter(x => typeof x === "number");
+        t.ordre = rangs.length ? Math.max(...rangs) + 1 : 1e6;
+      }
       touche(t);
       if(!t.suivant_le) t.reports = 0;
       /* Cocher depuis un dossier remonte aussi la tâche dans l'inbox : sans
@@ -3578,7 +3821,7 @@ document.addEventListener("click", ev => {
       const cible = { "tâche":"taches", "dossier":"dossiers", "contexte":"contextes", "categorie":"categories",
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
-                      "rentrée":"rentrees", "habitude":"habitudes" }[x.genre];
+                      "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     db.supprimes = (db.supprimes||[]).filter(y => y.id !== (x.obj && x.obj.id));
@@ -3621,6 +3864,61 @@ document.addEventListener("change", ev => {
   if(a === "preavis"){ db.reglages.preavis_defaut = Math.max(0, Number(ev.target.value) || 0); sauver(); }
   if(a === "jourDebut"){ db.reglages.jour_debut_mois = Math.min(28, Math.max(1, Number(ev.target.value) || 1)); maj(); }
 });
+
+/* =====================================================================
+   GLISSER-DÉPOSER
+   Les événements « pointer » couvrent la souris et le doigt d'un seul geste.
+   On déplace le nœud dans le document pendant le glissement, puis on lit
+   l'ordre obtenu à la fin : aucune position n'est calculée à l'aveugle.
+   ===================================================================== */
+let glissement = null;
+
+function ligneSous(y, conteneur, sauf){
+  const lignes = [...conteneur.querySelectorAll("[data-tache]")].filter(x => x !== sauf);
+  for(const l of lignes){
+    const r = l.getBoundingClientRect();
+    if(y < r.top + r.height / 2) return l;
+  }
+  return null;
+}
+
+document.addEventListener("pointerdown", ev => {
+  const prise = ev.target.closest && ev.target.closest("[data-glisser]");
+  if(!prise) return;
+  const ligne = prise.closest("[data-tache]");
+  const conteneur = ligne && ligne.closest(".rangeable");
+  if(!ligne || !conteneur) return;
+  ev.preventDefault();
+  glissement = { ligne, conteneur };
+  ligne.classList.add("glisse");
+  try{ prise.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", ev => {
+  if(!glissement) return;
+  ev.preventDefault();
+  const { ligne, conteneur } = glissement;
+  const cible = ligneSous(ev.clientY, conteneur, ligne);
+  if(cible) conteneur.insertBefore(ligne, cible);
+  else conteneur.appendChild(ligne);
+});
+
+function finGlissement(){
+  if(!glissement) return;
+  const { ligne, conteneur } = glissement;
+  glissement = null;
+  ligne.classList.remove("glisse");
+  /* On relit l'ordre affiché et on l'inscrit dans les données. */
+  const ids = [...conteneur.querySelectorAll("[data-tache]")].map(x => x.getAttribute("data-tache"));
+  let change = false;
+  ids.forEach((id, i) => {
+    const t = db.taches.find(x => x.id === id);
+    if(t && t.ordre !== i){ t.ordre = i; touche(t); change = true; }
+  });
+  if(change) maj();
+}
+document.addEventListener("pointerup", finGlissement);
+document.addEventListener("pointercancel", finGlissement);
 
 function decalerMois(v){
   if(v === 0){ vue.moisAgenda = jourISO().slice(0,7); return; }
@@ -3683,6 +3981,8 @@ setInterval(verifierJour, 60000);
   db.rentrees = db.rentrees || [];
   db.habitudes = db.habitudes || [];
   db.habitudes_faites = db.habitudes_faites || [];
+  db.emplois = db.emplois || [];
+  if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
   db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
   db.anniversaires = (db.anniversaires && db.anniversaires.length) ? db.anniversaires : anniversairesNeufs();
