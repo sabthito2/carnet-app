@@ -292,6 +292,9 @@
   .vide{border:1px dashed var(--filet-fort);border-radius:var(--r);padding:26px 18px;text-align:center;
     color:var(--encre-2);font-size:13.5px;background:transparent}
   .vide b{display:block;color:var(--encre);font-weight:600;margin-bottom:3px;font-size:15px}
+  /* Sur l'accueil, une journée libre ne doit pas coûter un écran de défilement. */
+  .vide.mini{padding:9px 13px;text-align:left}
+  .vide.mini b{display:inline;font-size:13.5px;font-weight:500;color:var(--encre-2);margin:0}
   .bandeau{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--accent);background:var(--accent-pale);
     border-radius:var(--r);padding:10px 13px;margin-bottom:20px;font-size:13.5px}
   .bandeau.alerte{border-color:var(--rouge);background:var(--rouge-pale)}
@@ -740,7 +743,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 9;
-const VERSION_APP = 54;
+const VERSION_APP = 55;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1843,7 +1846,9 @@ function ligneTache(t, opts = {}){
   </div>`;
 }
 
-const vide = (t,x) => `<div class="vide"><b>${t}</b>${x}</div>`;
+/* Le texte d'explication est facultatif : sans lui, on n'écrit rien
+   plutôt qu'un « undefined ». La variante « mini » tient sur une ligne. */
+const vide = (t, x, style) => `<div class="vide ${style || ""}"><b>${t}</b>${x || ""}</div>`;
 const groupe = (t,c,x) => `<div class="oeil">${t}${c!=null?` <span class="cpt">${c}</span>`:""}</div>${x}`;
 const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
 
@@ -1914,7 +1919,7 @@ function vueAccueil(){
 
   h.push(groupe("Aujourd'hui", lAuj.length || null, lAuj.length
     ? enFiche(lAuj)
-    : vide("Mer calme à l'horizon")));
+    : vide("Mer calme à l'horizon", "", "mini")));
 
   if(lDem.length) h.push(groupe("Demain", lDem.length, enFiche(lDem)));
 
