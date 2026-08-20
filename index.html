@@ -740,7 +740,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 9;
-const VERSION_APP = 53;
+const VERSION_APP = 54;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1885,44 +1885,38 @@ function vueAccueil(){
     h.push(`<button class="filet-rappel" data-act="exporter">
       ${dep === null ? "jamais exporté" : `export il y a ${dep} j`} · sauvegarder</button>`);
 
-  /* Rendez-vous et anniversaires du jour et du lendemain */
+  /* Rendez-vous et anniversaires du jour et du lendemain, en deux blocs
+     nettement séparés : d'un coup d'œil, on doit savoir si c'est aujourd'hui
+     qu'il se passe quelque chose, ou seulement demain. */
   const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
-  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso) });
-  const auj = paquet(j), dem = paquet(demain);
-  const ferieAuj = ferieDe(j), ferieDem = ferieDe(demain);
-  {
-    const bloc = (p, quand) => {
-      if(!p.rdv.length && !p.anni.length) return "";
-      const l = [];
-      p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-rdvjour="${p.iso}" data-act="editerRdv">
-        <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
-        <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
-          <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
-            <span class="puce date">${quand}</span>
-            ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
-          ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div></div>`));
-      p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
-        <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
-        <div class="corps"><div class="intitule">${ech(a.nom)}</div>
-          <div class="meta"><span class="puce date">${quand}</span></div></div></div>`));
-      return l.join("");
-    };
-    /* L'encart reste même vide : savoir qu'il n'y a rien est une information,
-       et son absence donnait l'impression d'un affichage manquant. */
-    const marque = (nom, quand) => `<div class="ligne rdv-l">
+  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso), ferie:ferieDe(iso) });
+
+  const lignesDuJour = p => {
+    const l = [];
+    if(p.ferie) l.push(`<div class="ligne rdv-l">
       <div class="heure-c ferie">★</div>
-      <div class="corps"><div class="intitule">${ech(nom)}</div>
-        <div class="meta"><span class="puce chaud">jour férié</span>
-          <span class="puce date">${quand}</span></div></div></div>`;
-    const contenu =
-      (ferieAuj ? marque(ferieAuj, "aujourd'hui") : "")
-      + bloc(auj, "aujourd'hui")
-      + (ferieDem ? marque(ferieDem, "demain") : "")
-      + bloc(dem, "demain");
-    h.push(groupe("Aujourd'hui et demain", null, contenu
-      ? enFiche([contenu])
-      : vide("Mer calme à l'horizon")));
-  }
+      <div class="corps"><div class="intitule">${ech(p.ferie)}</div>
+        <div class="meta"><span class="puce chaud">jour férié</span></div></div></div>`);
+    p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-rdvjour="${p.iso}" data-act="editerRdv">
+      <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
+      <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
+        <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
+          ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
+        ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div></div>`));
+    p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
+      <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
+      <div class="corps"><div class="intitule">${ech(a.nom)}</div></div></div>`));
+    return l;
+  };
+
+  const auj = paquet(j), dem = paquet(demain);
+  const lAuj = lignesDuJour(auj), lDem = lignesDuJour(dem);
+
+  h.push(groupe("Aujourd'hui", lAuj.length || null, lAuj.length
+    ? enFiche(lAuj)
+    : vide("Mer calme à l'horizon")));
+
+  if(lDem.length) h.push(groupe("Demain", lDem.length, enFiche(lDem)));
 
   if(b.revenus || b.charges || b.depense){
     const masque = "•••";
