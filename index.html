@@ -107,6 +107,7 @@
   .rdv-l{align-items:baseline}
   .heure-c{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;flex:none;
     width:44px;color:var(--accent);font-weight:600}
+  .heure-c.ferie{color:var(--rouge)}
   .jour-prel{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;flex:none;
     width:26px;text-align:center;color:var(--accent);border:1px solid var(--accent);border-radius:2px;
     padding:1px 0;background:var(--accent-pale);height:20px;line-height:16px}
@@ -532,12 +533,19 @@ const Sync = (() => {
   const urlFichier = () => `/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.chemin.replace(/^\/+/,"")}`;
 
   async function lireDistant(){
-    const r = await api(`${urlFichier()}?ref=${encodeURIComponent(cfg.branche)}`);
+    const url = `${urlFichier()}?ref=${encodeURIComponent(cfg.branche)}`;
+    const r = await api(url);
     if(r.status === 404) return { absent:true };
     if(!r.ok) throw new Error(await motErreur(r));
     const j = await r.json();
-    if(!j.content) throw new Error("Fichier trop volumineux pour cette méthode.");
-    return { sha:j.sha, donnees: JSON.parse(depuisB64(j.content)) };
+    /* GitHub n'inclut le contenu dans sa réponse que sous 1 Mo. Au-delà il
+       renvoie une enveloppe vide : on redemande alors le fichier brut, dont
+       la limite est cent fois plus haute. Sans cela, le carnet cesserait de
+       se synchroniser au bout de deux ou trois ans d'usage. */
+    if(j.content) return { sha:j.sha, donnees: JSON.parse(depuisB64(j.content)) };
+    const brut = await api(url, { headers:{ Accept:"application/vnd.github.raw" } });
+    if(!brut.ok) throw new Error(await motErreur(brut));
+    return { sha:j.sha, donnees: JSON.parse(await brut.text()) };
   }
 
   async function ecrireDistant(){
@@ -550,8 +558,10 @@ const Sync = (() => {
       if(!db.modifie_le) db.modifie_le = new Date().toISOString();
       const instantane = db.modifie_le;
       const corps = {
+        /* Sans indentation : sur dix ans, elle représenterait à elle seule
+           près de deux mégaoctets. L'export téléchargé, lui, reste lisible. */
         message: `Carnet · ${nomAppareil()} · ${new Date().toLocaleString("fr-FR")}`,
-        content: versB64(JSON.stringify(db, null, 2)),
+        content: versB64(JSON.stringify(db)),
         branch: cfg.branche,
       };
       if(cfg.sha) corps.sha = cfg.sha;
@@ -730,7 +740,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 9;
-const VERSION_APP = 50;
+const VERSION_APP = 53;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1019,6 +1029,9 @@ function fusionner(a, b) {
   out.corbeille = [...cb.values()].sort((x,y) => (y.le||"").localeCompare(x.le||"")).slice(0,200);
 
   out.supprimes = registre.slice(-1000);
+  /* Ce qui a été archivé ne revient pas par la fusion. */
+  const coupure = [a.reglages, b.reglages].map(r => (r||{}).archive_avant || "").sort().pop();
+  if(coupure) appliquerCoupure(out, coupure);
   out.reglages = Object.assign({}, faible.reglages || {}, fort.reglages || {});
   out.modifie_le = (a.modifie_le || "") > (b.modifie_le || "") ? a.modifie_le : b.modifie_le;
   return out;
@@ -1049,7 +1062,7 @@ let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
-              moisAgenda:null, surligne:null };
+              moisAgenda:null, surligne:null, filtreCtxDoss:null };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -1146,7 +1159,9 @@ function basculerHabitude(hid, iso){
   if(i >= 0){ db.habitudes_faites.splice(i, 1); oublier(cle); }
   else {
     db.supprimes = (db.supprimes || []).filter(x => x.id !== cle);
-    (db.habitudes_faites = db.habitudes_faites || []).push(touche({ id:cle, habitude_id:hid, date:iso }));
+    /* Une case cochée est immuable : elle existe ou non. Inutile de
+       l'horodater, ce serait un tiers de poids en plus pour rien. */
+    (db.habitudes_faites = db.habitudes_faites || []).push({ id:cle, habitude_id:hid, date:iso });
   }
 }
 /* Bilan du mois en cours : combien de jours cochés sur ceux écoulés. */
@@ -1415,6 +1430,45 @@ function dedoublonner(){
   db.depenses.forEach(x => { if(aCdep[x.categorie_id]) x.categorie_id = aCdep[x.categorie_id]; });
 
   return touche;
+}
+
+/* Archiver, c'est retirer du carnet courant ce qui est trop ancien pour
+   servir, après l'avoir téléchargé. Une date de coupure est mémorisée : la
+   fusion s'en sert pour que l'autre appareil ne réintroduise pas ce qui
+   vient d'être sorti, sans avoir à créer des milliers de traces. */
+function elementsAvant(limite){
+  return {
+    depenses: db.depenses.filter(x => x.date < limite),
+    habitudes_faites: (db.habitudes_faites||[]).filter(x => x.date < limite),
+    taches: db.taches.filter(x => x.statut === "done" && (x.fait_le || "9") < limite),
+    rendez_vous: (db.rendez_vous||[]).filter(x => x.date < limite && !x.repete),
+  };
+}
+function appliquerCoupure(base, limite){
+  if(!limite || !base) return base;
+  base.depenses = (base.depenses||[]).filter(x => x.date >= limite);
+  base.habitudes_faites = (base.habitudes_faites||[]).filter(x => x.date >= limite);
+  base.taches = (base.taches||[]).filter(x => x.statut !== "done" || (x.fait_le || "9") >= limite);
+  base.rendez_vous = (base.rendez_vous||[]).filter(x => x.date >= limite || x.repete);
+  return base;
+}
+function archiver(limite){
+  const vieux = elementsAvant(limite);
+  const n = Object.values(vieux).reduce((s,l) => s + l.length, 0);
+  if(!n){ alert("Rien à archiver avant cette date."); return; }
+  if(!confirm(`Archiver ${n} élément(s) antérieurs au ${dateCourte(limite)} ?\n\n`
+    + `Un fichier sera téléchargé, puis ces éléments quitteront le carnet.`)) return;
+  const paquet = { archive:true, coupure:limite, cree_le:new Date().toISOString(),
+                   version_schema:VERSION_SCHEMA, ...vieux };
+  const blob = new Blob([JSON.stringify(paquet, null, 2)], { type:"application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `carnet-archive-avant-${limite}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  appliquerCoupure(db, limite);
+  db.reglages.archive_avant = limite > (db.reglages.archive_avant || "") ? limite : db.reglages.archive_avant;
+  maj();
 }
 
 function purgerCorbeille(){
@@ -1799,7 +1853,10 @@ function vueAccueil(){
   const suiv = suivantes().filter(passeSphere);
   const dejaFaire = new Set(suiv.map(t => t.id));
   const proches = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 60 && !dejaFaire.has(t.id));
-  const retard = proches.filter(t => ecartJours(j, t.date_due) < 0);
+  /* Le compte des retards porte sur toutes les échéances dépassées, y compris
+     celles déjà placées dans « À faire » : sinon on en annonce deux quand
+     l'onglet Échéances en montre trois. */
+  const retard = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) < 0);
   const b = bilan(0);
   const dj = versDate(j);
   const h = [];
@@ -1832,7 +1889,8 @@ function vueAccueil(){
   const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
   const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso) });
   const auj = paquet(j), dem = paquet(demain);
-  if(auj.rdv.length || auj.anni.length || dem.rdv.length || dem.anni.length){
+  const ferieAuj = ferieDe(j), ferieDem = ferieDe(demain);
+  {
     const bloc = (p, quand) => {
       if(!p.rdv.length && !p.anni.length) return "";
       const l = [];
@@ -1849,8 +1907,21 @@ function vueAccueil(){
           <div class="meta"><span class="puce date">${quand}</span></div></div></div>`));
       return l.join("");
     };
-    const contenu = bloc(auj, "aujourd'hui") + bloc(dem, "demain");
-    h.push(groupe("À venir", null, enFiche([contenu])));
+    /* L'encart reste même vide : savoir qu'il n'y a rien est une information,
+       et son absence donnait l'impression d'un affichage manquant. */
+    const marque = (nom, quand) => `<div class="ligne rdv-l">
+      <div class="heure-c ferie">★</div>
+      <div class="corps"><div class="intitule">${ech(nom)}</div>
+        <div class="meta"><span class="puce chaud">jour férié</span>
+          <span class="puce date">${quand}</span></div></div></div>`;
+    const contenu =
+      (ferieAuj ? marque(ferieAuj, "aujourd'hui") : "")
+      + bloc(auj, "aujourd'hui")
+      + (ferieDem ? marque(ferieDem, "demain") : "")
+      + bloc(dem, "demain");
+    h.push(groupe("Aujourd'hui et demain", null, contenu
+      ? enFiche([contenu])
+      : vide("Mer calme à l'horizon")));
   }
 
   if(b.revenus || b.charges || b.depense){
@@ -2429,11 +2500,23 @@ function vueDossier(){
     : vide("Aucune échéance", "Contrôle technique, renouvellement, révision…"));
 
   h.push(`<div class="oeil">À faire${todo.length?` <span class="cpt">${todo.length}</span>`:""}</div>`);
+  /* Les mêmes filtres de contexte que dans l'onglet Tâches : dans un gros
+     dossier, savoir ce qui se fait au téléphone ou dehors change tout. */
+  const ctxPresents = db.contextes.filter(c => todo.some(t => t.contexte_id === c.id));
+  if(ctxPresents.length > 1){
+    h.push(`<div class="filtres">
+      <button class="filtre ${!vue.filtreCtxDoss?"on":""}" data-fctxdoss="">Tout <span class="n">${todo.length}</span></button>
+      ${ctxPresents.map(c => `<button class="filtre ${vue.filtreCtxDoss===c.id?"on":""}" data-fctxdoss="${c.id}">${ech(c.nom)}
+        <span class="n">${todo.filter(t => t.contexte_id === c.id).length}</span></button>`).join("")}
+    </div>`);
+  }
   h.push(`<div class="saisie" style="margin-top:0">
     <input id="saisieDoss" data-dossier="${d.id}" placeholder="Ajouter au dossier…" autocomplete="off" enterkeyhint="done">
     <button class="btn" data-act="ajouterDoss" data-dossier="${d.id}">Ajouter</button></div>`);
-  h.push(todo.length ? enFiche(todo.map(t => ligneTache(t, { sansDossier:true })))
-    : vide("Liste vide", "La flèche ↑ remonte une tâche dans l'inbox."));
+  const todoVus = todo.filter(t => !vue.filtreCtxDoss || t.contexte_id === vue.filtreCtxDoss);
+  h.push(todoVus.length ? enFiche(todoVus.map(t => ligneTache(t, { sansDossier:true })))
+    : vide(todo.length ? "Rien dans ce contexte" : "Liste vide",
+           todo.length ? "Choisissez « Tout » pour revoir l'ensemble." : "La flèche ↑ remonte une tâche dans l'inbox."));
 
   if(fait.length){
     const jj = jourISO();
@@ -2569,6 +2652,30 @@ function vueReglages(){
   ${listeMod("Contextes de tâche", db.contextes, "contexte")}
   ${listeMod("Catégories de dossier", db.categories, "categorie")}
   ${listeMod("Catégories de dépense", db.categories_depense, "cdepense")}
+
+  ${(() => {
+    const an = new Date().getFullYear();
+    const poids = Math.round(JSON.stringify(db).length / 1024);
+    const options = [1,2,3,5].map(k => {
+      const limite = `${an - k}-01-01`;
+      const n = Object.values(elementsAvant(limite)).reduce((s,l) => s + l.length, 0);
+      return { limite, k, n };
+    }).filter(o => o.n > 0);
+    return `<div class="bloc"><div class="oeil">Taille du carnet<span class="a-droite">${poids} Ko</span></div>
+      <div class="fiche" style="padding:14px">
+        <p style="margin:0 0 ${options.length?"12px":"0"};font-size:13.5px;color:var(--encre-2)">
+          ${poids < 900
+            ? "Tout va bien : le carnet est léger et se synchronise sans effort."
+            : "Le carnet s'alourdit. Archiver les années anciennes accélère la synchronisation."}
+          ${db.reglages.archive_avant ? `<br>Dernier archivage : avant le ${dateCourte(db.reglages.archive_avant)}.` : ""}</p>
+        ${options.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap">${options.map(o =>
+          `<button class="btn mini creux" data-archiver="${o.limite}">Archiver avant ${an - o.k} · ${o.n} élément${o.n>1?"s":""}</button>`
+        ).join("")}</div>
+        <p style="margin:10px 0 0;font-size:12.5px;color:var(--encre-3)">
+          Un fichier est téléchargé avant tout retrait : rien n'est détruit, seulement sorti du carnet courant.
+          Dossiers, échéances et habitudes elles-mêmes ne sont jamais touchés.</p>` : ""}
+      </div></div>`;
+  })()}
 
   <div class="bloc"><div class="oeil">Habitudes suivies
       <span class="a-droite">${(db.habitudes||[]).length}</span></div>
@@ -3191,6 +3298,10 @@ document.addEventListener("click", ev => {
   if(bD){ vue.filtreDoss = bD.dataset.fdoss || null; return rendre(); }
   const bPr = c.closest("[data-prelev]");
   if(bPr){ db.reglages.compter_prelevements = bPr.dataset.prelev === "1"; return maj(); }
+  const bArch = c.closest("[data-archiver]");
+  if(bArch) return archiver(bArch.dataset.archiver);
+  const bFD = c.closest("[data-fctxdoss]");
+  if(bFD){ vue.filtreCtxDoss = bFD.dataset.fctxdoss || null; return rendre(); }
   const bH = c.closest("[data-hab]");
   if(bH){ basculerHabitude(bH.dataset.hab, bH.dataset.hjour); return maj(); }
   const bS = c.closest("[data-sphere]");
@@ -3426,7 +3537,8 @@ document.addEventListener("click", ev => {
   const ld = trouver(c, "dossier");
   if(ld){
     const d = dossDe(ld.id); if(!d) return;
-    if(act === "ouvrir"){ vue.onglet = "suivi"; vue.dossier = d.id; vue.voirFaites = false; return rendre(); }
+    if(act === "ouvrir"){ vue.onglet = "suivi"; vue.dossier = d.id; vue.voirFaites = false;
+      vue.filtreCtxDoss = null; return rendre(); }
     if(act === "editer") return editerDossier(d);
     if(act === "jeter"){
       if(!confirm(`Mettre « ${d.nom} » à la corbeille ? Ses tâches seront détachées, pas supprimées.`)) return;
@@ -3580,6 +3692,7 @@ setInterval(verifierJour, 60000);
   if(!db.modifie_le) db.modifie_le = new Date().toISOString();
   appliquerTeinte();
   bascule(); purgerCorbeille();
+  if(db.reglages.archive_avant) appliquerCoupure(db, db.reglages.archive_avant);
   if(dedoublonner()) sauver();   /* une réparation compte comme une modification */
   else sauver(false);
   rendre();
