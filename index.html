@@ -67,10 +67,17 @@
   .ligne:last-child{border-bottom-left-radius:var(--r);border-bottom-right-radius:var(--r)}
   /* La poignée est le seul point de prise : ailleurs, le doigt fait défiler
      la page comme d'habitude. */
-  .poignee{background:none;border:0;color:var(--filet-fort);font-size:15px;line-height:1;
-    padding:2px 4px 2px 0;flex:none;cursor:grab;touch-action:none;align-self:center}
+  /* Une prise assez large pour le pouce : sur téléphone, le mode rangement
+     et ses flèches restent de toute façon le chemin le plus sûr. */
+  .poignee{background:none;border:0;color:var(--filet-fort);font-size:19px;line-height:1;
+    padding:10px 10px 10px 2px;flex:none;cursor:grab;touch-action:none;align-self:center}
   .poignee:hover{color:var(--encre-2)}
   .ligne.glisse{opacity:.55;background:var(--accent-pale)}
+  .fleche-rang{background:var(--fiche-2);border:1.5px solid var(--filet-fort);border-radius:var(--r);
+    color:var(--encre);font-size:15px;line-height:1;padding:9px 13px;margin-left:4px}
+  .fleche-rang:hover{border-color:var(--accent);color:var(--accent)}
+  .ligne.enrangement{background:var(--accent-pale)}
+  .ligne.enrangement .outils{opacity:1}
   .cases{display:flex;gap:6px;padding-top:1px;flex:none}
   .case{width:22px;height:22px;border:1.5px solid var(--filet-fort);background:transparent;display:grid;place-items:center;
     padding:0;color:transparent;flex:none;border-radius:3px}
@@ -188,7 +195,6 @@
   .jauge{height:5px;background:var(--fiche-2);border:1px solid var(--filet);border-radius:3px;margin:14px 0 7px;overflow:hidden}
   .jauge i{display:block;height:100%;background:var(--accent)}
   .jauge i.trop{background:var(--rouge)}
-  .repere{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--encre-3)}
   .petit-detail{font-size:11.5px;color:var(--encre-3);line-height:1.4;margin-top:3px}
   .explique{font-size:12.5px;color:var(--encre-2);line-height:1.5;margin:6px 2px 4px;max-width:62ch;
     padding:9px 11px;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
@@ -259,8 +265,10 @@
   .lien-mois{background:none;border:0;padding:0;color:var(--accent);font-size:13.5px;
     text-decoration:underline;text-underline-offset:3px}
   .lien-mois:hover{color:var(--encre)}
+  /* Détachée des rendez-vous : ce sont deux informations sans rapport,
+     elles ne doivent pas se lire comme un même bloc. */
   .prive{display:inline-flex;align-items:baseline;gap:9px;border:1px solid var(--filet);background:transparent;
-    border-radius:12px;padding:3px 12px;margin:-8px 0 20px;font-family:var(--mono);font-size:11px;
+    border-radius:12px;padding:4px 13px;margin:26px 0 4px;font-family:var(--mono);font-size:11px;
     color:var(--encre-3);letter-spacing:.04em}
   .prive:hover{border-color:var(--filet-fort);color:var(--encre-2)}
   .prive .v{font-variant-numeric:tabular-nums;color:var(--encre-2)}
@@ -277,6 +285,10 @@
   .tab .nom:hover{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
   .note-min{font-size:11.5px;color:var(--encre-3);margin-top:2px;display:block;max-width:230px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Un carré coloré : dans une liste de dossiers, on repère d'un coup d'œil
+     ceux qui attendent quelque chose. */
+  .marque-tache{color:var(--accent);font-weight:600;font-family:var(--sans);font-size:12.5px}
+  .marque-tache.ligne-seule{display:block;margin-top:4px}
   .lien{font-family:var(--mono);font-size:11px;text-decoration:none;border:1px solid var(--filet);border-radius:9px;
     padding:1px 8px;color:var(--accent);white-space:nowrap;display:inline-block}
   .lien:hover{background:var(--accent-pale);border-color:var(--accent)}
@@ -780,7 +792,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 10;
-const VERSION_APP = 60;
+const VERSION_APP = 62;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1108,7 +1120,7 @@ let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
-              moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null };
+              moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -1897,8 +1909,8 @@ function ligneTache(t, opts = {}){
   const monter = d && !t.date_due && !faite
     ? (t.en_inbox ? `<button class="ico mont" data-act="renvoyer" title="Renvoyer dans le dossier">↩</button>`
                   : `<button class="ico mont" data-act="rapatrier" title="Remonter dans l'inbox">↑</button>`) : "";
-  return `<div class="ligne ${faite?"faite":""}" data-tache="${t.id}">
-    ${opts.rangeable ? `<button class="poignee" data-glisser="${t.id}"
+  return `<div class="ligne ${faite?"faite":""} ${opts.rangeable && vue.rangement ? "enrangement" : ""}" data-tache="${t.id}">
+    ${opts.rangeable && !vue.rangement ? `<button class="poignee" data-glisser="${t.id}"
       title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>` : ""}
     <div class="cases">
       <button class="case carre ${faite?"coche":""}" data-act="fait" title="Fait" aria-label="Marquer comme fait">${CHECK}</button>
@@ -1908,7 +1920,10 @@ function ligneTache(t, opts = {}){
       <div class="intitule">${t.urgent?'<span class="point-urgent" title="Urgent"></span>':""}${retard?'<span class="point-retard" title="Date dépassée"></span>':""}<span class="${t.urgent?"txt-urgent":""}">${ech(t.intitule)}</span></div>
       ${meta.length ? `<div class="meta">${meta.join("")}</div>` : ""}
     </div>
-    <div class="outils">${opts.reglee
+    <div class="outils">${opts.rangeable && vue.rangement
+      ? `<button class="fleche-rang" data-act="monterTache" aria-label="Monter">▲</button>
+         <button class="fleche-rang" data-act="descendreTache" aria-label="Descendre">▼</button>`
+      : opts.reglee
       ? `<button class="ico mont" data-act="remettre" title="Remettre dans l'inbox">↩</button>
          <button class="ico sup" data-act="supprimerDef" title="Supprimer définitivement">✕</button>`
       : `${monter}
@@ -2036,9 +2051,14 @@ function vueAccueil(){
       }).join("")}</div>`);
   }
 
-  h.push(groupe("À faire", suiv.length || null, suiv.length
+  h.push(`<div class="oeil">À faire${suiv.length?` <span class="cpt">${suiv.length}</span>`:""}
+    ${suiv.length > 1 ? `<button class="a-droite lien-mois" data-act="basculerRangement">${
+      vue.rangement ? "terminer" : "ranger"}</button>` : ""}</div>`);
+  h.push(suiv.length
     ? `<div class="fiche liste rangeable">${suiv.map(t => ligneTache(t, { rangeable:true })).join("")}</div>`
-    : vide("Rien en attente", "La flèche ↑ y place une tâche.")));
+    : vide("Rien en attente", "La flèche ↑ y place une tâche."));
+  if(vue.rangement && suiv.length > 1)
+    h.push(`<p class="petit-detail" style="margin:8px 0 0">Utilisez les flèches pour changer l'ordre, puis « terminer ».</p>`);
   h.push(groupe("Échéances · 60 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
     : vide("Aucune échéance en vue", "Rien ne tombe dans les deux mois qui viennent.")));
   const f = faitesLe(j).filter(passeSphere);
@@ -2089,9 +2109,14 @@ function vueTaches(){
     ${avecInbox.map(d => `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)} <span class="n">${inbox().filter(t=>t.dossier_id===d.id).length}</span></button>`).join("")}
   </div>`);
 
-  h.push(groupe("À faire", suiv.length || null, suiv.length
+  h.push(`<div class="oeil">À faire${suiv.length?` <span class="cpt">${suiv.length}</span>`:""}
+    ${suiv.length > 1 ? `<button class="a-droite lien-mois" data-act="basculerRangement">${
+      vue.rangement ? "terminer" : "ranger"}</button>` : ""}</div>`);
+  h.push(suiv.length
     ? `<div class="fiche liste rangeable">${suiv.map(t => ligneTache(t, { rangeable:true })).join("")}</div>`
-    : vide("Liste vide", "La flèche ↑ y place une tâche.")));
+    : vide("Liste vide", "La flèche ↑ y place une tâche."));
+  if(vue.rangement && suiv.length > 1)
+    h.push(`<p class="petit-detail" style="margin:8px 0 0">Utilisez les flèches pour changer l'ordre, puis « terminer ».</p>`);
   h.push(groupe("À trier", tri.length || null, tri.length ? enFiche(tri.map(t => ligneTache(t)))
     : vide("Rien à trier", "Tout est rangé.")));
   if(reg.length){
@@ -2541,7 +2566,6 @@ function vueBudget(){
 function vueSuivi(){
   if(vue.dossier) return vueDossier();
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
-    `<p class="sous">Un dossier par sujet : le van, la mutuelle, l'assurance. Notes, tâches et échéances au même endroit.</p>`,
     `<div style="margin-bottom:16px"><button class="btn" data-act="nouveauDossier">Nouveau dossier</button></div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -2563,7 +2587,7 @@ function vueSuivi(){
       <td>${x.c ? ech(x.c.nom) : "—"}</td><td>${x.lien}</td>
       <td class="num">${ech(d.identifiant) || "—"}</td><td class="num">${ech(d.contrat) || "—"}</td>
       <td class="num">${x.cout}</td><td class="num">${x.p ? dateCourte(x.p) : "—"}</td>
-      <td class="num">${x.n || "—"}</td>
+      <td class="num">${x.n ? `<span class="marque-tache">▪ ${x.n}</span>` : "—"}</td>
       <td><span class="outils" style="opacity:1">
         <button class="ico" data-act="editer" title="Modifier">✎</button>
         <button class="ico sup" data-act="jeter" title="Corbeille">✕</button></span></td>
@@ -2571,9 +2595,9 @@ function vueSuivi(){
   h.push(`<div class="fiche liste cartes">${tri.map(d => { const x = info(d); return `<div class="ligne" data-dossier="${d.id}">
     <div class="corps"><button class="nom" data-act="ouvrir" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(d.nom)}</button>
       <div class="meta">${x.c ? `<span class="puce">${ech(x.c.nom)}</span>` : ""}
-        ${x.n ? `<span class="puce">${x.n} tâche${x.n>1?"s":""}</span>` : ""}
         ${parMoisDossier(d) ? `<span class="puce date">${x.cout}</span>` : ""}
         ${x.p ? `<span class="puce date">${dateCourte(x.p)}</span>` : ""}</div>
+      ${x.n ? `<div class="marque-tache ligne-seule">▪ ${x.n} tâche${x.n>1?"s":""}</div>` : ""}
       ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</div>
     <div class="outils"><button class="ico" data-act="editer">✎</button><button class="ico sup" data-act="jeter">✕</button></div>
   </div>`; }).join("")}</div>`);
@@ -2916,7 +2940,8 @@ function rendre(){
          d'ajouter une tâche visible ferait bouger la page pour rien. */
       try{
         const r = n.getBoundingClientRect();
-        if(r.top < 60 || r.bottom > (window.innerHeight || 800) - 60)
+        /* Pendant un rangement, la page ne doit pas bouger sous le doigt. */
+        if(!vue.rangement && (r.top < 60 || r.bottom > (window.innerHeight || 800) - 60))
           n.scrollIntoView({ block:"center", behavior:"smooth" });
       }catch(e){}
       setTimeout(() => n.classList.remove("neuf"), 1600);
@@ -3636,6 +3661,7 @@ document.addEventListener("click", ev => {
   if(act === "ajouter-categorie") return editerListe("categorie", null);
   if(act === "ajouter-cdepense") return editerListe("cdepense", null);
   if(act === "basculerFaites"){ vue.voirFaites = !vue.voirFaites; return rendre(); }
+  if(act === "basculerRangement"){ vue.rangement = !vue.rangement; return rendre(); }
   if(act === "voirArgent"){ vue.voirArgent = !vue.voirArgent; return rendre(); }
   if(act === "voirRevenus"){ vue.voirRevenus = !vue.voirRevenus; return rendre(); }
   if(act === "voirExplication"){ vue.voirExplication = !vue.voirExplication; return rendre(); }
@@ -3683,6 +3709,20 @@ document.addEventListener("click", ev => {
          cela, la décocher la renverrait aussitôt dans son dossier et elle
          semblerait disparaître de l'onglet Tâches. */
       else if(t.dossier_id) t.en_inbox = true;
+      return maj();
+    }
+    if(act === "monterTache" || act === "descendreTache"){
+      /* On renumérote la liste affichée puis on échange deux voisins :
+         ainsi l'ordre reste cohérent même s'il n'avait jamais été fixé. */
+      const liste = suivantes();
+      liste.forEach((x,i) => { if(x.ordre !== i){ x.ordre = i; touche(x); } });
+      const i = liste.findIndex(x => x.id === t.id);
+      const k = act === "monterTache" ? i - 1 : i + 1;
+      if(k < 0 || k >= liste.length) return;
+      const autre = liste[k];
+      const tmp = t.ordre; t.ordre = autre.ordre; autre.ordre = tmp;
+      touche(t); touche(autre);
+      vue.surligne = t.id;
       return maj();
     }
     if(act === "urgent"){ t.urgent = !t.urgent; touche(t); return maj(); }
