@@ -153,6 +153,10 @@
   .saisie input:focus{border-color:var(--accent);outline:none}
   .saisie input.court{flex:0 0 110px;font-family:var(--mono);font-variant-numeric:tabular-nums}
   .aide{font-family:var(--mono);font-size:11px;color:var(--encre-3);margin:-8px 0 18px}
+  .aide-pied{margin:32px 0 0;padding-top:14px;border-top:1px solid var(--filet);
+    font-size:12px;color:var(--encre-3);line-height:1.5}
+  .aide-pied p{margin:0 0 5px}
+  .aide-pied b{color:var(--encre-2);font-weight:600}
   .aide b{color:var(--accent);font-weight:400}
 
   .btn{background:var(--encre);color:var(--papier);border:1px solid var(--encre);border-radius:var(--r);
@@ -166,6 +170,8 @@
 
   .filtres{display:flex;flex-wrap:wrap;gap:2px 20px;margin-bottom:14px}
   .filtres.spheres{gap:2px 18px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--filet)}
+  .filtres.moyens{gap:2px 16px;margin-top:-4px}
+  .filtres.moyens .filtre{font-size:13px}
   .boites{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:-6px 0 12px}
   .segments{display:inline-flex;border:1.5px solid var(--filet-fort);border-radius:var(--r);overflow:hidden}
   .seg{background:transparent;border:0;padding:6px 15px;font-size:13.5px;color:var(--encre-2)}
@@ -181,20 +187,25 @@
   .filtre.on .n{color:var(--accent)}
   .filtre.doss.on{color:var(--encre);border-bottom-color:var(--encre)}
   .filtre.doss.on .n{color:var(--encre-2)}
+  /* Le rouge est le signal de l'urgence : le filtre porte la même couleur
+     que le point qui marque les tâches. */
+  .filtre.urgent-f{color:var(--rouge)}
+  .filtre.urgent-f .pastille-urg{width:9px;height:9px;border-radius:50%;background:var(--rouge);
+    display:inline-block;margin-right:7px}
+  .filtre.urgent-f:hover{color:var(--rouge);opacity:.8}
+  .filtre.urgent-f.on{color:var(--rouge);font-weight:600;border-bottom-color:var(--rouge)}
+  .filtre.urgent-f.on .n{color:var(--rouge)}
 
   /* ---------- Budget ---------- */
-  .compteur{border:1px solid var(--filet);background:var(--fiche);border-radius:var(--r);padding:18px 18px 16px;margin-bottom:20px}
-  .compteur .etiq{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--encre-3)}
+  .compteur{border:1px solid var(--filet);background:var(--fiche);border-radius:var(--r);
+    padding:12px 15px;margin-bottom:18px}
+  .cpt-l{display:flex;align-items:baseline;gap:10px;padding:3px 0;flex-wrap:wrap}
+  .cpt-n{font-size:13.5px;color:var(--encre-2);flex:1;min-width:120px}
+  .cpt-v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;font-weight:600}
+  .cpt-v.neg{color:var(--rouge)}
+  .cpt-note{font-size:11.5px;color:var(--encre-3);flex-basis:100%}
+  .cpt-filet{height:1px;background:var(--filet);margin:7px 0}
   /* Discret : lisible pour soi, difficile à déchiffrer par-dessus l'épaule. */
-  .grand{font-family:var(--mono);font-size:23px;line-height:1.15;font-variant-numeric:tabular-nums;
-    letter-spacing:-.01em;margin:4px 0 2px;font-weight:600}
-  .grand.neg{color:var(--rouge)}
-  .grand .u{font-size:15px;color:var(--encre-3)}
-  .parjour{font-size:13.5px;color:var(--encre-2)}
-  .parjour b{font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
-  .jauge{height:5px;background:var(--fiche-2);border:1px solid var(--filet);border-radius:3px;margin:14px 0 7px;overflow:hidden}
-  .jauge i{display:block;height:100%;background:var(--accent)}
-  .jauge i.trop{background:var(--rouge)}
   .petit-detail{font-size:11.5px;color:var(--encre-3);line-height:1.4;margin-top:3px}
   .explique{font-size:12.5px;color:var(--encre-2);line-height:1.5;margin:6px 2px 4px;max-width:62ch;
     padding:9px 11px;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
@@ -792,7 +803,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 10;
-const VERSION_APP = 62;
+const VERSION_APP = 65;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -829,6 +840,21 @@ function resteEnMots(iso, ref = jourISO()){
   if(n < 365) return `dans ${Math.round(n/30)} mois`;
   return `dans ${(n/365).toFixed(1).replace(".",",")} an`;
 }
+/* Moyens de paiement. Les espèces ont un statut à part : elles ont déjà été
+   décomptées au moment du retrait, donc les recompter à la dépense ferait
+   payer deux fois. On les enregistre pour savoir où l'argent est parti,
+   sans les ajouter au total. */
+const MOYENS = [
+  { cle:"cbl", nom:"CB L" },
+  { cle:"cbb", nom:"CB B" },
+  { cle:"cbw", nom:"CB W" },
+  { cle:"cheque", nom:"Chèque" },
+  { cle:"especes", nom:"Espèces" },
+];
+const MOYEN_DEFAUT = "cbl";
+const nomMoyen = c => (MOYENS.find(m => m.cle === c) || {}).nom || "";
+const enEspeces = x => x.moyen === "especes";
+
 const PERIODES = { mensuel:1, bimestriel:2, trimestriel:3, semestriel:6, annuel:12, biennal:24 };
 
 /* --- Calendrier français --- */
@@ -964,6 +990,7 @@ function etatNeuf(){
     anniversaires: anniversairesNeufs(),
     vacances: vacancesNeuves(),
     rentrees: [],
+    restaures: [],
     habitudes: [],
     habitudes_faites: [],
     emplois: [],
@@ -1056,9 +1083,26 @@ function fusionner(a, b) {
   const fort = aPlusRecent ? a : b, faible = aPlusRecent ? b : a;
   const out = Object.assign({}, faible, fort);
 
-  const supprimes = [...(a.supprimes || []), ...(b.supprimes || [])];
-  const vus = new Set(), registre = [];
-  supprimes.forEach(x => { if(x && x.id && !vus.has(x.id)){ vus.add(x.id); registre.push(x); } });
+  /* Un même élément peut avoir été supprimé ici et restauré là : c'est la
+     date la plus récente qui tranche, dans un sens comme dans l'autre. */
+  const dernier = listes => {
+    const m = new Map();
+    listes.forEach(l => (l || []).forEach(x => {
+      if(!x || !x.id) return;
+      const v = m.get(x.id);
+      if(!v || (x.le || "") > (v.le || "")) m.set(x.id, x);
+    }));
+    return m;
+  };
+  const morts = dernier([a.supprimes, b.supprimes]);
+  const vivants = dernier([a.restaures, b.restaures]);
+  const vus = new Set();
+  morts.forEach((x, id) => {
+    const r = vivants.get(id);
+    if(!r || (r.le || "") <= (x.le || "")) vus.add(id);
+  });
+  const registre = [...morts.values()].filter(x => vus.has(x.id));
+  out.restaures = [...vivants.values()].slice(-1000);
 
   /* Pour un élément présent des deux côtés, c'est sa propre date de
      modification qui décide, pas celle du carnet qui le porte. On ne
@@ -1084,7 +1128,10 @@ function fusionner(a, b) {
 
   const cb = new Map();
   [...(faible.corbeille || []), ...(fort.corbeille || [])].forEach(x => { if(x && x.id) cb.set(x.id, x); });
-  out.corbeille = [...cb.values()].sort((x,y) => (y.le||"").localeCompare(x.le||"")).slice(0,200);
+  /* Une entrée de corbeille retirée ne doit pas revenir : elle est traitée
+     comme tout le reste, via le registre. */
+  out.corbeille = [...cb.values()].filter(x => !vus.has(x.id))
+    .sort((x,y) => (y.le||"").localeCompare(x.le||"")).slice(0,200);
 
   out.supprimes = registre.slice(-1000);
   /* Ce qui a été archivé ne revient pas par la fusion. */
@@ -1120,7 +1167,8 @@ let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
-              moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false };
+              moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
+              filtreUrgent:false, moyen:null };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -1420,6 +1468,7 @@ const sommeDep = l => l.reduce((s,x) => s + (x.montant || 0), 0);
 function bilan(decalage = 0){
   const deb = debutPeriode(decalage), fin = finPeriode(deb), j = jourISO();
   const dep = depensesDe(deb, fin);
+  const especes = dep.filter(enEspeces).reduce((s,x) => s + (x.montant||0), 0);
   const revenus = totalRevenus(), charges = totalCharges();
   /* Une rentrée ponctuelle — remboursement, prime, vente — ne compte qu'une
      fois encaissée. Tant qu'elle est « à venir », elle est signalée à part
@@ -1438,14 +1487,14 @@ function bilan(decalage = 0){
   const ponctuels = prelevementsPonctuels(deb, fin);
   const sortiePonctuelle = compterPrelevements()
     ? ponctuels.reduce((s, x) => s + (x.l.montant || 0), 0) : 0;
-  const depense = sommeDep(dep);
+  const depense = sommeDep(dep.filter(x => !enEspeces(x)));
   const reste = disponible - depense - sortiePonctuelle;
   const total = ecartJours(deb, fin) + 1;
   const ecoules = Math.min(total, Math.max(0, ecartJours(deb, j) + 1));
   const restants = Math.max(0, total - ecoules) + (j >= deb && j <= fin ? 0 : 0);
   const encore = j >= deb && j <= fin ? Math.max(1, total - ecoules + 1) : total;
   return { deb, fin, dep, revenus, charges, disponible, depense, reste, total, ecoules, restants, encore,
-           encaissees, attendues, attente, avances, ponctuels, sortiePonctuelle,
+           encaissees, attendues, attente, avances, ponctuels, sortiePonctuelle, especes,
            reel: chargesReelles(deb, fin), courante: j >= deb && j <= fin };
 }
 
@@ -1542,13 +1591,29 @@ function purgerCorbeille(){
      un appareil resté éteint deux mois ne doit pas ressusciter ses effacés. */
   const vieux = new Date(Date.now() - 180*86400000).toISOString();
   db.supprimes = (db.supprimes || []).filter(x => x.le >= vieux).slice(-1000);
+  db.restaures = (db.restaures || []).filter(x => x.le >= vieux).slice(-1000);
 }
 /* Un élément supprimé doit le rester : sans ce registre, la fusion le
    verrait « présent chez l'autre » et le ferait revenir à chaque synchro. */
 function oublier(id){
   if(!id) return;
   db.supprimes = db.supprimes || [];
-  if(!db.supprimes.some(x => x.id === id)) db.supprimes.push({ id, le:new Date().toISOString() });
+  db.restaures = (db.restaures || []).filter(x => x.id !== id);
+  const le = new Date().toISOString();
+  const i = db.supprimes.findIndex(x => x.id === id);
+  if(i >= 0) db.supprimes[i].le = le; else db.supprimes.push({ id, le });
+}
+
+/* Restaurer, c'est l'inverse d'oublier. Sans trace datée, le registre de
+   suppressions de l'autre appareil reprenait le dessus à la synchro suivante
+   et l'élément retournait à la corbeille. */
+function retrouver(id){
+  if(!id) return;
+  db.supprimes = (db.supprimes || []).filter(x => x.id !== id);
+  db.restaures = db.restaures || [];
+  const le = new Date().toISOString();
+  const i = db.restaures.findIndex(x => x.id === id);
+  if(i >= 0) db.restaures[i].le = le; else db.restaures.push({ id, le });
 }
 function jeter(genre, obj){
   db.corbeille.unshift({ id:uid(), genre, obj:structuredClone(obj), le:jourISO() });
@@ -1629,7 +1694,7 @@ const ONGLETS = [
   { id:"taches",   nom:"Tâches",    g:"☐" },
   { id:"echeances",nom:"Échéances", g:"◷" },
   { id:"agenda",   nom:"Agenda",    g:"▦" },
-  { id:"budget",   nom:"Budget",    g:"₣" },
+  { id:"budget",   nom:"Budget",    g:"◐" },
   { id:"suivi",    nom:"Suivi",     g:"▤" },
   { id:"reglages", nom:"Réglages",  g:"⚙" },
 ];
@@ -1840,7 +1905,8 @@ function ouvrirDepenseRapide(){
     const m = lireMontant(im.value);
     if(m === null || m === 0){ im.focus(); return; }
     const x = touche({ id:uid(), date:jourISO(), montant:Math.abs(m),
-      categorie_id:vue.catDep || null, libelle:(il.value || "").trim(), dossier_id:null });
+      categorie_id:vue.catDep || null, libelle:(il.value || "").trim(), dossier_id:null,
+      moyen: vue.moyen || MOYEN_DEFAUT });
     db.depenses.push(x);
     vue.decalage = 0;
     vue.surligne = x.id;
@@ -1936,6 +2002,11 @@ function ligneTache(t, opts = {}){
 
 /* Le texte d'explication est facultatif : sans lui, on n'écrit rien
    plutôt qu'un « undefined ». La variante « mini » tient sur une ligne. */
+/* Le mode d'emploi se lit en bas, une fois qu'on a vu le contenu. Il ne
+   prend la place de rien et reste à portée quand on cherche. */
+const piedAide = lignes => `<div class="aide-pied">${
+  lignes.filter(Boolean).map(l => `<p>${l}</p>`).join("")}</div>`;
+
 const vide = (t, x, style) => `<div class="vide ${style || ""}"><b>${t}</b>${x || ""}</div>`;
 const groupe = (t,c,x) => `<div class="oeil">${t}${c!=null?` <span class="cpt">${c}</span>`:""}</div>${x}`;
 const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
@@ -1943,7 +2014,7 @@ const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
 /* ---- Accueil ---- */
 function vueAccueil(){
   const j = jourISO();
-  const suiv = suivantes().filter(passeSphere);
+  const suiv = suivantes().filter(t => passeSphere(t) && (!vue.filtreUrgent || t.urgent));
   const dejaFaire = new Set(suiv.map(t => t.id));
   const proches = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 60 && !dejaFaire.has(t.id));
   /* Le compte des retards porte sur toutes les échéances dépassées, y compris
@@ -2051,15 +2122,23 @@ function vueAccueil(){
       }).join("")}</div>`);
   }
 
+  /* Le même filtre que dans l'onglet Tâches : marquer une tâche du point
+     rouge revient à décider qu'on s'en occupe aujourd'hui, et l'accueil est
+     l'écran où on prend cette décision. */
+  const nUrg = suivantes().filter(t => passeSphere(t) && t.urgent).length;
   h.push(`<div class="oeil">À faire${suiv.length?` <span class="cpt">${suiv.length}</span>`:""}
-    ${suiv.length > 1 ? `<button class="a-droite lien-mois" data-act="basculerRangement">${
+    ${nUrg || vue.filtreUrgent ? `<button class="a-droite filtre urgent-f ${vue.filtreUrgent?"on":""}"
+      data-furgent="1" style="border:0;padding:0 0 0 12px"><span class="pastille-urg"></span>${
+      vue.filtreUrgent ? "tout voir" : nUrg + " prioritaire" + (nUrg>1?"s":"")}</button>` : ""}
+    ${suiv.length > 1 && !vue.filtreUrgent ? `<button class="a-droite lien-mois" data-act="basculerRangement">${
       vue.rangement ? "terminer" : "ranger"}</button>` : ""}</div>`);
   h.push(suiv.length
     ? `<div class="fiche liste rangeable">${suiv.map(t => ligneTache(t, { rangeable:true })).join("")}</div>`
-    : vide("Rien en attente", "La flèche ↑ y place une tâche."));
+    : vide(vue.filtreUrgent ? "Aucune tâche prioritaire" : "Rien en attente",
+           vue.filtreUrgent ? "" : "La flèche ↑ y place une tâche.", vue.filtreUrgent ? "mini" : ""));
   if(vue.rangement && suiv.length > 1)
     h.push(`<p class="petit-detail" style="margin:8px 0 0">Utilisez les flèches pour changer l'ordre, puis « terminer ».</p>`);
-  h.push(groupe("Échéances · 60 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
+  h.push(groupe("Échéances · 2 mois", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
     : vide("Aucune échéance en vue", "Rien ne tombe dans les deux mois qui viennent.")));
   const f = faitesLe(j).filter(passeSphere);
   if(f.length) h.push(groupe("Réglé aujourd'hui", f.length, enFiche(f.map(t => ligneTache(t, { reglee:true })))));
@@ -2075,11 +2154,11 @@ function vueAccueil(){
 function vueTaches(){
   const j = jourISO();
   const passe = t => passeSphere(t)
+                  && (!vue.filtreUrgent || t.urgent)
                   && (!vue.filtreCtx || t.contexte_id === vue.filtreCtx)
                   && (!vue.filtreDoss || t.dossier_id === vue.filtreDoss);
   const suiv = suivantes().filter(passe), tri = aTrier().filter(passe), reg = reglees().filter(passe);
   const h = [`<div class="entete-mob"><h1 class="titre">Tâches</h1><div class="jour">${dateCourte(j)}</div></div>`,
-    `<p class="sous">La case coche ce qui est fait, la flèche remplit « À faire ».</p>`,
     `<div class="saisie"><input id="saisie" placeholder="Ajouter une tâche…" autocomplete="off" enterkeyhint="done">
       <button class="btn" data-act="ajouter">Ajouter</button></div>`,
     `<div class="boites">
@@ -2089,7 +2168,7 @@ function vueTaches(){
         <button class="seg ${destinationTravail()?"on":""}" data-act="saisieTravail">Travail</button>
       </div>
     </div>`,
-    `<p class="aide"><b>@</b>contexte · <b>#</b>dossier · <b>demain</b> <b>+3j</b> <b>12/09</b> · <b>'</b> à faire</p>`];
+  ];
 
   const nPerso = inbox().filter(t => !t.travail).length;
   const nTravail = inbox().filter(t => t.travail).length;
@@ -2098,15 +2177,23 @@ function vueTaches(){
     <button class="filtre ${sphere()==="travail"?"on":""}" data-sphere="travail">Travail <span class="n">${nTravail}</span></button>
   </div>`);
 
+  const nUrgent = inbox().filter(t => passeSphere(t) && t.urgent).length;
   const cCtx = id => inbox().filter(t => passeSphere(t) && t.contexte_id === id).length;
   h.push(`<div class="filtres">
+    <button class="filtre urgent-f ${vue.filtreUrgent?"on":""}" data-furgent="1">
+      <span class="pastille-urg"></span>Prioritaires <span class="n">${nUrgent}</span></button>
     <button class="filtre ${!vue.filtreCtx?"on":""}" data-fctx="">Tout <span class="n">${inbox().filter(passeSphere).length}</span></button>
     ${db.contextes.map(c => `<button class="filtre ${vue.filtreCtx===c.id?"on":""}" data-fctx="${c.id}">${ech(c.nom)} <span class="n">${cCtx(c.id)}</span></button>`).join("")}
   </div>`);
   const avecInbox = db.dossiers.filter(d => inbox().some(t => t.dossier_id === d.id));
   if(avecInbox.length) h.push(`<div class="filtres">
     <button class="filtre doss ${!vue.filtreDoss?"on":""}" data-fdoss="">Tous dossiers</button>
-    ${avecInbox.map(d => `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)} <span class="n">${inbox().filter(t=>t.dossier_id===d.id).length}</span></button>`).join("")}
+    ${avecInbox.map(d => {
+      const remontees = inbox().filter(t => passeSphere(t) && t.dossier_id === d.id).length;
+      const total = duDossier(d.id).filter(passeSphere).length;
+      return `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)}
+        <span class="n">${remontees}/${total}</span></button>`;
+    }).join("")}
   </div>`);
 
   h.push(`<div class="oeil">À faire${suiv.length?` <span class="cpt">${suiv.length}</span>`:""}
@@ -2132,6 +2219,11 @@ function vueTaches(){
     boutons.push(`<button class="btn mini danger" data-act="viderReglees">Vider les réglées</button>`);
     h.push(`<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">${boutons.join("")}</div>`);
   }
+  h.push(piedAide([
+    "La case coche ce qui est fait, la flèche <b>↑</b> remplit « À faire ».",
+    "À la saisie : <b>@</b>contexte · <b>#</b>dossier · <b>@samedi</b> <b>demain</b> <b>+3j</b> <b>12/09</b> pour la date · <b>'</b> pour « À faire ».",
+    "Le rond rouge marque une tâche prioritaire ; le filtre rouge ne montre qu'elles.",
+  ]));
   return h.join("");
 }
 
@@ -2139,15 +2231,18 @@ function vueTaches(){
 function vueEcheances(){
   const j = jourISO(), l = datees().filter(passeSphere);
   const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 30 ? 1 : n <= 90 ? 2 : 3; };
-  const noms = ["En retard","30 jours","90 jours","Plus tard"];
+  const noms = ["En retard","30 jours","3 mois","Plus tard"];
   const h = [`<div class="entete-mob"><h1 class="titre">Échéances</h1><div class="jour">${dateCourte(j)}</div></div>`,
-    `<p class="sous">Toutes les tâches qui ont une date. Elle remonte dans l'inbox au préavis, et se reconduit toute seule si elle est récurrente.</p>`,
     `<div style="margin-bottom:6px"><button class="btn" data-act="nouvelleEcheance">Nouvelle échéance</button></div>`];
   if(!l.length) return h.join("") + vide("Aucune échéance", "Contrôle technique, mutuelle, assurance… ajoutez la première.");
   for(let s = 0; s < 4; s++){
     const g = l.filter(t => seau(t) === s);
     if(g.length) h.push(groupe(noms[s], g.length, enFiche(g.map(t => ligneTache(t, { veille:true })))));
   }
+  h.push(piedAide([
+    "Toutes les tâches qui portent une date.",
+    "Chacune remonte dans l'inbox au moment de son <b>préavis</b>, et se reconduit seule si elle est récurrente.",
+  ]));
   return h.join("");
 }
 
@@ -2228,8 +2323,11 @@ function vueAgenda(){
   /* Les mêmes flèches en bas : après avoir parcouru le mois, on ne veut pas
      remonter en haut pour passer au suivant. */
   h.push(`<div style="margin-top:14px">${navMois}</div>`);
-  h.push(`<p class="petit-detail" style="text-align:center;margin:2px 0 0">
-    Sur téléphone, balayez l'écran vers la gauche ou la droite pour changer de mois.</p>`);
+  h.push(piedAide([
+    "Sur téléphone, balayez vers la gauche ou la droite pour changer de mois.",
+    "Un clic sur une journée y ajoute un rendez-vous. Le bouton <b>▦</b> ouvre l'emploi du temps de la semaine.",
+    "Les échéances apparaissent en gris pâle, les vacances par un liseré à gauche.",
+  ]));
   return h.join("");
 }
 
@@ -2296,6 +2394,10 @@ function vueEdt(){
   if(!entrees.length)
     h.push(`<p class="petit-detail" style="margin:10px 2px 0">
       Grille vide. Ajoutez un premier créneau : un cours, un entraînement, une activité.</p>`);
+  h.push(piedAide([
+    "Cette semaine se répète à l'identique et n'apparaît pas dans l'agenda, réservé aux rendez-vous datés.",
+    "Le bouton <b>Régler</b> fixe le début et la fin de journée affichés.",
+  ]));
   return h.join("");
 }
 
@@ -2322,31 +2424,25 @@ function vueBudget(){
     h.push(vide("Le budget est vide",
       "Commencez par renseigner vos revenus dans Réglages. Vos factures et abonnements se saisissent dans les dossiers du Suivi."));
   }else{
-    const pc = b.disponible > 0 ? Math.min(100, (b.depense / b.disponible) * 100) : (b.depense > 0 ? 100 : 0);
+    /* Trois groupes courts, en chiffres discrets : le solde, ce qui sort
+       encore, puis d'où vient le calcul. Aucun grand nombre. */
     const aPrel = resteAPrelever(b.deb, b.fin);
-    const details = [`${euro(b.depense,0)} dépensés ${b.courante ? "ce mois-ci" : "sur " + nomPeriode}`];
-    if(b.sortiePonctuelle > 0)
-      details.push(`${euro(b.sortiePonctuelle,0)} de facture annuelle retirés en plus`);
-    if(aPrel > 0 && b.courante)
-      details.push(`${euro(aPrel,0)} encore à prélever, déjà retirés`);
+    const ligne = (nom, valeur, note, cl) => `<div class="cpt-l">
+      <span class="cpt-n">${nom}</span>
+      <span class="cpt-v ${cl||""}">${valeur}</span>
+      ${note ? `<span class="cpt-note">${note}</span>` : ""}</div>`;
 
     h.push(`<div class="compteur">
-      <div class="etiq">${b.courante ? "Il reste" : "Il resterait sur " + nomPeriode}</div>
-      <div class="grand ${b.reste<0?"neg":""}">${euro(b.reste,0).replace(" €",'<span class="u"> €</span>')}</div>
-      <div class="parjour">${b.courante
-        ? `pour finir le mois, soit <b>${euro(b.reste / b.encore, 0)}</b> par jour pendant ${b.encore} jours`
-        : `sur la période close · ${b.total} jours`}</div>
-      <div class="jauge"><i class="${b.depense>b.disponible?"trop":""}" style="width:${pc}%"></i></div>
-      <div class="petit-detail">${details.join(" · ")}</div>
-    </div>`);
-
-    h.push(`<div class="bilan">
-      <div><div class="e">Ce qu'il y avait au départ</div><div class="v">${euroCourt(b.disponible)}</div></div>
-      <div><div class="e">Factures et abonnements</div><div class="v moins">${euroCourt(b.charges)}</div></div>
-      <div><div class="e">Dépenses du quotidien</div><div class="v moins">${euroCourt(b.depense)}</div></div>
-      ${b.sortiePonctuelle > 0
-        ? `<div><div class="e">Facture annuelle du mois</div><div class="v moins">${euroCourt(b.sortiePonctuelle)}</div></div>`
-        : ""}
+      ${ligne(b.courante ? "Solde" : "Solde sur " + nomPeriode, euro(b.reste,0),
+              b.courante ? `soit ${euro(b.reste / b.encore, 0)} par jour pendant ${b.encore} jours` : "",
+              b.reste < 0 ? "neg" : "")}
+      ${aPrel > 0 && b.courante ? ligne("Encore à prélever", euro(aPrel,0), "déjà retirés") : ""}
+      ${b.sortiePonctuelle > 0 ? ligne("Facture annuelle du mois", euro(b.sortiePonctuelle,0), "retirée en plus") : ""}
+      <div class="cpt-filet"></div>
+      ${ligne("Dépenses du mois", euro(b.depense,0), b.especes > 0 ? `+ ${euro(b.especes,0)} en espèces, déjà décomptés` : "")}
+      <div class="cpt-filet"></div>
+      ${ligne("Budget initial", euro(b.disponible,0))}
+      ${ligne("Charges retirées", euro(b.charges,0))}
     </div>`);
 
     h.push(`<button class="aide-q" data-act="voirExplication">${
@@ -2369,6 +2465,8 @@ function vueBudget(){
     <button class="btn" data-act="ajouterDepense">Ajouter</button></div>`);
   h.push(`<div class="filtres">${db.categories_depense.map(c =>
     `<button class="filtre ${vue.catDep===c.id?"on":""}" data-cdep="${c.id}">${ech(c.nom)}</button>`).join("")}</div>`);
+  h.push(`<div class="filtres moyens">${MOYENS.map(m =>
+    `<button class="filtre ${(vue.moyen||MOYEN_DEFAUT)===m.cle?"on":""}" data-moyen="${m.cle}">${m.nom}</button>`).join("")}</div>`);
 
   /* ---------- 4. Ce que l'on attend ---------- */
   if(b.attente.length){
@@ -2399,7 +2497,7 @@ function vueBudget(){
       <div class="somme">${r.montant == null ? "?" : euro(r.montant,2)}</div>
       <div class="outils"><button class="ico" data-act="editer">✎</button>
         <button class="ico sup" data-act="jeter">✕</button></div></div>`))
-    : vide("Aucune rentrée", "Remboursement, prime, vente… date et montant facultatifs."));
+    : vide("Aucune rentrée"));
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
   /* ---------- 5. Les dépenses saisies ---------- */
@@ -2463,9 +2561,11 @@ function vueBudget(){
       return `<div class="ligne" data-depense="${x.id}">
       <div class="corps"><div class="intitule">${ech(x.libelle) || (c ? ech(c.nom) : "Dépense")}</div>
         <div class="meta">${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}
+          ${x.moyen && x.moyen !== MOYEN_DEFAUT ? `<span class="puce">${nomMoyen(x.moyen)}</span>` : ""}
+          ${enEspeces(x) ? `<span class="puce">déjà décompté</span>` : ""}
           ${x.rembourser && !x.rembourse ? `<span class="puce ctx">à rembourser</span>` : ""}
           ${x.rembourse ? `<span class="puce">remboursé</span>` : ""}</div></div>
-      <div class="somme">${euro(x.montant,2)}</div>
+      <div class="somme"${enEspeces(x) ? ` style="color:var(--encre-3)"` : ""}>${euro(x.montant,2)}</div>
       <div class="outils">
         <button class="ico ${x.rembourser?"actif":""}" data-act="marquerRemb"
           title="${x.rembourser?"Ne plus attendre de remboursement":"À se faire rembourser"}">⟲</button>
@@ -2558,6 +2658,11 @@ function vueBudget(){
     h.push(`<div class="bandeau" style="margin:22px 0 0"><div class="g">Aucun revenu saisi : sans lui, le calcul n'a pas de sens. Il se renseigne dans Réglages.</div>
       <button class="btn mini creux" data-aller="reglages">Réglages</button></div>`);
 
+  h.push(piedAide([
+    "Le <b>solde</b> part de vos revenus, retire les factures, puis les dépenses du mois.",
+    "Une facture annuelle est étalée sur douze mois ; le mois où elle tombe, elle est aussi retirée en entier.",
+    "Une dépense en <b>espèces</b> n'est pas recomptée : elle a déjà été décomptée au retrait. Elle sert à savoir où l'argent est parti.",
+  ]));
   h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
   return h.join("");
 }
@@ -2574,20 +2679,26 @@ function vueSuivi(){
     const p = prochaineDe(d.id);
     /* Le compte doit correspondre à ce que la fiche montrera réellement,
        sinon on annonce 21 tâches et on en affiche zéro. */
-    const n = duDossier(d.id).filter(passeSphere).length;
+    const vues = duDossier(d.id).filter(passeSphere);
+    const n = vues.length;
+    const remontees = vues.filter(t => t.en_inbox || t.suivant_le).length;
+    const ech = duDossier(d.id).filter(t => t.date_due).map(t => t.date_due).sort().slice(0,3);
     return { p, n, c:catDe(d.categorie_id),
       lien: d.url ? `<a class="lien" href="${ech(d.url)}" target="_blank" rel="noopener">Ouvrir ↗</a>` : `<span style="color:var(--encre-3)">—</span>`,
+      remontees, ech,
       cout: parMoisDossier(d) ? `${euro(parMoisDossier(d),2)} / mois` : "—" };
   };
   h.push(`<div class="fiche"><table class="tab"><thead><tr>
-    <th>Dossier</th><th>Catégorie</th><th>Accès</th><th>Identifiant</th><th>N° contrat</th><th>Coût</th><th>Prochaine</th><th>Tâches</th><th></th>
+    <th>Dossier</th><th>Catégorie</th><th>Accès</th><th>Identifiant</th><th>N° contrat</th><th>Coût</th><th>Échéances</th><th>Tâches</th><th></th>
     </tr></thead><tbody>${tri.map(d => { const x = info(d); return `<tr data-dossier="${d.id}">
       <td><button class="nom" data-act="ouvrir">${ech(d.nom)}</button>
         ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</td>
       <td>${x.c ? ech(x.c.nom) : "—"}</td><td>${x.lien}</td>
       <td class="num">${ech(d.identifiant) || "—"}</td><td class="num">${ech(d.contrat) || "—"}</td>
-      <td class="num">${x.cout}</td><td class="num">${x.p ? dateCourte(x.p) : "—"}</td>
-      <td class="num">${x.n ? `<span class="marque-tache">▪ ${x.n}</span>` : "—"}</td>
+      <td class="num">${x.cout}</td>
+      <td class="num">${x.ech.length ? x.ech.map(dateCourte).join(" · ") : "—"}</td>
+      <td class="num">${x.n ? `<span class="marque-tache">▪ ${x.n}</span>${
+        x.remontees ? ` <span style="color:var(--encre-3)">dont ${x.remontees}</span>` : ""}` : "—"}</td>
       <td><span class="outils" style="opacity:1">
         <button class="ico" data-act="editer" title="Modifier">✎</button>
         <button class="ico sup" data-act="jeter" title="Corbeille">✕</button></span></td>
@@ -2595,12 +2706,18 @@ function vueSuivi(){
   h.push(`<div class="fiche liste cartes">${tri.map(d => { const x = info(d); return `<div class="ligne" data-dossier="${d.id}">
     <div class="corps"><button class="nom" data-act="ouvrir" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(d.nom)}</button>
       <div class="meta">${x.c ? `<span class="puce">${ech(x.c.nom)}</span>` : ""}
-        ${parMoisDossier(d) ? `<span class="puce date">${x.cout}</span>` : ""}
-        ${x.p ? `<span class="puce date">${dateCourte(x.p)}</span>` : ""}</div>
-      ${x.n ? `<div class="marque-tache ligne-seule">▪ ${x.n} tâche${x.n>1?"s":""}</div>` : ""}
+        ${parMoisDossier(d) ? `<span class="puce date">${x.cout}</span>` : ""}</div>
+      ${x.ech.length ? `<div class="note-min" style="max-width:none">Échéances ${x.ech.map(dateCourte).join(" · ")}</div>` : ""}
+      ${x.n ? `<div class="marque-tache ligne-seule">▪ ${x.n} tâche${x.n>1?"s":""}${
+        x.remontees ? `, ${x.remontees} remontée${x.remontees>1?"s":""}` : ""}</div>` : ""}
       ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</div>
     <div class="outils"><button class="ico" data-act="editer">✎</button><button class="ico sup" data-act="jeter">✕</button></div>
   </div>`; }).join("")}</div>`);
+
+  h.push(piedAide([
+    "Un dossier par sujet : le van, la mutuelle, les assurances.",
+    "Il rassemble ses notes, ses charges, ses échéances et ses tâches. Le <b>▪</b> signale celles en attente.",
+  ]));
 
   /* Récapitulatif mensuel par catégorie */
   const parCat = {};
@@ -3368,12 +3485,13 @@ function editerDepense(x){
     { cle:"libelle", nom:"Libellé" },
     { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCdep(), duo:true },
     { cle:"rembourser", nom:"À se faire rembourser", type:"select",
-      options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
-  ], { ...x, rembourser: x.rembourser ? "1" : "" }, d => {
+      options:[{v:"",n:"Non"},{v:"1",n:"Oui"}], duo:true },
+    { cle:"moyen", nom:"Payé par", type:"select", options:MOYENS.map(m => ({v:m.cle,n:m.nom})) },
+  ], { ...x, rembourser: x.rembourser ? "1" : "", moyen: x.moyen || MOYEN_DEFAUT }, d => {
     const m = lireMontant(d.montant);
     if(m === null) return;
     Object.assign(x, { montant:m, date:d.date || x.date, libelle:d.libelle,
-      categorie_id:d.categorie_id || null, rembourser: d.rembourser === "1" });
+      categorie_id:d.categorie_id || null, rembourser: d.rembourser === "1", moyen:d.moyen });
     touche(x);
     /* Si la date renvoie à un autre mois, on y emmène l'écran : sinon la
        dépense semble s'être évaporée. */
@@ -3444,7 +3562,8 @@ function ajouterDepense(){
   const m = lireMontant(im.value);
   if(m === null || m === 0){ im.focus(); return; }
   db.depenses.push(touche({ id:uid(), date:jourISO(), montant:Math.abs(m),
-    categorie_id:vue.catDep || null, libelle:(il?.value || "").trim(), dossier_id:null }));
+    categorie_id:vue.catDep || null, libelle:(il?.value || "").trim(), dossier_id:null,
+    moyen: vue.moyen || MOYEN_DEFAUT }));
   im.value = ""; if(il) il.value = "";
   vue.decalage = 0;
   vue.surligne = db.depenses[db.depenses.length-1].id;
@@ -3538,6 +3657,10 @@ document.addEventListener("click", ev => {
   if(bEdt){ if(dlg.open) dlg.close(); vue.onglet = "agenda"; vue.edt = bEdt.dataset.ouvriredt; return rendre(); }
   const bFD = c.closest("[data-fctxdoss]");
   if(bFD){ vue.filtreCtxDoss = bFD.dataset.fctxdoss || null; return rendre(); }
+  const bU = c.closest("[data-furgent]");
+  if(bU){ vue.filtreUrgent = !vue.filtreUrgent; return rendre(); }
+  const bMoy = c.closest("[data-moyen]");
+  if(bMoy){ vue.moyen = bMoy.dataset.moyen; return rendre(); }
   const bH = c.closest("[data-hab]");
   if(bH){ basculerHabitude(bH.dataset.hab, bH.dataset.hjour); return maj(); }
   const bS = c.closest("[data-sphere]");
@@ -3649,6 +3772,7 @@ document.addEventListener("click", ev => {
   }
   if(act === "viderCorbeille"){
     if(!confirm(`Vider la corbeille ? ${db.corbeille.length} élément(s) définitivement perdus.`)) return;
+    db.corbeille.forEach(x => oublier(x.id));
     db.corbeille = [];
     return maj();
   }
@@ -3843,6 +3967,7 @@ document.addEventListener("click", ev => {
 
   const lc = trouver(c, "corbeille");
   if(lc && act === "detruire"){
+    oublier(lc.id);
     db.corbeille = db.corbeille.filter(x => x.id !== lc.id);
     return maj();
   }
@@ -3864,7 +3989,8 @@ document.addEventListener("click", ev => {
                       "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
-    db.supprimes = (db.supprimes||[]).filter(y => y.id !== (x.obj && x.obj.id));
+    retrouver(x.obj && x.obj.id);
+    oublier(x.id);              /* l'entrée de corbeille, elle, disparaît */
     db.corbeille.splice(i,1);
     return maj();
   }
@@ -4019,6 +4145,7 @@ setInterval(verifierJour, 60000);
   db.depenses = db.depenses || [];
   db.rendez_vous = db.rendez_vous || [];
   db.rentrees = db.rentrees || [];
+  db.restaures = db.restaures || [];
   db.habitudes = db.habitudes || [];
   db.habitudes_faites = db.habitudes_faites || [];
   db.emplois = db.emplois || [];
