@@ -849,7 +849,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 11;
-const VERSION_APP = 72;
+const VERSION_APP = 73;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2981,10 +2981,11 @@ function vueListesPage(){
     `<div style="height:16px"></div>`];
   if(!db.listes.length)
     return h.join("") + vide("Aucune liste", "Créez une liste pense-bête : courses, voyage, sport…");
-  h.push(`<div class="fiche liste">${db.listes.map(l => {
+  h.push(`<div class="fiche liste rangeable-listes">${[...db.listes].sort((a,b) => (a.ordre ?? 1e9) - (b.ordre ?? 1e9)).map(l => {
     const items = (l.items||[]).filter(i => !i.titre);
     const coches = items.filter(i => i.coche).length;
     return `<div class="ligne" data-liste="${l.id}">
+      ${db.listes.length > 1 ? `<button class="poignee" data-glisserliste="${l.id}" title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>` : ""}
       <div class="corps">
         <button class="nom" data-act="ouvrirListe" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(l.nom)}</button>
         ${items.length ? `<div class="marque-tache ligne-seule">${coches}/${items.length} coché${coches>1?"s":""}</div>`
@@ -2996,7 +2997,8 @@ function vueListesPage(){
   }).join("")}</div>`);
   h.push(piedAide([
     "Ouvrez une liste pour cocher au fil de l'eau ; une ligne tapée en terminant par <b>:</b> devient un titre de section.",
-  ]));
+    db.listes.length > 1 ? "La poignée <b>⠿</b> glisse une carte pour changer l'ordre des listes." : null,
+  ].filter(Boolean)));
   return h.join("");
 }
 
@@ -4564,6 +4566,61 @@ function finGlissementItem(){
 }
 document.addEventListener("pointerup", finGlissementItem);
 document.addEventListener("pointercancel", finGlissementItem);
+
+/* Même mécanique, cette fois pour réordonner les listes elles-mêmes sur la
+   page « Listes » (ex. faire passer « Voyage » avant « Livres et films »). */
+let glissementListe = null;
+
+function ligneSousListe(y, conteneur, sauf){
+  const lignes = [...conteneur.querySelectorAll("[data-liste]")].filter(x => x !== sauf);
+  for(const l of lignes){
+    const r = l.getBoundingClientRect();
+    if(y < r.top + r.height / 2) return l;
+  }
+  return null;
+}
+
+document.addEventListener("pointerdown", ev => {
+  const prise = ev.target.closest && ev.target.closest("[data-glisserliste]");
+  if(!prise) return;
+  const ligne = prise.closest("[data-liste]");
+  const conteneur = ligne && ligne.closest(".rangeable-listes");
+  if(!ligne || !conteneur) return;
+  ev.preventDefault();
+  glissementListe = { ligne, conteneur };
+  ligne.classList.add("glisse");
+  try{ prise.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", ev => {
+  if(!glissementListe) return;
+  ev.preventDefault();
+  const { ligne, conteneur } = glissementListe;
+  const cible = ligneSousListe(ev.clientY, conteneur, ligne);
+  if(cible) conteneur.insertBefore(ligne, cible);
+  else conteneur.appendChild(ligne);
+});
+
+function finGlissementListe(){
+  if(!glissementListe) return;
+  const { ligne, conteneur } = glissementListe;
+  glissementListe = null;
+  ligne.classList.remove("glisse");
+  /* Comme pour les tâches : un champ « ordre » écrit sur chaque liste, pas
+     un simple réarrangement du tableau — sans quoi l'ordre se perdrait à la
+     prochaine synchronisation entre appareils (seuls les champs touchés
+     avec leur horodatage survivent à la fusion). */
+  const ids = [...conteneur.querySelectorAll("[data-liste]")].map(x => x.getAttribute("data-liste"));
+  const parId = new Map((db.listes||[]).map(l => [l.id, l]));
+  let change = false;
+  ids.forEach((id, i) => {
+    const l = parId.get(id);
+    if(l && l.ordre !== i){ l.ordre = i; touche(l); change = true; }
+  });
+  if(change) maj();
+}
+document.addEventListener("pointerup", finGlissementListe);
+document.addEventListener("pointercancel", finGlissementListe);
 
 function decalerMois(v){
   if(v === 0){ vue.moisAgenda = jourISO().slice(0,7); return; }
