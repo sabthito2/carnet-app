@@ -851,7 +851,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 11;
-const VERSION_APP = 76;
+const VERSION_APP = 77;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3348,7 +3348,8 @@ function rendre(){
      clignoter une seconde : plus de doute sur « est-ce que c'est enregistré ». */
   if(vue.surligne){
     const n = document.querySelector(`[data-tache="${vue.surligne}"], [data-rdv="${vue.surligne}"],
-      [data-rentree="${vue.surligne}"], [data-dossier="${vue.surligne}"], [data-depense="${vue.surligne}"]`);
+      [data-rentree="${vue.surligne}"], [data-dossier="${vue.surligne}"], [data-depense="${vue.surligne}"],
+      [data-jourdate="${vue.surligne}"]`);
     vue.surligne = null;
     if(n){
       n.classList.add("neuf");
@@ -4067,7 +4068,16 @@ document.addEventListener("click", ev => {
     return rendre();
   }
   const bM = c.closest("[data-mois]");
-  if(bM){ decalerMois(+bM.dataset.mois); return rendre(); }
+  if(bM){
+    const v = +bM.dataset.mois;
+    decalerMois(v);
+    /* « Today » doit amener sous les yeux la ligne du jour, pas juste le bon
+       mois : en fin de mois il fallait sans ça défiler à la main pour la
+       retrouver. On réutilise le mécanisme de surlignage déjà en place
+       (défile seulement si la ligne n'est pas déjà visible). */
+    if(v === 0) vue.surligne = jourISO();
+    return rendre();
+  }
   const bJ = c.closest("[data-saut]");
   if(bJ){ vue.decalage = +bJ.dataset.saut; return rendre(); }
   const bP = c.closest("[data-periode]");
