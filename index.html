@@ -726,6 +726,8 @@ const Sync = (() => {
     db.dossiers = db.dossiers || [];
     db.revenus = db.revenus || [];
     db.depenses = db.depenses || [];
+    db.listes = db.listes || [];
+    db.listes.forEach(l => { l.items = l.items || []; });
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
     appliquerTeinte(); appliquerTaille();
@@ -846,8 +848,8 @@ const Sync = (() => {
 /* =====================================================================
    2. MODÈLE
    ===================================================================== */
-const VERSION_SCHEMA = 10;
-const VERSION_APP = 69;
+const VERSION_SCHEMA = 11;
+const VERSION_APP = 70;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1014,6 +1016,7 @@ function etatNeuf(){
     habitudes: [],
     habitudes_faites: [],
     emplois: [],
+    listes: [],
     bloc_notes: "",
     supprimes: [],
     corbeille: [],
@@ -1055,6 +1058,10 @@ function migrer(d){
     x.rendez_vous = x.rendez_vous || [];
     x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
   }
+  if((x.version_schema ?? 10) < 11){
+    x.version_schema = 11;
+    x.listes = x.listes || [];
+  }
   if((x.version_schema ?? 9) < 10){
     x.version_schema = 10;
     x.emplois = x.emplois || [];
@@ -1092,7 +1099,7 @@ function migrer(d){
 /* Collections fusionnables : chaque élément y porte un identifiant unique,
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
-                     "habitudes","habitudes_faites","emplois",
+                     "habitudes","habitudes_faites","emplois","listes",
                      "anniversaires","vacances","contextes","categories","categories_depense"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
@@ -1188,7 +1195,7 @@ let db = null;
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
-              filtreUrgent:false, moyen:null, semestre:null };
+              filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -2797,8 +2804,13 @@ function vueBudget(){
 /* ---- Suivi ---- */
 function vueSuivi(){
   if(vue.dossier) return vueDossier();
+  if(vue.liste) return vueListeOuverte();
+  if(vue.pageListes) return vueListesPage();
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
-    `<div style="margin-bottom:16px"><button class="btn" data-act="nouveauDossier">Nouveau dossier</button></div>`];
+    `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="btn" data-act="nouveauDossier">Nouveau dossier</button>
+       <button class="btn creux" data-act="ouvrirListes">Listes${db.listes.length ? ` <span class="cpt">${db.listes.length}</span>` : ""}</button>
+     </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
     (catDe(a.categorie_id)?.nom||"zz").localeCompare(catDe(b.categorie_id)?.nom||"zz") || a.nom.localeCompare(b.nom));
@@ -2953,6 +2965,86 @@ function vueDossier(){
   h.push(`<div class="oeil">Notes</div>
     <div class="bloc-notes grand"><textarea id="notesDoss" data-dossier="${d.id}"
       placeholder="">${ech(d.notes)}</textarea></div>`);
+  return h.join("");
+}
+
+/* ---- Listes pense-bêtes ---- */
+/* Une liste vit pour elle-même : cocher une case n'a aucun effet sur le
+   texte, qui reste en place. C'est un aide-mémoire visuel — pas une tâche
+   qui se range. Seule la flèche ↑, explicitement, fait naître une vraie
+   tâche dans « À faire ». Une ligne tapée en terminant par « : » devient un
+   titre de section plutôt qu'une case à cocher. */
+function vueListesPage(){
+  const h = [`<button class="retour" data-act="fermerListes">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Listes</h1>
+      <button class="btn mini" data-act="nouvelleListe">Nouvelle liste</button></div>`,
+    `<div style="height:16px"></div>`];
+  if(!db.listes.length)
+    return h.join("") + vide("Aucune liste", "Créez une liste pense-bête : courses, voyage, sport…");
+  h.push(`<div class="fiche liste">${db.listes.map(l => {
+    const items = (l.items||[]).filter(i => !i.titre);
+    const coches = items.filter(i => i.coche).length;
+    return `<div class="ligne" data-liste="${l.id}">
+      <div class="corps">
+        <button class="nom" data-act="ouvrirListe" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(l.nom)}</button>
+        ${items.length ? `<div class="marque-tache ligne-seule">${coches}/${items.length} coché${coches>1?"s":""}</div>`
+                        : `<div class="note-min">Vide</div>`}
+      </div>
+      <div class="outils"><button class="ico" data-act="editerNomListe">✎</button>
+        <button class="ico sup" data-act="jeterListe">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+  h.push(piedAide([
+    "Ouvrez une liste pour cocher au fil de l'eau ; une ligne tapée en terminant par <b>:</b> devient un titre de section.",
+  ]));
+  return h.join("");
+}
+
+function vueListeOuverte(){
+  const l = (db.listes||[]).find(x => x.id === vue.liste);
+  if(!l){ vue.liste = null; return vueListesPage(); }
+  l.items = l.items || [];
+  const items = l.items.filter(i => !i.titre);
+  const coches = items.filter(i => i.coche).length;
+
+  const h = [`<button class="retour" data-act="fermerListe">← Listes</button>`,
+    `<div class="entete-d"><h1 class="titre">${ech(l.nom)}</h1>
+      <button class="btn mini creux" data-liste="${l.id}" data-act="editerNomListe">Renommer</button></div>`,
+    items.length ? `<div class="meta" style="margin:0 0 18px">
+        <span class="puce">${coches}/${items.length} coché${coches>1?"s":""}</span></div>`
+      : `<div style="height:16px"></div>`];
+
+  h.push(`<div class="saisie">
+    <input id="itemListeSaisie" data-liste="${l.id}" placeholder="Ajouter un élément… (terminez par : pour un titre)" autocomplete="off" enterkeyhint="done">
+    <button class="btn" data-act="ajouterItemListe" data-liste="${l.id}">Ajouter</button></div>`);
+
+  if(coches > 0)
+    h.push(`<div style="margin:0 0 14px"><button class="btn mini creux" data-liste="${l.id}" data-act="toutDecocherListe">Tout décocher</button></div>`);
+
+  if(!l.items.length){
+    h.push(vide("Liste vide", "Tapez un élément puis Entrée : il rejoint la liste ci-dessous."));
+    return h.join("");
+  }
+
+  h.push(`<div class="fiche liste">${l.items.map(it => {
+    if(it.titre) return `<div class="ligne" data-item="${it.id}" data-liste="${l.id}">
+      <div class="corps"><div class="intitule" style="font-weight:650">${ech(it.texte)}</div></div>
+      <div class="outils"><button class="ico sup" data-act="supprimerItem" title="Supprimer le titre">✕</button></div>
+    </div>`;
+    return `<div class="ligne ${it.coche?"faite":""}" data-item="${it.id}" data-liste="${l.id}">
+      <div class="cases">
+        <button class="case carre ${it.coche?"coche":""}" data-act="basculerItem" title="Cocher" aria-label="Cocher">${CHECK}</button>
+        <button class="case fleche" data-act="remonterItem" title="Faire remonter dans « À faire »" aria-label="Faire remonter dans À faire">↑</button>
+      </div>
+      <div class="corps"><div class="intitule">${ech(it.texte)}</div></div>
+      <div class="outils"><button class="ico sup" data-act="supprimerItem" title="Supprimer">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+
+  h.push(piedAide([
+    "Cocher ne change rien d'autre : le texte reste en place, c'est un simple repère visuel.",
+    "La flèche <b>↑</b> crée une tâche dans « À faire » — utile pour ce qu'il manque encore.",
+  ]));
   return h.join("");
 }
 
@@ -3540,6 +3632,48 @@ function editerDossier(d){
   });
 }
 
+function formulaireListe(l){
+  const neuf = !l;
+  const x = l || { id:uid(), nom:"", items:[] };
+  formulaire(neuf ? "Nouvelle liste" : "Renommer la liste", [
+    { cle:"nom", nom:"Nom de la liste", ph:"Courses, voyage, sport…" },
+  ], { ...x }, f => {
+    if(!f.nom) return;
+    x.nom = f.nom;
+    x.items = x.items || [];
+    touche(x);
+    if(neuf){ db.listes = db.listes || []; db.listes.push(x); vue.liste = x.id; }
+    maj();
+  }, neuf ? null : () => {
+    const n = (x.items||[]).filter(i => !i.titre).length;
+    if(!confirm(`Supprimer la liste « ${x.nom} »${n ? ` et ses ${n} élément${n>1?"s":""}` : ""} ?`)) return;
+    jeter("liste", x);
+    db.listes = db.listes.filter(y => y.id !== x.id);
+    if(vue.liste === x.id) vue.liste = null;
+    maj();
+  });
+}
+
+/* Une ligne tapée en terminant par « : » devient un titre de section plutôt
+   qu'une case à cocher — un moyen simple de classer sans complexifier le
+   modèle de données. */
+function ajouterItemListe(listeId){
+  const inp = document.getElementById("itemListeSaisie");
+  if(!inp || !inp.value.trim()) return;
+  const l = (db.listes||[]).find(x => x.id === listeId);
+  if(!l) return;
+  const brut = inp.value.trim();
+  const titre = /:\s*$/.test(brut);
+  const texte = titre ? brut.replace(/:\s*$/,"").trim() : brut;
+  if(!texte) return;
+  l.items = l.items || [];
+  l.items.push({ id:uid(), texte, coche:false, titre });
+  touche(l);
+  inp.value = "";
+  maj();
+  setTimeout(() => document.getElementById("itemListeSaisie")?.focus(), 0);
+}
+
 function editerCharge(d, l){
   const neuf = !l;
   const x = l || { id:uid(), libelle:"", montant:null, periodicite:"mensuel", jour:null, mois:null };
@@ -3804,7 +3938,9 @@ document.addEventListener("click", ev => {
   const c = ev.target;
 
   const bO = c.closest("[data-onglet]");
-  if(bO){ vue.onglet = bO.dataset.onglet; if(vue.onglet !== "suivi") vue.dossier = null; return rendre(); }
+  if(bO){ vue.onglet = bO.dataset.onglet;
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; }
+    return rendre(); }
   const bA = c.closest("[data-aller]");
   if(bA){ vue.onglet = bA.dataset.aller; return rendre(); }
   const bC = c.closest("[data-fctx]");
@@ -3968,6 +4104,18 @@ document.addEventListener("click", ev => {
     return editerRdv(null, l ? l.dataset.jourdate : jourISO());
   }
   if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
+  if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
+  if(act === "fermerListes"){ vue.pageListes = false; return rendre(); }
+  if(act === "fermerListe"){ vue.liste = null; return rendre(); }
+  if(act === "nouvelleListe") return formulaireListe(null);
+  if(act === "ajouterItemListe") return ajouterItemListe(b.dataset.liste);
+  if(act === "toutDecocherListe"){
+    const ll = (db.listes||[]).find(x => x.id === b.dataset.liste);
+    if(!ll) return;
+    (ll.items||[]).forEach(it => { if(!it.titre) it.coche = false; });
+    touche(ll);
+    return maj();
+  }
   if(act === "ajouter-contexte") return editerListe("contexte", null);
   if(act === "ajouter-categorie") return editerListe("categorie", null);
   if(act === "ajouter-cdepense") return editerListe("cdepense", null);
@@ -4148,6 +4296,40 @@ document.addEventListener("click", ev => {
     }
   }
 
+  const ll0 = trouver(c, "liste");
+  if(ll0){
+    const l = (db.listes||[]).find(x => x.id === ll0.id); if(!l) return;
+    if(act === "ouvrirListe"){ vue.liste = l.id; return rendre(); }
+    if(act === "editerNomListe") return formulaireListe(l);
+    if(act === "jeterListe"){
+      const n = (l.items||[]).filter(i => !i.titre).length;
+      if(!confirm(`Supprimer la liste « ${l.nom} »${n ? ` et ses ${n} élément${n>1?"s":""}` : ""} ?`)) return;
+      jeter("liste", l);
+      db.listes = db.listes.filter(x => x.id !== l.id);
+      if(vue.liste === l.id) vue.liste = null;
+      return maj();
+    }
+  }
+
+  const lit = trouver(c, "item");
+  if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem")){
+    const ll = (db.listes||[]).find(x => x.id === lit.elt.dataset.liste);
+    const it = ll && (ll.items||[]).find(y => y.id === lit.id);
+    if(!ll || !it) return;
+    if(act === "basculerItem"){ it.coche = !it.coche; touche(ll); return maj(); }
+    if(act === "remonterItem"){
+      const nouvelle = tacheNeuve({ intitule:it.texte, suivant_le:jourISO(), travail:destinationTravail() });
+      db.taches.push(touche(nouvelle));
+      sauver();
+      return tamponner(lit.elt, "Ajouté à « À faire »", rendre);
+    }
+    if(act === "supprimerItem"){
+      ll.items = ll.items.filter(y => y.id !== it.id);
+      touche(ll);
+      return maj();
+    }
+  }
+
   for(const genre of ["contexte","categorie","cdepense"]){
     const l = trouver(c, genre);
     if(l && act === "editer"){
@@ -4178,7 +4360,7 @@ document.addEventListener("click", ev => {
       const cible = { "tâche":"taches", "dossier":"dossiers", "contexte":"contextes", "categorie":"categories",
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
-                      "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois" }[x.genre];
+                      "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois", "liste":"listes" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     retrouver(x.obj && x.obj.id);
@@ -4195,6 +4377,7 @@ document.addEventListener("keydown", ev => {
   if(ev.key !== "Enter") return;
   if(ev.target.id === "saisie"){ ev.preventDefault(); ajouterDepuis("saisie", null); }
   if(ev.target.id === "saisieDoss"){ ev.preventDefault(); ajouterDepuis("saisieDoss", ev.target.dataset.dossier); }
+  if(ev.target.id === "itemListeSaisie"){ ev.preventDefault(); ajouterItemListe(ev.target.dataset.liste); }
   if(ev.target.id === "dep-montant" || ev.target.id === "dep-libelle"){ ev.preventDefault(); ajouterDepense(); }
 });
 
@@ -4341,6 +4524,8 @@ setInterval(verifierJour, 60000);
   db.habitudes = db.habitudes || [];
   db.habitudes_faites = db.habitudes_faites || [];
   db.emplois = db.emplois || [];
+  db.listes = db.listes || [];
+  db.listes.forEach(l => { l.items = l.items || []; });
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
   db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
