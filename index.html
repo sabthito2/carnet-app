@@ -849,7 +849,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 11;
-const VERSION_APP = 70;
+const VERSION_APP = 72;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1195,7 +1195,7 @@ let db = null;
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
-              filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null };
+              filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
@@ -3006,6 +3006,11 @@ function vueListeOuverte(){
   l.items = l.items || [];
   const items = l.items.filter(i => !i.titre);
   const coches = items.filter(i => i.coche).length;
+  /* Une case tapée après avoir touché un titre rejoint cette section plutôt
+     que la fin de la liste — sinon retrouver un oubli sous « Papiers » des
+     mois plus tard obligeait à tout retaper au bon endroit à la main. */
+  const cible = vue.sectionActive ? l.items.find(i => i.titre && i.id === vue.sectionActive) : null;
+  if(!cible) vue.sectionActive = null;
 
   const h = [`<button class="retour" data-act="fermerListe">← Listes</button>`,
     `<div class="entete-d"><h1 class="titre">${ech(l.nom)}</h1>
@@ -3015,23 +3020,36 @@ function vueListeOuverte(){
       : `<div style="height:16px"></div>`];
 
   h.push(`<div class="saisie">
-    <input id="itemListeSaisie" data-liste="${l.id}" placeholder="Ajouter un élément… (terminez par : pour un titre)" autocomplete="off" enterkeyhint="done">
+    <input id="itemListeSaisie" data-liste="${l.id}"
+      placeholder="${cible ? `Ajouter dans « ${ech(cible.texte)} »…` : "Ajouter un élément… (terminez par : pour un titre)"}"
+      autocomplete="off" enterkeyhint="done">
     <button class="btn" data-act="ajouterItemListe" data-liste="${l.id}">Ajouter</button></div>`);
 
-  if(coches > 0)
-    h.push(`<div style="margin:0 0 14px"><button class="btn mini creux" data-liste="${l.id}" data-act="toutDecocherListe">Tout décocher</button></div>`);
+  const filets = [];
+  if(cible) filets.push(`<button class="btn mini creux" data-act="choisirSectionListe" data-liste="${l.id}" data-item="${cible.id}">
+      Ajout dans « ${ech(cible.texte)} » — revenir en fin de liste</button>`);
+  if(coches > 0) filets.push(`<button class="btn mini creux" data-liste="${l.id}" data-act="toutDecocherListe">Tout décocher</button>`);
+  if(filets.length) h.push(`<div style="margin:0 0 14px;display:flex;gap:8px;flex-wrap:wrap">${filets.join("")}</div>`);
 
   if(!l.items.length){
     h.push(vide("Liste vide", "Tapez un élément puis Entrée : il rejoint la liste ci-dessous."));
     return h.join("");
   }
 
-  h.push(`<div class="fiche liste">${l.items.map(it => {
-    if(it.titre) return `<div class="ligne" data-item="${it.id}" data-liste="${l.id}">
-      <div class="corps"><div class="intitule" style="font-weight:650">${ech(it.texte)}</div></div>
+  h.push(`<div class="fiche liste rangeable-items">${l.items.map(it => {
+    if(it.titre){
+      const actif = vue.sectionActive === it.id;
+      return `<div class="ligne" data-item="${it.id}" data-liste="${l.id}">
+      <div class="corps">
+        <button class="intitule" data-act="choisirSectionListe" title="Ajouter la suite ici"
+          style="font-weight:650;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:${actif?"var(--accent)":"inherit"}">
+          ${ech(it.texte)}${actif ? " · ajout ici" : ""}</button>
+      </div>
       <div class="outils"><button class="ico sup" data-act="supprimerItem" title="Supprimer le titre">✕</button></div>
     </div>`;
+    }
     return `<div class="ligne ${it.coche?"faite":""}" data-item="${it.id}" data-liste="${l.id}">
+      <button class="poignee" data-glisseritem="${it.id}" title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>
       <div class="cases">
         <button class="case carre ${it.coche?"coche":""}" data-act="basculerItem" title="Cocher" aria-label="Cocher">${CHECK}</button>
         <button class="case fleche" data-act="remonterItem" title="Faire remonter dans « À faire »" aria-label="Faire remonter dans À faire">↑</button>
@@ -3044,6 +3062,8 @@ function vueListeOuverte(){
   h.push(piedAide([
     "Cocher ne change rien d'autre : le texte reste en place, c'est un simple repère visuel.",
     "La flèche <b>↑</b> crée une tâche dans « À faire » — utile pour ce qu'il manque encore.",
+    "Touchez un titre pour y ajouter la suite ; touchez-le à nouveau pour revenir en fin de liste.",
+    "La poignée <b>⠿</b> déplace un élément par glisser-déposer, y compris vers une autre section.",
   ]));
   return h.join("");
 }
@@ -3642,7 +3662,7 @@ function formulaireListe(l){
     x.nom = f.nom;
     x.items = x.items || [];
     touche(x);
-    if(neuf){ db.listes = db.listes || []; db.listes.push(x); vue.liste = x.id; }
+    if(neuf){ db.listes = db.listes || []; db.listes.push(x); vue.liste = x.id; vue.sectionActive = null; }
     maj();
   }, neuf ? null : () => {
     const n = (x.items||[]).filter(i => !i.titre).length;
@@ -3654,9 +3674,23 @@ function formulaireListe(l){
   });
 }
 
+/* Position juste après le dernier élément d'une section (donc juste avant
+   le titre suivant, ou en toute fin si c'est la dernière section). */
+function finSection(items, titreId){
+  const i = items.findIndex(it => it.id === titreId);
+  if(i < 0) return items.length;
+  let j = i + 1;
+  while(j < items.length && !items[j].titre) j++;
+  return j;
+}
+
 /* Une ligne tapée en terminant par « : » devient un titre de section plutôt
    qu'une case à cocher — un moyen simple de classer sans complexifier le
-   modèle de données. */
+   modèle de données. Une case rejoint la section touchée en dernier (elle
+   s'y insère juste avant le titre suivant) ; un nouveau titre, lui, se pose
+   toujours en toute fin et devient aussitôt la section active, pour que la
+   saisie initiale d'une liste range déjà tout au bon endroit sans geste
+   supplémentaire. */
 function ajouterItemListe(listeId){
   const inp = document.getElementById("itemListeSaisie");
   if(!inp || !inp.value.trim()) return;
@@ -3667,7 +3701,15 @@ function ajouterItemListe(listeId){
   const texte = titre ? brut.replace(/:\s*$/,"").trim() : brut;
   if(!texte) return;
   l.items = l.items || [];
-  l.items.push({ id:uid(), texte, coche:false, titre });
+  const nouvel = { id:uid(), texte, coche:false, titre };
+  if(titre){
+    l.items.push(nouvel);
+    vue.sectionActive = nouvel.id;
+  }else if(vue.sectionActive && l.items.some(it => it.titre && it.id === vue.sectionActive)){
+    l.items.splice(finSection(l.items, vue.sectionActive), 0, nouvel);
+  }else{
+    l.items.push(nouvel);
+  }
   touche(l);
   inp.value = "";
   maj();
@@ -4106,7 +4148,7 @@ document.addEventListener("click", ev => {
   if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
   if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
   if(act === "fermerListes"){ vue.pageListes = false; return rendre(); }
-  if(act === "fermerListe"){ vue.liste = null; return rendre(); }
+  if(act === "fermerListe"){ vue.liste = null; vue.sectionActive = null; return rendre(); }
   if(act === "nouvelleListe") return formulaireListe(null);
   if(act === "ajouterItemListe") return ajouterItemListe(b.dataset.liste);
   if(act === "toutDecocherListe"){
@@ -4299,7 +4341,7 @@ document.addEventListener("click", ev => {
   const ll0 = trouver(c, "liste");
   if(ll0){
     const l = (db.listes||[]).find(x => x.id === ll0.id); if(!l) return;
-    if(act === "ouvrirListe"){ vue.liste = l.id; return rendre(); }
+    if(act === "ouvrirListe"){ vue.liste = l.id; vue.sectionActive = null; return rendre(); }
     if(act === "editerNomListe") return formulaireListe(l);
     if(act === "jeterListe"){
       const n = (l.items||[]).filter(i => !i.titre).length;
@@ -4312,10 +4354,14 @@ document.addEventListener("click", ev => {
   }
 
   const lit = trouver(c, "item");
-  if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem")){
+  if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem" || act === "choisirSectionListe")){
     const ll = (db.listes||[]).find(x => x.id === lit.elt.dataset.liste);
     const it = ll && (ll.items||[]).find(y => y.id === lit.id);
     if(!ll || !it) return;
+    if(act === "choisirSectionListe"){
+      vue.sectionActive = vue.sectionActive === it.id ? null : it.id;
+      return rendre();
+    }
     if(act === "basculerItem"){ it.coche = !it.coche; touche(ll); return maj(); }
     if(act === "remonterItem"){
       const nouvelle = tacheNeuve({ intitule:it.texte, suivant_le:jourISO(), travail:destinationTravail() });
@@ -4460,6 +4506,64 @@ function finGlissement(){
 }
 document.addEventListener("pointerup", finGlissement);
 document.addEventListener("pointercancel", finGlissement);
+
+/* Même mécanique pour réordonner les éléments d'une liste pense-bête.
+   Contrairement aux tâches, les items n'ont pas de champ « ordre » séparé :
+   l'ordre affiché EST l'ordre stocké, donc on réécrit simplement le tableau
+   d'après la position finale dans le DOM. Les titres de section restent
+   fixes (pas de poignée) mais un item peut être glissé au-delà d'un titre :
+   c'est ainsi qu'on le fait changer de section. */
+let glissementItem = null;
+
+function ligneSousItem(y, conteneur, sauf){
+  const lignes = [...conteneur.querySelectorAll("[data-item]")].filter(x => x !== sauf);
+  for(const l of lignes){
+    const r = l.getBoundingClientRect();
+    if(y < r.top + r.height / 2) return l;
+  }
+  return null;
+}
+
+document.addEventListener("pointerdown", ev => {
+  const prise = ev.target.closest && ev.target.closest("[data-glisseritem]");
+  if(!prise) return;
+  const ligne = prise.closest("[data-item]");
+  const conteneur = ligne && ligne.closest(".rangeable-items");
+  if(!ligne || !conteneur) return;
+  ev.preventDefault();
+  glissementItem = { ligne, conteneur };
+  ligne.classList.add("glisse");
+  try{ prise.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", ev => {
+  if(!glissementItem) return;
+  ev.preventDefault();
+  const { ligne, conteneur } = glissementItem;
+  const cible = ligneSousItem(ev.clientY, conteneur, ligne);
+  if(cible) conteneur.insertBefore(ligne, cible);
+  else conteneur.appendChild(ligne);
+});
+
+function finGlissementItem(){
+  if(!glissementItem) return;
+  const { ligne, conteneur } = glissementItem;
+  glissementItem = null;
+  ligne.classList.remove("glisse");
+  const l = (db.listes||[]).find(x => x.id === ligne.dataset.liste);
+  if(!l){ return; }
+  const ids = [...conteneur.querySelectorAll("[data-item]")].map(x => x.getAttribute("data-item"));
+  const parId = new Map((l.items||[]).map(it => [it.id, it]));
+  const reordonnes = ids.map(id => parId.get(id)).filter(Boolean);
+  /* Filet de sécurité : si le compte ne correspond pas (DOM désynchronisé
+     par un rendu entre-temps), on ignore plutôt que de tronquer la liste. */
+  if(reordonnes.length !== (l.items||[]).length) return;
+  l.items = reordonnes;
+  touche(l);
+  maj();
+}
+document.addEventListener("pointerup", finGlissementItem);
+document.addEventListener("pointercancel", finGlissementItem);
 
 function decalerMois(v){
   if(v === 0){ vue.moisAgenda = jourISO().slice(0,7); return; }
