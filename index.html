@@ -460,6 +460,8 @@
   .note-rdv{font-size:12.5px;color:var(--encre-2);line-height:1.45;margin-top:4px;white-space:pre-wrap}
   .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
   .rdv.tache:hover{opacity:.9}
+  .rdv.google{color:var(--encre-2);font-style:italic}
+  .rdv.google b{color:var(--encre-2)}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
   .anniv,.ferie,.vac{font-size:11px;color:var(--encre-3);white-space:nowrap}
   .ferie{color:var(--rouge)}
@@ -849,7 +851,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 11;
-const VERSION_APP = 73;
+const VERSION_APP = 76;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2362,8 +2364,14 @@ function vueAgenda(){
     <button class="btn mini creux" data-mois="1">→</button>
     <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button>
     <button class="btn mini creux" data-act="ouvrirEdt" title="Emploi du temps de la semaine">▦</button>
-    <button class="btn mini creux" data-act="ouvrirSemestre" title="Vue sur six mois">▤</button></div>`;
+    <button class="btn mini creux" data-act="ouvrirSemestre" title="Vue sur six mois">▤</button>${
+      (db.reglages.google_client_id && db.reglages.google_api_key)
+        ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogle"
+             title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
+             ${googleEtat === "chargement" ? "…" : "G"}</button>` : ""}</div>`;
   h.push(navMois);
+  if(googleEtat === "erreur" && googleMessage)
+    h.push(`<p style="margin:-10px 0 16px;font-size:12.5px;color:var(--rouge)">Google Agenda : ${ech(googleMessage)}</p>`);
 
   const lignes = [];
   let semaine = -1;
@@ -2390,6 +2398,10 @@ function vueAgenda(){
     const taches = cote => cote === "perso" ? tachesDu(iso).map(t =>
       `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)}</div>`).join("") : "";
 
+    const google = cote => (cote === "pro" && googleVisible) ? evenementsGoogleDu(iso).map(g =>
+      `<div class="rdv google" title="Google Agenda — lecture seule">
+         <span>${g.heure ? `<b>${ech(g.heure)}</b> ` : ""}${ech(g.resume)}</span></div>`).join("") : "";
+
     lignes.push(`<div class="jour-l ${we?"we":""} ${horsMois?"hors":""} ${auj?"auj":""} ${vac?"envac":""}"
       data-jourdate="${iso}"${vac?` title="Vacances ${ech(vac)}"`:""}>
       <div class="date-c">
@@ -2398,7 +2410,7 @@ function vueAgenda(){
         <button class="plus" data-act="rdvJour" title="Ajouter un rendez-vous">+</button>
       </div>
       <div class="col perso">${bloc("perso")}${taches("perso")}${marques.length?`<div class="marques">${marques.join("")}</div>`:""}</div>
-      <div class="col pro">${bloc("pro")}</div>
+      <div class="col pro">${bloc("pro")}${google("pro")}</div>
     </div>`);
   });
 
@@ -2412,7 +2424,9 @@ function vueAgenda(){
     "Sur téléphone, balayez vers la gauche ou la droite pour changer de mois.",
     "Un clic sur une journée y ajoute un rendez-vous. Le bouton <b>▦</b> ouvre l'emploi du temps de la semaine.",
     "Les échéances apparaissent en gris pâle, les vacances par un liseré à gauche.",
-  ]));
+    (db.reglages.google_client_id && db.reglages.google_api_key)
+      ? "Le bouton <b>G</b> bascule : un clic affiche/rafraîchit vos événements Google du mois (Pro, en italique) ; un second clic les masque sans rien redemander à Google." : null,
+  ].filter(Boolean)));
   return h.join("");
 }
 
@@ -3142,6 +3156,22 @@ function vueReglages(){
       <p style="margin:11px 0 0;font-size:12.5px;color:var(--encre-3)">
         ${ech(TEINTES.find(t => t.cle === (db.reglages.accent||"petrole"))?.nom || "")} —
         le rouge des retards et le vert des tâches réglées ne changent pas.</p>
+    </div></div>
+
+  <div class="bloc"><div class="oeil">Google Agenda (Pro, lecture seule)</div>
+    <div class="fiche" style="padding:14px">
+      <div class="duo">
+        <label class="champ"><span>Client ID (OAuth)</span>
+          <input type="text" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off"
+            value="${ech(db.reglages.google_client_id || "")}" data-act="googleClientId"></label>
+        <label class="champ"><span>Clé API</span>
+          <input type="text" placeholder="AIza…" autocomplete="off"
+            value="${ech(db.reglages.google_api_key || "")}" data-act="googleApiKey"></label>
+      </div>
+      <p style="margin:0;font-size:12.5px;color:var(--encre-3)">
+        Une fois les deux renseignés, un bouton <b>G</b> apparaît dans l'Agenda : il va chercher vos
+        événements du mois affiché et les montre dans la colonne Pro — uniquement quand vous appuyez
+        dessus, rien en arrière-plan. Lecture seule : rien n'est jamais écrit dans votre Google Agenda.</p>
     </div></div>
 
   <div class="bloc"><div class="oeil">Réglages du budget</div>
@@ -4149,6 +4179,7 @@ document.addEventListener("click", ev => {
   }
   if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
   if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
+  if(act === "actualiserGoogle") return actualiserGoogle();
   if(act === "fermerListes"){ vue.pageListes = false; return rendre(); }
   if(act === "fermerListe"){ vue.liste = null; vue.sectionActive = null; return rendre(); }
   if(act === "nouvelleListe") return formulaireListe(null);
@@ -4452,7 +4483,124 @@ document.addEventListener("change", ev => {
   const a = ev.target.dataset?.act;
   if(a === "preavis"){ db.reglages.preavis_defaut = Math.max(0, Number(ev.target.value) || 0); sauver(); }
   if(a === "jourDebut"){ db.reglages.jour_debut_mois = Math.min(28, Math.max(1, Number(ev.target.value) || 1)); maj(); }
+  if(a === "googleClientId"){ db.reglages.google_client_id = ev.target.value.trim(); maj(); }
+  if(a === "googleApiKey"){ db.reglages.google_api_key = ev.target.value.trim(); maj(); }
 });
+
+/* =====================================================================
+   GOOGLE AGENDA — lecture seule, à la demande, rien en base
+   Ni le jeton d'accès ni les événements ne sont écrits dans `db` : tout
+   vit dans ces variables en mémoire, donc rien ne passe par l'export, la
+   synchro ou l'Accueil, et tout disparaît à la fermeture de l'onglet.
+   Les scripts Google ne sont chargés qu'au premier clic sur « G », jamais
+   au démarrage, pour ne rien consommer tant que ce n'est pas utilisé.
+   ===================================================================== */
+let googleEtat = "off";     // off | chargement | connecte | erreur
+let googleMessage = "";
+let googleVisible = false;  // vrai bouton à cocher : masquer ne redemande rien à Google
+let googleTokenClient = null;
+let googleScriptsPret = null; // Promise, une seule fois
+let googleCache = {};         // { "AAAA-MM": { "AAAA-MM-JJ": [{resume,heure}] } }
+
+function chargerScriptsGoogle(){
+  if(googleScriptsPret) return googleScriptsPret;
+  const uneFois = (src) => new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = src; s.async = true; s.defer = true;
+    s.onload = res; s.onerror = () => rej(new Error("Chargement du script Google impossible."));
+    document.head.appendChild(s);
+  });
+  googleScriptsPret = Promise.all([
+    uneFois("https://accounts.google.com/gsi/client"),
+    uneFois("https://apis.google.com/js/api.js"),
+  ]);
+  return googleScriptsPret;
+}
+
+function initGapiClient(){
+  return new Promise((res, rej) => {
+    window.gapi.load("client", async () => {
+      try{
+        await window.gapi.client.init({
+          apiKey: db.reglages.google_api_key,
+          discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest"],
+        });
+        res();
+      }catch(e){ rej(e); }
+    });
+  });
+}
+
+function evenementsGoogleDu(iso){
+  const mois = iso.slice(0, 7);
+  return (googleCache[mois] && googleCache[mois][iso]) || [];
+}
+
+async function recupererEvenementsGoogle(){
+  const moisRef = vue.moisAgenda || jourISO().slice(0, 7);
+  const [an, mo] = moisRef.split("-").map(Number);
+  const debut = new Date(an, mo - 1, 1);
+  const fin = new Date(an, mo, 1);
+  const reponse = await window.gapi.client.calendar.events.list({
+    calendarId: "primary",
+    timeMin: debut.toISOString(),
+    timeMax: fin.toISOString(),
+    singleEvents: true,
+    orderBy: "startTime",
+    maxResults: 250,
+  });
+  const parJour = {};
+  (reponse.result.items || []).forEach(ev => {
+    const dateHeure = ev.start && ev.start.dateTime;
+    const iso = ((dateHeure || (ev.start && ev.start.date)) || "").slice(0, 10);
+    if(!iso) return;
+    (parJour[iso] = parJour[iso] || []).push({
+      resume: ev.summary || "(sans titre)",
+      heure: dateHeure ? dateHeure.slice(11, 16) : null,
+    });
+  });
+  googleCache[moisRef] = parJour;
+}
+
+async function actualiserGoogle(){
+  /* Masquer ne redemande jamais rien à Google : c'est juste un repli visuel,
+     gratuit en données, comme décocher une case. */
+  if(googleVisible){
+    googleVisible = false;
+    return maj();
+  }
+  if(!db.reglages.google_client_id || !db.reglages.google_api_key){
+    googleEtat = "erreur";
+    googleMessage = "Renseignez le Client ID et la clé API dans Réglages d'abord.";
+    return maj();
+  }
+  googleEtat = "chargement"; googleMessage = "";
+  maj();
+  try{
+    await chargerScriptsGoogle();
+    await initGapiClient();
+    if(!googleTokenClient || googleTokenClient.__clientId !== db.reglages.google_client_id){
+      googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: db.reglages.google_client_id,
+        scope: "https://www.googleapis.com/auth/calendar.events.readonly",
+        callback: "", // fixé juste avant chaque requête, ci-dessous
+      });
+      googleTokenClient.__clientId = db.reglages.google_client_id;
+    }
+    await new Promise((res, rej) => {
+      googleTokenClient.callback = (resp) => resp && resp.error ? rej(resp) : res();
+      googleTokenClient.requestAccessToken({ prompt: window.gapi.client.getToken() ? "" : "consent" });
+    });
+    await recupererEvenementsGoogle();
+    googleEtat = "connecte";
+    googleVisible = true;
+  }catch(e){
+    googleEtat = "erreur";
+    googleMessage = (e && (e.error_description || e.message || e.error)) || "Connexion refusée ou interrompue.";
+    googleVisible = false;
+  }
+  maj();
+}
 
 /* =====================================================================
    GLISSER-DÉPOSER
