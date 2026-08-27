@@ -508,6 +508,19 @@
     .fab{right:16px;bottom:calc(70px + env(safe-area-inset-bottom));width:56px;height:56px;font-size:29px}
     .entete-mob{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
     .entete-mob .jour{margin:0}
+    /* Habillage du « grand jour » : un dégradé doux, pas criard, et qui
+       reste correct même écarté par le zoom du mode grand caractère —
+       padding et border-radius plutôt que largeurs fixes. */
+    .jour-fete-cadre.fete{background:linear-gradient(120deg,var(--accent-pale),transparent 70%);
+      border-radius:var(--r);padding:10px 12px;margin:-10px -12px 14px}
+    .etoile-fete{margin-left:8px;font-size:0.7em;vertical-align:middle}
+  /* Carré-icône : mêmes proportions qu'un bouton .btn.mini, mais carré et
+     sans texte — pour les gestes fréquents (sommeil) qui n'ont pas besoin
+     d'une étiquette une fois appris. */
+  .carre-action{width:38px;height:38px;flex:none;border:1px solid var(--filet-fort);border-radius:var(--r);
+    background:transparent;font-size:17px;display:inline-flex;align-items:center;justify-content:center;
+    padding:0;line-height:1}
+  .carre-action:hover{border-color:var(--accent);background:var(--fiche)}
     /* Sur téléphone, chaque bouton doit rester atteignable au pouce. */
     .ico{padding:9px 11px;font-size:16px}
     .case{width:26px;height:26px}
@@ -730,6 +743,10 @@ const Sync = (() => {
     db.depenses = db.depenses || [];
     db.listes = db.listes || [];
     db.listes.forEach(l => { l.items = l.items || []; });
+    db.sommeil = db.sommeil || [];
+    db.projets = db.projets || [];
+    db.projets.forEach(p => { p.lignes = p.lignes || []; });
+    db.commandes = db.commandes || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
     appliquerTeinte(); appliquerTaille();
@@ -850,8 +867,8 @@ const Sync = (() => {
 /* =====================================================================
    2. MODÈLE
    ===================================================================== */
-const VERSION_SCHEMA = 11;
-const VERSION_APP = 77;
+const VERSION_SCHEMA = 14;
+const VERSION_APP = 84;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -986,7 +1003,7 @@ function tacheNeuve(p = {}){
     date_due:null, preavis:0, n:0, unite:"an",
     statut:"inbox", suivant_le:null, reports:0, en_inbox:false, travail:false, urgent:false,
     attente:null,   /* date à laquelle on s'est mis à attendre une réponse */
-    cree_le:jourISO(), fait_le:null, notes:"", journal:[],
+    cree_le:jourISO(), fait_le:null, notes:"", journal:[], sous_taches:[], etiquettes:[],
   }, p);
 }
 
@@ -1019,6 +1036,9 @@ function etatNeuf(){
     habitudes_faites: [],
     emplois: [],
     listes: [],
+    sommeil: [],
+    projets: [],
+    commandes: [],
     bloc_notes: "",
     supprimes: [],
     corbeille: [],
@@ -1059,6 +1079,18 @@ function migrer(d){
     x.version_schema = 4;
     x.rendez_vous = x.rendez_vous || [];
     x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
+  }
+  if((x.version_schema ?? 13) < 14){
+    x.version_schema = 14;
+    x.commandes = x.commandes || [];
+  }
+  if((x.version_schema ?? 12) < 13){
+    x.version_schema = 13;
+    x.projets = x.projets || [];
+  }
+  if((x.version_schema ?? 11) < 12){
+    x.version_schema = 12;
+    x.sommeil = x.sommeil || [];
   }
   if((x.version_schema ?? 10) < 11){
     x.version_schema = 11;
@@ -1101,7 +1133,7 @@ function migrer(d){
 /* Collections fusionnables : chaque élément y porte un identifiant unique,
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
-                     "habitudes","habitudes_faites","emplois","listes",
+                     "habitudes","habitudes_faites","emplois","listes","sommeil","projets","commandes",
                      "anniversaires","vacances","contextes","categories","categories_depense"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
@@ -1197,11 +1229,15 @@ let db = null;
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
-              filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null };
+              filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
+              filtreEtiquette:null,
+              pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false,
+              habitudeGrille:null, semaineCondensee:false, anneeBilan:null, pageBilanAnnuel:false };
 
 let tempo = null;
 /* marquer=false pour les écritures de normalisation au démarrage :
    elles ne doivent pas faire croire à une modification. */
+let dernierMarqueur = true;
 function sauver(marquer = true){
   if(marquer){
     Sync.noterGeste();
@@ -1210,12 +1246,30 @@ function sauver(marquer = true){
     db.dernier_appareil = nomAppareil();
     delete db.vierge;   /* dès la première saisie, ce carnet compte */
   }
+  dernierMarqueur = marquer;
   clearTimeout(tempo);
   tempo = setTimeout(() => {
+    tempo = null;
     Stockage.ecrire(structuredClone(db));
     if(marquer) Sync.planifier();
   }, 180);
 }
+
+/* Filet de sécurité : entre une saisie et son écriture réelle (180ms plus
+   haut, pour ne pas marteler IndexedDB à chaque frappe), un onglet fermé ou
+   une appli mise en arrière-plan — geste on ne peut plus naturel juste après
+   avoir validé une saisie sur téléphone — pouvait faire perdre cette
+   dernière saisie, jamais écrite ni poussée à la synchro. On force
+   l'écriture dès que l'app quitte le premier plan pour fermer cette fenêtre. */
+function purgerSauvegardeEnAttente(){
+  if(tempo === null) return;
+  clearTimeout(tempo);
+  tempo = null;
+  Stockage.ecrire(structuredClone(db));
+  if(dernierMarqueur) Sync.planifier();
+}
+document.addEventListener("visibilitychange", () => { if(document.hidden) purgerSauvegardeEnAttente(); });
+window.addEventListener("pagehide", purgerSauvegardeEnAttente);
 const maj = () => { sauver(); rendre(); };
 
 const ctxDe  = id => db.contextes.find(c => c.id === id) || null;
@@ -1338,11 +1392,25 @@ const semaineDe = iso => {
     const x = new Date(d); x.setDate(x.getDate() + k); return jourISO(x);
   });
 };
+/* N semaines consécutives (lundi-dimanche) jusqu'à la semaine courante
+   incluse, la plus ancienne en premier — pour la grille façon calendrier
+   de contributions. */
+function semainesRecentes(n){
+  const debut = versDate(semaineDe(jourISO())[0]);
+  return Array.from({ length:n }, (_, k) => {
+    const d = new Date(debut); d.setDate(d.getDate() - (n - 1 - k) * 7);
+    return semaineDe(jourISO(d));
+  });
+}
 
 const rdvDu = iso => (db.rendez_vous||[]).filter(r => debutOccurrence(r, iso))
                       .sort((a,b) => (a.heure||"99").localeCompare(b.heure||"99"));
 const rangRdv = (r, iso) => ecartJours(debutOccurrence(r, iso) || r.date, iso) + 1;
 const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5,7) && a.jour === +iso.slice(8,10));
+/* Un seul endroit pour traduire le symbole choisi : gâteau par défaut,
+   cœur pour un anniversaire de couple, étoile pour un « grand jour »
+   (habillage festif ce jour-là en Accueil, voir plus bas). */
+const iconeAnniv = a => a.icone === "coeur" ? "❤️" : a.icone === "etoile" ? "⭐" : "🎂";
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
 
 const prochaineDe = id => { const l = duDossier(id).filter(t => t.date_due).map(t => t.date_due).sort(); return l[0] || null; };
@@ -1530,6 +1598,37 @@ function bilan(decalage = 0){
   return { deb, fin, dep, revenus, charges, disponible, depense, reste, total, ecoules, restants, encore,
            encaissees, attendues, attente, avances, ponctuels, sortiePonctuelle, especes,
            reel: chargesReelles(deb, fin), courante: j >= deb && j <= fin };
+}
+
+/* =====================================================================
+   BILAN ANNUEL — septembre à septembre, à la demande de l'utilisatrice.
+   Volontairement limité à ce que le carnet sait dater avec certitude :
+   les dépenses, les rentrées ponctuelles reçues, les tâches accomplies.
+   Les revenus étant réglés comme un taux mensuel actuel (pas un historique
+   daté), les faire entrer ici donnerait un chiffre faussement précis —
+   on les laisse donc de côté plutôt que d'inventer une exactitude qu'on
+   n'a pas. */
+function periodeBilanAnnuel(anBase){
+  return { deb:`${anBase}-09-01`, fin:`${anBase+1}-08-31`,
+           libelle:`Septembre ${anBase} → Août ${anBase+1}` };
+}
+function anneeBilanCourante(){
+  const [an, mo] = jourISO().split("-").map(Number);
+  return mo >= 9 ? an : an - 1;
+}
+function calculerBilanAnnuel(anBase){
+  const { deb, fin } = periodeBilanAnnuel(anBase);
+  const dep = (db.depenses||[]).filter(x => x.date >= deb && x.date <= fin);
+  const total = dep.reduce((s,x) => s + (x.montant||0), 0);
+  const parCategorie = {};
+  dep.forEach(x => parCategorie[x.categorie_id || "?"] = (parCategorie[x.categorie_id || "?"] || 0) + x.montant);
+  const parMois = {};
+  dep.forEach(x => parMois[x.date.slice(0,7)] = (parMois[x.date.slice(0,7)] || 0) + x.montant);
+  const moisTries = Object.entries(parMois).sort((a,b) => b[1] - a[1]);
+  const rentrees = (db.rentrees||[]).filter(r => r.recu && r.date && r.date >= deb && r.date <= fin);
+  const totalRentrees = rentrees.reduce((s,r) => s + (r.montant||0), 0);
+  const tachesFaites = (db.taches||[]).filter(t => t.fait_le && t.fait_le >= deb && t.fait_le <= fin).length;
+  return { deb, fin, dep, total, parCategorie, moisTries, rentrees, totalRentrees, tachesFaites };
 }
 
 /* =====================================================================
@@ -1775,6 +1874,7 @@ function rafraichirBadge(){
   const zoom = `<button class="loupe ${db.reglages.gros ? "actif" : ""}" data-act="grossir"
     title="Agrandir le texte" aria-label="Agrandir le texte">Aa</button>`;
   const loupe = `<button class="loupe" data-act="recherche" title="Rechercher" aria-label="Rechercher">⌕</button>`;
+  const calc = `<button class="loupe" data-act="ouvrirCalculatrice" title="Calculatrice" aria-label="Calculatrice">🖩</button>`;
   const roue = `<button class="loupe" data-onglet="reglages" title="Réglages" aria-label="Réglages">⚙</button>`;
   /* On ne touche au DOM que si l'affichage change réellement : sinon la
      pastille se reconstruit toutes les secondes pour rien. */
@@ -1786,7 +1886,7 @@ function rafraichirBadge(){
   noeuds.forEach(n => {
     n.querySelectorAll(".sync,.loupe").forEach(x => x.remove());
     if(html) n.insertAdjacentHTML("beforeend", " " + html);
-    n.insertAdjacentHTML("beforeend", " " + zoom + loupe + roue);
+    n.insertAdjacentHTML("beforeend", " " + zoom + loupe + calc + roue);
   });
 }
 
@@ -1842,7 +1942,7 @@ function chercher(q){
   });
   (db.anniversaires||[]).forEach(x => {
     if(!ok(sansAccents(x.nom))) return;
-    r.push({ genre:"Anniversaire", titre:(x.icone === "coeur" ? "❤️ " : "🎂 ") + x.nom,
+    r.push({ genre:"Anniversaire", titre:iconeAnniv(x) + " " + x.nom,
       detail:`${String(x.jour).padStart(2,"0")} ${MOIS[x.mois-1]}`,
       aller:() => { vue.onglet = "agenda"; vue.moisAgenda = `${new Date().getFullYear()}-${String(x.mois).padStart(2,"0")}`; } });
   });
@@ -2037,11 +2137,20 @@ function ligneTache(t, opts = {}){
     meta.push(`<span class="puce date ${!faite && n<=2 ? "chaud":""}">${dateCourte(t.date_due)} · ${resteEnMots(t.date_due)}</span>`);
   }
   if(t.n > 0) meta.push(`<span class="puce">${recurrenceEnMots(t.n, t.unite)}</span>`);
+  (t.etiquettes||[]).forEach(e => meta.push(`<button class="puce etq" data-fetq="${ech(e)}"
+    style="background:none;border:0;padding:0;font:inherit;cursor:pointer">#${ech(e)}</button>`));
   if(enVeille(t) && opts.veille) meta.push(`<span class="puce veille">sort ${resteEnMots(ajouterPeriode(t.date_due, -(t.preavis||0), "jour"))}</span>`);
   if(t.attente) meta.push(`<span class="puce ctx">en attente depuis ${
     ecartJours(t.attente, j) === 0 ? "aujourd'hui" : ecartJours(t.attente, j) + " jour" + (ecartJours(t.attente, j) > 1 ? "s" : "")}</span>`);
   if(!faite && t.reports >= 3) meta.push(`<span class="repousse ${t.reports>=5?"chaud":""}">repoussé ×${t.reports}</span>`);
   if(faite && t.fait_le) meta.push(`<span class="puce date">${dateCourte(t.fait_le)}</span>`);
+  if((t.sous_taches||[]).length){
+    const nFaites = t.sous_taches.filter(s => s.coche).length;
+    /* Bouton, pas simple texte : un tap ouvre directement la fiche, sur le
+       même acte « editer » que le crayon — aucun câblage supplémentaire. */
+    meta.push(`<button class="puce" data-act="editer" title="Sous-tâches"
+      style="background:none;border:0;padding:0;font:inherit;cursor:pointer">☰ ${nFaites}/${t.sous_taches.length}</button>`);
+  }
   const retard = !faite && t.date_due && ecartJours(j, t.date_due) < 0;
   const monter = d && !t.date_due && !faite
     ? (t.en_inbox ? `<button class="ico mont" data-act="renvoyer" title="Renvoyer dans le dossier">↩</button>`
@@ -2086,8 +2195,66 @@ const vide = (t, x, style) => `<div class="vide ${style || ""}"><b>${t}</b>${x |
 const groupe = (t,c,x) => `<div class="oeil">${t}${c!=null?` <span class="cpt">${c}</span>`:""}</div>${x}`;
 const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
 
+/* Petites phrases pour la fin de journée : écrites ici, pas empruntées à
+   quelqu'un — pas de souci de droits, et un ton qui reste le nôtre. Le choix
+   du jour est stable (pas aléatoire à chaque rendu), pour ne pas changer
+   sous les yeux à chaque interaction. */
+const CITATIONS_SOIR = [
+  "Une journée qui se termine n'a pas besoin d'être parfaite pour compter.",
+  "Ce qui n'est pas fait aujourd'hui peut très bien attendre demain.",
+  "Le repos fait autant avancer que le travail.",
+  "Tu as fait ce que tu as pu, avec ce que tu avais. C'est déjà beaucoup.",
+  "Demain reste une page blanche, quoi qu'il se soit passé aujourd'hui.",
+  "Un petit pas reste un pas.",
+  "La liste peut attendre. Le sommeil, moins.",
+  "Rien n'oblige à tout finir avant de se poser.",
+];
+function citationDuSoir(){
+  const [an, mo, jo] = jourISO().split("-").map(Number);
+  const rang = Math.floor(new Date(an, mo - 1, jo).getTime() / 86400000);
+  return CITATIONS_SOIR[((rang % CITATIONS_SOIR.length) + CITATIONS_SOIR.length) % CITATIONS_SOIR.length];
+}
+
+/* Sommeil en 2 taps : on ne peut pas lire le mode avion depuis un site web
+   (aucun site ne le peut, c'est bloqué par le système), donc l'heure du
+   coucher/lever se pose à la main, mais en un seul geste — pas besoin de
+   taper une heure. On associe chaque « coucher » au « lever » suivant pour
+   calculer une durée, en ignorant les appuis en double (le plus récent
+   coucher fait foi si on a tapé deux fois par erreur). */
+function nuitsRecentes(n = 7){
+  const evts = [...(db.sommeil||[])].sort((a,b) => (a.quand||"").localeCompare(b.quand||""));
+  const nuits = [];
+  let enCours = null;
+  evts.forEach(e => {
+    if(e.type === "coucher") enCours = e;
+    else if(e.type === "lever" && enCours){
+      const heures = (new Date(e.quand) - new Date(enCours.quand)) / 3600000;
+      if(heures > 0) nuits.push({ coucher:enCours.quand, lever:e.quand, heures });
+      enCours = null;
+    }
+  });
+  return nuits.slice(-n).reverse();
+}
+const formatDureeSommeil = heures => {
+  const h = Math.floor(heures), m = Math.round((heures - h) * 60);
+  return m ? `${h}h${String(m).padStart(2,"0")}` : `${h}h`;
+};
+
+/* Compte à rebours : une simple option sur un rendez-vous existant, plutôt
+   qu'un champ séparé — on reste dans les données qu'on a déjà. S'il y en a
+   plusieurs d'épinglés, celui qui vient en premier (aujourd'hui ou après)
+   gagne ; à défaut, le plus récent parmi ceux déjà passés. */
+function prochainCompteARebours(j){
+  const flags = (db.rendez_vous||[]).filter(r => r.compte_a_rebours).map(r => ({ r, n: ecartJours(j, r.date) }));
+  if(!flags.length) return null;
+  const futurs = flags.filter(x => x.n >= 0).sort((a,b) => a.n - b.n);
+  return futurs.length ? futurs[0] : flags.sort((a,b) => b.n - a.n)[0];
+}
+
 /* ---- Accueil ---- */
 function vueAccueil(){
+  if(vue.pageSommeil) return vuePageSommeil();
+  if(vue.habitudeGrille) return vueGrilleHabitude();
   const j = jourISO();
   const suiv = suivantes().filter(t => passeSphere(t) && (!vue.filtreUrgent || t.urgent));
   const dejaFaire = new Set(suiv.map(t => t.id));
@@ -2102,16 +2269,46 @@ function vueAccueil(){
   if(sphere() === "travail")
     h.push(`<button class="filet-rappel doux" data-sphere="perso" style="margin:0 0 12px">
       ▪ Mode travail — revenir au perso</button>`);
-  h.push(`<div class="entete-mob"><h1 class="titre grand-jour">
+  /* Un « grand jour » épinglé (icône ⭐ sur un anniversaire) habille juste
+     l'en-tête différemment ce jour précis — rien d'autre ne change, c'est
+     un clin d'œil, pas une fonction. */
+  const grandJour = anniDu(j).find(a => a.icone === "etoile");
+  h.push(`<div class="entete-mob jour-fete-cadre ${grandJour ? "fete" : ""}"><h1 class="titre grand-jour">
       <span class="sem">${JOURS[dj.getDay()]}</span>
       <span class="chiffre">${dj.getDate()}</span>
-      <span class="mois">${MOIS[dj.getMonth()]}</span></h1>
+      <span class="mois">${MOIS[dj.getMonth()]}</span>${grandJour ? `<span class="etoile-fete" title="${ech(grandJour.nom)}">⭐</span>` : ""}</h1>
     <div class="jour"><button class="mini-carre ${db.bloc_notes.trim() ? "rempli" : ""}"
       data-act="blocNotes" title="Bloc-notes" aria-label="Bloc-notes"></button></div></div>`);
+  if(grandJour)
+    h.push(`<p style="margin:-8px 0 16px;font-size:12.5px;color:var(--accent)">✨ ${ech(grandJour.nom)}, aujourd'hui !</p>`);
+
+  /* Compte à rebours : option posée sur un rendez-vous existant plutôt
+     qu'un réglage séparé — voir prochainCompteARebours(). */
+  const cr = prochainCompteARebours(j);
+  if(cr){
+    const txt = cr.n > 0 ? `J-${cr.n} avant ${ech(cr.r.intitule)}`
+      : cr.n === 0 ? `C'est aujourd'hui : ${ech(cr.r.intitule)} !`
+      : `${ech(cr.r.intitule)} — il y a ${-cr.n} j`;
+    h.push(`<div class="bandeau" style="margin-bottom:12px"><div class="g">⏳ ${txt}</div></div>`);
+  }
+
+  /* Sommeil : deux carrés-icônes discrets (mêmes gestes qu'ailleurs dans
+     l'appli), un troisième pour le bilan chiffré. La dernière nuit
+     calculée s'affiche à côté dès qu'une paire coucher→lever existe. */
+  const nuits = nuitsRecentes(1);
+  h.push(`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <button class="carre-action" data-act="sommeilCoucher" title="Je me couche" aria-label="Je me couche">🛏️</button>
+    <button class="carre-action" data-act="sommeilLever" title="Je me lève" aria-label="Je me lève">☀️</button>
+    <button class="carre-action" data-act="ouvrirSommeil" title="Bilan sommeil" aria-label="Bilan sommeil">📊</button>
+    ${nuits.length ? `<span style="font-size:12.5px;color:var(--encre-3)">dernière nuit : ${formatDureeSommeil(nuits[0].heures)}</span>` : ""}
+  </div>`);
   /* Pas de récapitulatif chiffré : on lit les listes elles-mêmes. */
 
   if(!Stockage.persistant())
     h.push(`<div class="bandeau alerte"><div class="g"><b>Stockage indisponible ici.</b> Rien ne sera conservé. Téléchargez le fichier et ouvrez-le dans votre navigateur.</div></div>`);
+  if(new Date().getHours() >= 22 && db.reglages.citation_masquee_le !== j)
+    h.push(`<div class="bandeau citation-soir"><div class="g" style="font-style:italic">${ech(citationDuSoir())}</div>
+      <button class="ico" data-act="masquerCitation" title="Masquer pour ce soir" aria-label="Masquer">✕</button></div>`);
   if(retard.length)
     h.push(`<button class="filet-rappel doux" data-aller="echeances">
       <span class="point-retard"></span>${retard.length} échéance${retard.length>1?"s":""} à rattraper, no stress</button>`);
@@ -2145,7 +2342,7 @@ function vueAccueil(){
           ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
         ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div></div>`));
     p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
-      <div class="heure-c">${a.icone === "coeur" ? "❤️" : "🎂"}</div>
+      <div class="heure-c">${iconeAnniv(a)}</div>
       <div class="corps"><div class="intitule">${ech(a.nom)}</div></div></div>`));
     return l;
   };
@@ -2188,8 +2385,11 @@ function vueAccueil(){
         const serie = serieHabitude(x.id);
         const m = moisHabitude(x.id);
         return `<div class="hab-ligne">
-          <span class="hab-nom">${ech(x.nom)}${serie > 1 ? `<i class="serie">${serie} j</i>` : ""}${
-            m.faits ? `<i class="bilan-mois">${m.faits}/${m.ecoules}</i>` : ""}</span>
+          <button class="hab-nom" data-act="ouvrirGrilleHabitude" data-habitude="${x.id}"
+            title="Voir la grille des derniers mois"
+            style="background:none;border:0;padding:0;text-align:left;cursor:pointer;font:inherit;color:inherit">
+            ${ech(x.nom)}${serie > 1 ? `<i class="serie">${serie} j</i>` : ""}${
+            m.faits ? `<i class="bilan-mois">${m.faits}/${m.ecoules}</i>` : ""}</button>
           ${sem.map(d => `<button class="rond ${habitudeFaite(x.id, d) ? "plein" : ""} ${d === j ? "auj" : ""} ${d > j ? "futur" : ""}"
             data-hab="${x.id}" data-hjour="${d}" aria-label="${ech(x.nom)} ${dateLongue(d)}"
             ${d > j ? "disabled" : ""}></button>`).join("")}
@@ -2230,13 +2430,63 @@ function vueAccueil(){
   return h.join("");
 }
 
+/* ---- Bilan sommeil ---- */
+function vuePageSommeil(){
+  const nuits = nuitsRecentes(90);
+  const h = [`<button class="retour" data-act="fermerSommeil">← Accueil</button>`,
+    `<div class="entete-d"><h1 class="titre">Bilan sommeil</h1></div>`,
+    `<div style="height:16px"></div>`];
+  if(!nuits.length)
+    return h.join("") + vide("Aucune nuit enregistrée", "Utilisez 🛏️ et ☀️ en Accueil pour commencer.");
+  h.push(`<div class="fiche liste">${nuits.map(n => `
+    <div class="ligne">
+      <div class="corps"><div class="intitule">${dateCourte(jourISO(new Date(n.lever)))}</div></div>
+      <div class="somme">${formatDureeSommeil(n.heures)}</div>
+    </div>`).join("")}</div>`);
+  h.push(piedAide(["Du plus récent au plus ancien, une paire coucher → lever par ligne."]));
+  return h.join("");
+}
+
+/* ---- Grille de régularité (habitude) ---- */
+/* Façon calendrier de contributions : un carré par jour, plein s'il est
+   coché. Semaines en colonnes (la plus récente à droite), défilement
+   horizontal plutôt que de tasser sur l'écran d'un téléphone. */
+function vueGrilleHabitude(){
+  const hab = (db.habitudes||[]).find(x => x.id === vue.habitudeGrille);
+  if(!hab){ vue.habitudeGrille = null; return vueAccueil(); }
+  const j = jourISO();
+  const NB_SEMAINES = 20;
+  const semaines = semainesRecentes(NB_SEMAINES);
+  const jours = semaines.flat().filter(d => d <= j);
+  const faits = jours.filter(d => habitudeFaite(hab.id, d)).length;
+
+  const h = [`<button class="retour" data-act="fermerGrilleHabitude">← Accueil</button>`,
+    `<div class="entete-d"><h1 class="titre">${ech(hab.nom)}</h1></div>`,
+    `<p style="margin:-8px 0 16px;font-size:13px;color:var(--encre-2)">${faits} jour${faits>1?"s":""} sur les ${jours.length} derniers</p>`];
+
+  const cellules = semaines.map(sem => sem.map(d => {
+    if(d > j) return `<div style="width:12px;height:12px"></div>`;
+    const fait = habitudeFaite(hab.id, d);
+    return `<div title="${ech(dateLongue(d))}${fait?" · fait":""}" style="width:12px;height:12px;border-radius:2px;
+      background:${fait?"var(--accent)":"var(--filet)"}"></div>`;
+  }).join("")).join("");
+
+  h.push(`<div style="overflow-x:auto;padding-bottom:10px;-webkit-overflow-scrolling:touch">
+    <div style="display:inline-grid;grid-template-columns:repeat(${semaines.length},12px);
+      grid-template-rows:repeat(7,12px);gap:3px;grid-auto-flow:column">${cellules}</div>
+  </div>`);
+  h.push(piedAide(["Chaque carré est un jour ; les plus récents sont à droite. Faites glisser pour remonter dans le temps."]));
+  return h.join("");
+}
+
 /* ---- Tâches ---- */
 function vueTaches(){
   const j = jourISO();
   const passe = t => passeSphere(t)
                   && (!vue.filtreUrgent || t.urgent)
                   && (!vue.filtreCtx || t.contexte_id === vue.filtreCtx)
-                  && (!vue.filtreDoss || t.dossier_id === vue.filtreDoss);
+                  && (!vue.filtreDoss || t.dossier_id === vue.filtreDoss)
+                  && (!vue.filtreEtiquette || (t.etiquettes||[]).includes(vue.filtreEtiquette));
   const suiv = suivantes().filter(passe), tri = aTrier().filter(passe), reg = reglees().filter(passe);
   const h = [`<div class="entete-mob"><h1 class="titre">Tâches</h1><div class="jour">${dateCourte(j)}</div></div>`,
     `<div class="saisie"><input id="saisie" placeholder="Ajouter une tâche…" autocomplete="off" enterkeyhint="done">
@@ -2274,6 +2524,15 @@ function vueTaches(){
       return `<button class="filtre doss ${vue.filtreDoss===d.id?"on":""}" data-fdoss="${d.id}">${ech(d.nom)}
         <span class="n">${remontees}/${total}</span></button>`;
     }).join("")}
+  </div>`);
+
+  /* Étiquettes : pas de liste prédéfinie comme les contextes — on affiche
+     simplement celles qui existent déjà dans les tâches remontées, pour ne
+     jamais montrer une rangée vide. */
+  const toutesEtiquettes = [...new Set(inbox().filter(passeSphere).flatMap(t => t.etiquettes||[]))].sort();
+  if(toutesEtiquettes.length) h.push(`<div class="filtres">
+    <button class="filtre ${!vue.filtreEtiquette?"on":""}" data-fetq="">Toutes étiquettes</button>
+    ${toutesEtiquettes.map(e => `<button class="filtre ${vue.filtreEtiquette===e?"on":""}" data-fetq="${ech(e)}">#${ech(e)}</button>`).join("")}
   </div>`);
 
   h.push(`<div class="oeil">À faire${suiv.length?` <span class="cpt">${suiv.length}</span>`:""}
@@ -2352,6 +2611,7 @@ function grilleMois(annee, mois){
 function vueAgenda(){
   if(vue.semestre) return vueSemestre();
   if(vue.edt) return vueEdt();
+  if(vue.semaineCondensee) return vueSemaineCondensee();
   const j = jourISO();
   if(!vue.moisAgenda) vue.moisAgenda = j.slice(0,7);
   const [an, mo] = vue.moisAgenda.split("-").map(Number);
@@ -2364,6 +2624,7 @@ function vueAgenda(){
     <button class="btn mini creux" data-mois="1">→</button>
     <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button>
     <button class="btn mini creux" data-act="ouvrirEdt" title="Emploi du temps de la semaine">▦</button>
+    <button class="btn mini creux" data-act="ouvrirSemaineCondensee" title="Cette semaine, en un coup d'œil">7</button>
     <button class="btn mini creux" data-act="ouvrirSemestre" title="Vue sur six mois">▤</button>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogle"
@@ -2384,7 +2645,7 @@ function vueAgenda(){
 
     const marques = [];
     anniDu(iso).forEach(a => marques.push(
-      `<span class="anniv">${a.icone === "coeur" ? "❤️" : "🎂"} ${ech(a.nom)}</span>`));
+      `<span class="anniv">${iconeAnniv(a)} ${ech(a.nom)}</span>`));
     if(ferie) marques.push(`<span class="ferie">${ech(ferie)}</span>`);
 
     const bloc = cote => rdvDu(iso).filter(r => (r.cote || "perso") === cote).map(r =>
@@ -2499,6 +2760,47 @@ function vueSemestre(){
 const JOURS_EDT = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const enMinutes = h => { const [a,b] = String(h||"0:0").split(":").map(Number); return a*60 + (b||0); };
 
+/* ---- Cette semaine, condensée ---- */
+/* Ce qu'on regarde le lundi matin sans avoir à ouvrir trois onglets :
+   rendez-vous et échéances des sept jours, et le budget en une ligne. */
+function vueSemaineCondensee(){
+  const j = jourISO();
+  const sem = semaineDe(j);
+  const b = bilan(0);
+  const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
+    `<div class="entete-d"><h1 class="titre">Cette semaine</h1></div>`,
+    `<div style="height:8px"></div>`];
+
+  h.push(`<div class="fiche liste">${sem.map((iso,k) => {
+    const rdv = rdvDu(iso);
+    const tas = datees().filter(t => passeSphere(t) && t.date_due === iso && t.statut !== "done");
+    const estAuj = iso === j;
+    const morceaux = [
+      ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
+      ...tas.map(t => `◷ ${ech(t.intitule)}`),
+    ];
+    return `<div class="ligne">
+      <div class="corps">
+        <div class="intitule">${estAuj?"<b>":""}${JOURS_EDT[k]} ${versDate(iso).getDate()}${estAuj?"</b>":""}</div>
+        ${morceaux.length
+          ? morceaux.map(m => `<div class="petit-detail">${m}</div>`).join("")
+          : `<div class="note-min">Rien de prévu</div>`}
+      </div>
+    </div>`;
+  }).join("")}</div>`);
+
+  h.push(`<div class="oeil" style="margin-top:18px">Budget du mois</div>`);
+  h.push(`<div class="fiche liste"><div class="ligne">
+    <div class="corps"><div class="intitule">Reste ce mois-ci</div></div>
+    <div class="somme" style="color:${b.reste<0?"var(--rouge)":"inherit"}">${euro(b.reste,0)}</div>
+  </div></div>`);
+
+  h.push(piedAide([
+    "Semaine du lundi au dimanche en cours. Le budget affiché reste celui du mois entier, pas seulement de la semaine.",
+  ]));
+  return h.join("");
+}
+
 function vueEdt(){
   const edt = (db.emplois || []).find(x => x.id === vue.edt);
   if(!edt){ vue.edt = null; return vueAgenda(); }
@@ -2561,7 +2863,57 @@ function vueEdt(){
 }
 
 /* ---- Budget ---- */
+/* ---- Bilan annuel ---- */
+function vueBilanAnnuel(){
+  const anBase = vue.anneeBilan ?? anneeBilanCourante();
+  const { libelle } = periodeBilanAnnuel(anBase);
+  const r = calculerBilanAnnuel(anBase);
+  const estCourante = anBase === anneeBilanCourante();
+
+  const h = [`<button class="retour" data-act="fermerBilanAnnuel">← Budget</button>`,
+    `<div class="entete-d"><h1 class="titre">Bilan annuel</h1></div>`,
+    `<div class="barre-mois">
+      <button class="btn mini creux" data-anbilan="-1">←</button>
+      <div class="titre-mois"><span class="nom">${ech(libelle)}</span></div>
+      <button class="btn mini creux" data-anbilan="1">→</button>
+      ${!estCourante ? `<button class="btn mini creux" data-anbilan="0">Année en cours</button>` : ""}
+    </div>`];
+
+  if(!r.dep.length && !r.rentrees.length && !r.tachesFaites){
+    h.push(vide("Rien sur cette période", "Aucune dépense, rentrée ou tâche accomplie n'est datée dans cet intervalle."));
+    return h.join("");
+  }
+
+  h.push(`<div class="compteur" style="margin-top:16px">
+    <div class="cpt-l"><span class="cpt-n">Total dépensé</span><span class="cpt-v">${euro(r.total,0)}</span></div>
+    ${r.totalRentrees ? `<div class="cpt-l"><span class="cpt-n">Rentrées ponctuelles reçues</span><span class="cpt-v">${euro(r.totalRentrees,0)}</span></div>` : ""}
+    <div class="cpt-l"><span class="cpt-n">Tâches accomplies</span><span class="cpt-v">${r.tachesFaites}</span></div>
+  </div>`);
+
+  if(r.moisTries.length){
+    const [moisMax, vMax] = r.moisTries[0];
+    const [an,mo] = moisMax.split("-").map(Number);
+    h.push(`<p class="petit-detail" style="margin:14px 0 0">Mois le plus dépensier : ${MOIS[mo-1]} ${an} (${euro(vMax,0)}).</p>`);
+  }
+
+  if(Object.keys(r.parCategorie).length){
+    const lignes = Object.entries(r.parCategorie).sort((a,b) => b[1] - a[1]);
+    const max = lignes[0][1];
+    h.push(`<div class="oeil" style="margin-top:18px">Répartition par catégorie</div>
+      <div class="fiche" style="padding:6px 0">${lignes.map(([id,v]) => `<div class="barre-cat">
+        <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
+        <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
+        <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
+  }
+
+  h.push(piedAide([
+    "Les revenus réguliers n'apparaissent pas ici : réglés comme un taux mensuel actuel plutôt qu'un historique daté, un total sur douze mois serait trompeur.",
+  ]));
+  return h.join("");
+}
+
 function vueBudget(){
+  if(vue.pageBilanAnnuel) return vueBilanAnnuel();
   const b = bilan(vue.decalage), j = jourISO();
   const nomPeriode = nomDeLaPeriode(vue.decalage);
   const h = [`<div class="entete-mob"><h1 class="titre">Budget</h1><div class="jour">${dateCourte(j)}</div></div>`];
@@ -2577,6 +2929,7 @@ function vueBudget(){
     <button class="btn mini creux" data-periode="1">→</button>
     ${vue.decalage !== 0 ? `<button class="btn mini creux" data-periode="0">Revenir au mois en cours</button>` : ""}
   </div>`);
+  h.push(`<div style="margin:-8px 0 16px"><button class="btn mini creux" data-act="ouvrirBilanAnnuel">📅 Bilan annuel</button></div>`);
 
   /* ---------- 2. Ce qu'il reste ---------- */
   if(!b.revenus && !b.charges && !db.depenses.length){
@@ -2639,6 +2992,9 @@ function vueBudget(){
     .slice(0, 6);
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
     ${jours.length?`<span class="cpt">${euro(totalMois,2)}</span>`:""}</div>`);
+  if(jours.length)
+    h.push(`<div style="margin:-10px 0 12px">
+      <button class="btn mini creux" data-act="exporterCSVBudget">Export CSV — ${ech(nomPeriode)}</button></div>`);
   if(ponctuelsDuMois.length){
     const somme = ponctuelsDuMois.reduce((s,p) => s + (p.l.montant || 0), 0);
     const liste = ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ");
@@ -2820,10 +3176,15 @@ function vueSuivi(){
   if(vue.dossier) return vueDossier();
   if(vue.liste) return vueListeOuverte();
   if(vue.pageListes) return vueListesPage();
+  if(vue.projet) return vueProjetOuvert();
+  if(vue.pageProjets) return vueProjetsPage();
+  if(vue.pageCommandes) return vueCommandesPage();
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
     `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
        <button class="btn" data-act="nouveauDossier">Nouveau dossier</button>
        <button class="btn creux" data-act="ouvrirListes">Listes${db.listes.length ? ` <span class="cpt">${db.listes.length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirProjets">Projets${db.projets.length ? ` <span class="cpt">${db.projets.length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirCommandes">Commandes${db.commandes.filter(c=>!c.recue).length ? ` <span class="cpt">${db.commandes.filter(c=>!c.recue).length}</span>` : ""}</button>
      </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -3084,6 +3445,106 @@ function vueListeOuverte(){
   return h.join("");
 }
 
+/* ---- Projets ---- */
+/* Un projet suit un coût qui s'accumule (van à construire, voyage à
+   anticiper) — à ne jamais confondre avec un Dossier, qui lui suit une
+   charge réelle déjà en cours. Ses lignes n'ont donc aucune périodicité et
+   ne passent jamais par toutesLignes()/totalCharges() : ce total n'entre
+   jamais dans le calcul du budget réel. */
+const totalProjet = p => (p.lignes||[]).reduce((s,l) => s + (l.montant||0), 0);
+
+function vueProjetsPage(){
+  const h = [`<button class="retour" data-act="fermerProjets">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Projets</h1>
+      <button class="btn mini" data-act="nouveauProjet">Nouveau projet</button></div>`,
+    `<div style="height:16px"></div>`];
+  if(!db.projets.length)
+    return h.join("") + vide("Aucun projet", "Suivez un coût qui s'accumule, sans qu'il compte dans votre budget réel.");
+  h.push(`<div class="fiche liste rangeable-projets">${[...db.projets].sort((a,b) => (a.ordre ?? 1e9) - (b.ordre ?? 1e9)).map(p => {
+    const t = totalProjet(p);
+    return `<div class="ligne" data-projet="${p.id}">
+      ${db.projets.length > 1 ? `<button class="poignee" data-glisserprojet="${p.id}" title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>` : ""}
+      <div class="corps">
+        <button class="nom" data-act="ouvrirProjet" style="font-weight:580;background:none;border:0;padding:0;text-align:left">${ech(p.nom)}</button>
+        <div class="note-min">${(p.lignes||[]).length ? `${(p.lignes||[]).length} ligne${(p.lignes||[]).length>1?"s":""} · ${euro(t,2)}` : "Vide"}</div>
+      </div>
+      <div class="outils"><button class="ico" data-act="editerNomProjet">✎</button>
+        <button class="ico sup" data-act="jeterProjet">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+  h.push(piedAide([
+    "Un projet suit un coût à part — jamais compté dans le budget réel du Suivi.",
+    db.projets.length > 1 ? "La poignée <b>⠿</b> glisse une carte pour changer l'ordre des projets." : null,
+  ].filter(Boolean)));
+  return h.join("");
+}
+
+function vueProjetOuvert(){
+  const p = (db.projets||[]).find(x => x.id === vue.projet);
+  if(!p){ vue.projet = null; return vueProjetsPage(); }
+  p.lignes = p.lignes || [];
+  const t = totalProjet(p);
+
+  const h = [`<button class="retour" data-act="fermerProjet">← Projets</button>`,
+    `<div class="entete-d"><h1 class="titre">${ech(p.nom)}</h1>
+      <button class="btn mini creux" data-projet="${p.id}" data-act="editerNomProjet">Renommer</button></div>`,
+    `<div class="meta" style="margin:0 0 18px"><span class="puce">${euro(t,2)} au total</span></div>`,
+    `<div style="margin-bottom:16px"><button class="btn mini" data-projet="${p.id}" data-act="ajouterLigneProjet">+ Ajouter une ligne</button></div>`];
+
+  if(!p.lignes.length){
+    h.push(vide("Projet vide", "Ajoutez une première ligne — libellé et montant, une date si vous voulez."));
+    return h.join("");
+  }
+
+  h.push(`<div class="fiche liste">${[...p.lignes].sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(l => `
+    <div class="ligne" data-ligneprojet="${l.id}" data-projet="${p.id}">
+      <div class="corps"><div class="intitule">${ech(l.libelle)}</div>
+        ${l.date ? `<div class="meta"><span class="puce">${dateCourte(l.date)}</span></div>` : ""}</div>
+      <div class="somme">${euro(l.montant,2)}</div>
+      <div class="outils"><button class="ico" data-act="editerLigneProjet" title="Modifier">✎</button>
+        <button class="ico sup" data-act="jeterLigneProjet" title="Supprimer">✕</button></div>
+    </div>`).join("")}</div>`);
+
+  h.push(piedAide([
+    "Ce total n'est jamais compté dans le budget réel — un projet vit à part, même s'il porte le même nom qu'un dossier.",
+  ]));
+  return h.join("");
+}
+
+/* ---- Commandes en cours ---- */
+/* Une seule liste plate, triée par date estimée croissante (la plus proche
+   en premier) : pas besoin d'un système à deux niveaux comme Listes/Projets
+   puisqu'on ne suit qu'un seul ensemble de commandes à la fois. */
+function vueCommandesPage(){
+  const h = [`<button class="retour" data-act="fermerCommandes">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Commandes</h1>
+      <button class="btn mini" data-act="nouvelleCommande">Nouvelle commande</button></div>`,
+    `<div style="height:16px"></div>`];
+  if(!db.commandes.length)
+    return h.join("") + vide("Aucune commande en cours", "De quoi ne plus rouvrir dix mails pour vérifier où ça en est.");
+  const tri = [...db.commandes].sort((a,b) => {
+    if(!!a.recue !== !!b.recue) return a.recue ? 1 : -1;   // reçues en bas
+    return (a.date_estimee||"9999").localeCompare(b.date_estimee||"9999");
+  });
+  h.push(`<div class="fiche liste">${tri.map(cmd => {
+    const retard = !cmd.recue && cmd.date_estimee && cmd.date_estimee < jourISO();
+    return `<div class="ligne ${cmd.recue?"faite":""}" data-commande="${cmd.id}">
+      <button class="case carre ${cmd.recue?"coche":""}" data-act="basculerCommande" title="Marquer reçue" aria-label="Marquer reçue">${CHECK}</button>
+      <div class="corps"><div class="intitule">${ech(cmd.nom)}</div>
+        <div class="meta">
+          ${cmd.boutique ? `<span class="puce ctx">${ech(cmd.boutique)}</span>` : ""}
+          ${cmd.date_estimee ? `<span class="puce ${retard?"chaud":""}">${retard?"attendue le ":"prévue le "}${dateCourte(cmd.date_estimee)}</span>` : ""}
+        </div></div>
+      <div class="outils"><button class="ico" data-act="editerCommande" title="Modifier">✎</button>
+        <button class="ico sup" data-act="jeterCommande" title="Supprimer">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+  h.push(piedAide([
+    "Cocher marque la commande reçue sans la supprimer — elle passe simplement en bas, barrée.",
+  ]));
+  return h.join("");
+}
+
 /* ---- Réglages ---- */
 function vueReglages(){
   const j = jourISO();
@@ -3269,7 +3730,7 @@ function vueReglages(){
     <div class="fiche liste">${[...(db.anniversaires||[])]
       .sort((a,b) => a.mois - b.mois || a.jour - b.jour)
       .map(a => `<div class="ligne" data-anniv="${a.id}">
-        <div class="corps"><div class="intitule">${a.icone === "coeur" ? "❤️" : "🎂"} ${ech(a.nom)}</div>
+        <div class="corps"><div class="intitule">${iconeAnniv(a)} ${ech(a.nom)}</div>
           <div class="meta"><span class="puce date">${String(a.jour).padStart(2,"0")} ${MOIS[a.mois-1]}</span></div></div>
         <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`).join("")}</div>
     <div style="margin-top:9px"><button class="btn mini creux" data-act="nouvelAnniversaire">Ajouter</button></div>
@@ -3371,7 +3832,7 @@ function rendre(){
    7. FORMULAIRES
    ===================================================================== */
 const dlg = document.getElementById("dlg");
-function formulaire(titre, champs, valeurs, onOk, onSup){
+function formulaire(titre, champs, valeurs, onOk, onSup, extra){
   const ligne = c => {
     const v = valeurs[c.cle] ?? c.defaut ?? "";
     if(c.type === "select")
@@ -3390,7 +3851,7 @@ function formulaire(titre, champs, valeurs, onOk, onSup){
   }
   dlg.innerHTML = `<form method="dialog">
     <div class="dlg-t">${ech(titre)}</div>
-    <div class="dlg-c">${corps.join("")}</div>
+    <div class="dlg-c">${corps.join("")}${extra || ""}</div>
     <div class="dlg-p">
       ${onSup ? `<button type="button" class="btn mini danger esp" id="dlgSup">Supprimer</button>` : ""}
       <button type="button" class="btn mini creux" id="dlgNon">Annuler</button>
@@ -3409,14 +3870,157 @@ function formulaire(titre, champs, valeurs, onOk, onSup){
   setTimeout(() => dlg.querySelector("input,select,textarea")?.focus(), 40);
 }
 
+/* Calculatrice simple : logique « pas à pas », pas d'évaluation de chaîne
+   (pas d'eval), pour rester aussi sobre et sûr que le reste de l'appli.
+   Câblée à la main comme formulaire(), en dehors du grand aiguillage des
+   data-act, puisqu'elle vit entièrement dans son propre dialogue. */
+function ouvrirCalculatrice(){
+  let val = "0", precedent = null, operateur = null, nouveauNombre = true;
+
+  const affiche = () => {
+    const e = dlg.querySelector("#calcEcran");
+    if(e) e.textContent = val.length > 12 ? Number(val).toExponential(6) : val;
+  };
+  const calc = (a, b, op) => {
+    switch(op){
+      case "+": return a + b;
+      case "−": return a - b;
+      case "×": return a * b;
+      case "÷": return b === 0 ? NaN : a / b;
+      default: return b;
+    }
+  };
+  const chiffre = d => {
+    if(nouveauNombre || val === "0"){ val = d; nouveauNombre = false; }
+    else if(val.length < 15) val += d;
+  };
+  const point = () => {
+    if(nouveauNombre){ val = "0."; nouveauNombre = false; return; }
+    if(!val.includes(".")) val += ".";
+  };
+  const poserOperateur = op => {
+    if(operateur && !nouveauNombre){
+      const r = calc(precedent, Number(val), operateur);
+      val = String(Number.isFinite(r) ? Math.round(r * 1e10) / 1e10 : "Erreur");
+      precedent = Number(val);
+    }else{
+      precedent = Number(val);
+    }
+    operateur = op;
+    nouveauNombre = true;
+  };
+  const egal = () => {
+    if(operateur == null) return;
+    const r = calc(precedent, Number(val), operateur);
+    val = String(Number.isFinite(r) ? Math.round(r * 1e10) / 1e10 : "Erreur");
+    operateur = null; precedent = null; nouveauNombre = true;
+  };
+  const effacer = () => { val = "0"; precedent = null; operateur = null; nouveauNombre = true; };
+  const pourcent = () => { val = String(Number(val) / 100); nouveauNombre = true; };
+  const signe = () => { if(val !== "0") val = val.startsWith("-") ? val.slice(1) : "-" + val; };
+
+  const rangee = boutons => `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+    ${boutons.join("")}</div>`;
+  const bt = (label, calcAttr, style) => `<button type="button" class="btn ${style||"creux"}" data-calc="${calcAttr}"
+    style="padding:14px 0;font-size:17px">${label}</button>`;
+
+  dlg.innerHTML = `<form method="dialog">
+    <div class="dlg-t">Calculatrice</div>
+    <div class="dlg-c">
+      <div id="calcEcran" style="font-family:var(--mono);font-size:30px;text-align:right;
+        padding:16px 12px;background:var(--fiche);border-radius:var(--r);overflow-x:auto;
+        white-space:nowrap;border:1px solid var(--filet)">0</div>
+      ${rangee([bt("C","c"), bt("%","pourcent"), bt("±","signe"), bt("÷","op÷","")])}
+      ${rangee([bt("7","7"), bt("8","8"), bt("9","9"), bt("×","op×","")])}
+      ${rangee([bt("4","4"), bt("5","5"), bt("6","6"), bt("−","op−","")])}
+      ${rangee([bt("1","1"), bt("2","2"), bt("3","3"), bt("+","op+","")])}
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-top:8px">
+        ${bt("0","0")}${bt(",","point")}${bt("=","egal","")}
+      </div>
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini creux" id="dlgNon">Fermer</button></div>
+  </form>`;
+
+  dlg.querySelectorAll("[data-calc]").forEach(b => b.onclick = () => {
+    const k = b.dataset.calc;
+    if(k === "c") effacer();
+    else if(k === "pourcent") pourcent();
+    else if(k === "signe") signe();
+    else if(k === "point") point();
+    else if(k === "egal") egal();
+    else if(k.startsWith("op")) poserOperateur(k.slice(2));
+    else chiffre(k);
+    affiche();
+  });
+  dlg.querySelector("#dlgNon").onclick = () => dlg.close();
+  try{ if(dlg.open) dlg.close(); dlg.showModal(); }
+  catch(e){ try{ dlg.close(); dlg.showModal(); }catch(x){} }
+}
+
 const optCtx  = () => [{v:"",n:"— aucun —"}, ...db.contextes.map(c => ({v:c.id,n:c.nom}))];
 const optCat  = () => [{v:"",n:"— aucune —"}, ...db.categories.map(c => ({v:c.id,n:c.nom}))];
 const optDoss = () => [{v:"",n:"— aucun —"}, ...db.dossiers.map(d => ({v:d.id,n:d.nom}))];
 const optCdep = () => [{v:"",n:"— aucune —"}, ...db.categories_depense.map(c => ({v:c.id,n:c.nom}))];
 const optUnite = [{v:"jour",n:"jour(s)"},{v:"semaine",n:"semaine(s)"},{v:"mois",n:"mois"},{v:"an",n:"an(s)"}];
 
+/* Sous-tâches : gérées uniquement depuis la fiche d'une tâche déjà créée
+   (pas à la création, pour ne pas complexifier ce cas), et câblées à la
+   main comme le contenu propre de formulaire() — jamais via le grand
+   aiguillage des data-act, pour ne rien risquer sur le reste de l'appli. */
+function rendreSousTaches(o){
+  const items = o.sous_taches || [];
+  if(!items.length) return `<p style="margin:2px 0 0;font-size:12px;color:var(--encre-3)">Aucune pour l'instant.</p>`;
+  return items.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+      <button type="button" class="case carre ${s.coche?"coche":""}" data-stcocher="${s.id}"
+        style="width:20px;height:20px;flex:none" aria-label="Cocher">${CHECK}</button>
+      <span style="flex:1;font-size:13px;${s.coche?"color:var(--encre-3);text-decoration:line-through":""}">${ech(s.texte)}</span>
+      <button type="button" class="ico sup" data-stsupprimer="${s.id}" aria-label="Supprimer">✕</button>
+    </div>`).join("");
+}
+function cablerSousTaches(o){
+  const cabler = () => {
+    dlg.querySelectorAll("[data-stcocher]").forEach(b => b.onclick = () => {
+      const s = (o.sous_taches||[]).find(x => x.id === b.dataset.stcocher);
+      if(s){ s.coche = !s.coche; touche(o); sauver(); reafficher(); }
+    });
+    dlg.querySelectorAll("[data-stsupprimer]").forEach(b => b.onclick = () => {
+      o.sous_taches = (o.sous_taches||[]).filter(x => x.id !== b.dataset.stsupprimer);
+      touche(o); sauver(); reafficher();
+    });
+  };
+  const reafficher = () => {
+    const c = dlg.querySelector("#sousTachesListe");
+    if(c) c.innerHTML = rendreSousTaches(o);
+    cabler();
+  };
+  const ajouter = () => {
+    const inp = dlg.querySelector("#sousTacheSaisie");
+    const texte = (inp?.value||"").trim();
+    if(!texte) return;
+    (o.sous_taches = o.sous_taches || []).push({ id:uid(), texte, coche:false });
+    touche(o); sauver();
+    inp.value = "";
+    reafficher();
+    dlg.querySelector("#sousTacheSaisie")?.focus();
+  };
+  cabler();
+  const btnAj = dlg.querySelector("#sousTacheAjouter");
+  if(btnAj) btnAj.onclick = ajouter;
+  dlg.querySelector("#sousTacheSaisie")?.addEventListener("keydown", ev => {
+    if(ev.key === "Enter"){ ev.preventDefault(); ajouter(); }
+  });
+}
+
 function editerTache(t, neuve = false){
   const o = t || tacheNeuve({ date_due:jourISO(), preavis:db.reglages.preavis_defaut, n:1, unite:"an" });
+  const sousTachesHtml = neuve ? "" : `<div class="champ" style="margin-top:6px">
+    <span>Sous-tâches</span>
+    <div id="sousTachesListe">${rendreSousTaches(o)}</div>
+    <div class="saisie" style="margin:8px 0 0">
+      <input id="sousTacheSaisie" placeholder="Ajouter une sous-tâche…" autocomplete="off">
+      <button type="button" class="btn mini" id="sousTacheAjouter">Ajouter</button>
+    </div></div>`;
   formulaire(neuve ? "Nouvelle échéance" : "Modifier la tâche", [
     { cle:"intitule", nom:"Intitulé" },
     { cle:"dossier_id", nom:"Dossier", type:"select", options:optDoss(), duo:true },
@@ -3433,20 +4037,24 @@ function editerTache(t, neuve = false){
     { cle:"preavis", nom:"Préavis (jours)", type:"number", min:0, duo:true },
     { cle:"n", nom:"Revient tous les", type:"number", min:0, duo:true },
     { cle:"unite", nom:"Unité", type:"select", options:optUnite },
+    { cle:"etiquettes", nom:"Étiquettes (séparées par des virgules)", ph:"urgent-perso, à-déléguer" },
     { cle:"notes", nom:"Notes", type:"textarea" },
-  ], { ...o, travail: o.travail ? "1" : "", urgent: o.urgent ? "1" : "", attente: o.attente ? "1" : "", sans_date:"" }, d => {
+  ], { ...o, travail: o.travail ? "1" : "", urgent: o.urgent ? "1" : "", attente: o.attente ? "1" : "", sans_date:"",
+       etiquettes: (o.etiquettes||[]).join(", ") }, d => {
     if(!d.intitule) return;
     Object.assign(o, { intitule:d.intitule, dossier_id:d.dossier_id || null, contexte_id:d.contexte_id || null,
       date_due: d.sans_date === "1" ? null : (d.date_due || null),
       preavis:Number(d.preavis) || 0, n:Number(d.n) || 0, unite:d.unite,
       notes:d.notes, travail: d.travail === "1", urgent: d.urgent === "1",
+      etiquettes: [...new Set((d.etiquettes||"").split(",").map(s => s.trim()).filter(Boolean))],
       attente: d.attente === "1" ? (o.attente || jourISO()) : null, demo:false });
     if(o.attente) o.suivant_le = null;
     touche(o);
     if(neuve) db.taches.push(o);
     vue.surligne = o.id;
     maj();
-  }, neuve ? null : () => { jeter("tâche", o); db.taches = db.taches.filter(x => x.id !== o.id); maj(); });
+  }, neuve ? null : () => { jeter("tâche", o); db.taches = db.taches.filter(x => x.id !== o.id); maj(); }, sousTachesHtml);
+  if(!neuve) cablerSousTaches(o);
 }
 
 /* Saisie de l'heure au clavier : « 9h30 », « 9:30 », « 930 », « 9h » → 09:30 */
@@ -3575,9 +4183,12 @@ function editerRdv(r, dateProposee){
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
     { cle:"couleur", nom:"Surligneur", type:"select", options:[
         {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
+    { cle:"compte_a_rebours", nom:"Compte à rebours en Accueil", type:"select",
+      options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
   ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1,
-       repete:x.repete || "", repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois") }, d => {
+       repete:x.repete || "", repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois"),
+       compte_a_rebours: x.compte_a_rebours ? "1" : "" }, d => {
     const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
     const dim = new Date(aa, mm, 0).getDate();
@@ -3591,6 +4202,7 @@ function editerRdv(r, dateProposee){
       repete: d.repete || null,
       repete_fin: d.repete ? (d.repete_fin || ajouterPeriode(x.date, 2, "mois")) : null,
       exceptions: x.exceptions || [],
+      compte_a_rebours: d.compte_a_rebours === "1",
     });
     touche(x);
     if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
@@ -3644,7 +4256,7 @@ function editerAnniversaire(a){
     { cle:"nom", nom:"Prénom" },
     { cle:"jour", nom:"Jour", type:"text", mode:"numeric", duo:true },
     { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })) },
-    { cle:"icone", nom:"Symbole", type:"select", options:[{v:"gateau",n:"🎂 Gâteau"},{v:"coeur",n:"❤️ Cœur"}] },
+    { cle:"icone", nom:"Symbole", type:"select", options:[{v:"gateau",n:"🎂 Gâteau"},{v:"coeur",n:"❤️ Cœur"},{v:"etoile",n:"⭐ Grand jour (habillage festif ce jour-là)"}] },
   ], x, d => {
     const jj = parseInt(d.jour,10);
     if(!d.nom || !(jj >= 1 && jj <= 31)) return;
@@ -3703,6 +4315,72 @@ function formulaireListe(l){
     jeter("liste", x);
     db.listes = db.listes.filter(y => y.id !== x.id);
     if(vue.liste === x.id) vue.liste = null;
+    maj();
+  });
+}
+
+function formulaireProjet(p){
+  const neuf = !p;
+  const x = p || { id:uid(), nom:"", lignes:[] };
+  formulaire(neuf ? "Nouveau projet" : "Renommer le projet", [
+    { cle:"nom", nom:"Nom du projet", ph:"Van, voyage en Corse…" },
+  ], { ...x }, f => {
+    if(!f.nom) return;
+    x.nom = f.nom;
+    x.lignes = x.lignes || [];
+    touche(x);
+    if(neuf){ db.projets = db.projets || []; db.projets.push(x); vue.projet = x.id; }
+    maj();
+  }, neuf ? null : () => {
+    const n = (x.lignes||[]).length;
+    if(!confirm(`Supprimer le projet « ${x.nom} »${n ? ` et ses ${n} ligne${n>1?"s":""}` : ""} ?`)) return;
+    jeter("projet", x);
+    db.projets = db.projets.filter(y => y.id !== x.id);
+    if(vue.projet === x.id) vue.projet = null;
+    maj();
+  });
+}
+
+/* Une ligne de projet n'a ni périodicité ni lien avec les dossiers : elle
+   ne peut structurellement jamais entrer dans totalCharges(). */
+function editerLigneProjet(p, l){
+  if(!p) return;
+  const neuf = !l;
+  const x = l || { id:uid(), libelle:"", montant:null, date:jourISO() };
+  formulaire(neuf ? `Nouvelle ligne · ${p.nom}` : "Modifier la ligne", [
+    { cle:"libelle", nom:"Libellé" },
+    { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
+    { cle:"date", nom:"Date", type:"date", duo:true },
+  ], { ...x, montant:x.montant ?? "" }, f => {
+    const m = lireMontant(f.montant);
+    if(!f.libelle || m === null) return;
+    Object.assign(x, { libelle:f.libelle, montant:Math.abs(m), date:f.date || "" });
+    if(neuf) (p.lignes = p.lignes || []).push(x);
+    touche(p);   /* une ligne vit dans son projet : c'est lui qu'on horodate */
+    maj();
+  }, neuf ? null : () => {
+    p.lignes = p.lignes.filter(y => y.id !== x.id);
+    touche(p);
+    maj();
+  });
+}
+
+function formulaireCommande(cmd){
+  const neuf = !cmd;
+  const x = cmd || { id:uid(), nom:"", boutique:"", date_estimee:"", recue:false };
+  formulaire(neuf ? "Nouvelle commande" : "Modifier la commande", [
+    { cle:"nom", nom:"Quoi", ph:"Chaussures, pièce détachée…" },
+    { cle:"boutique", nom:"Où", ph:"Nom du site ou de la boutique" },
+    { cle:"date_estimee", nom:"Date estimée", type:"date" },
+  ], { ...x }, f => {
+    if(!f.nom) return;
+    Object.assign(x, { nom:f.nom, boutique:f.boutique||"", date_estimee:f.date_estimee||"" });
+    touche(x);
+    if(neuf){ db.commandes = db.commandes || []; db.commandes.push(x); }
+    maj();
+  }, neuf ? null : () => {
+    jeter("commande", x);
+    db.commandes = db.commandes.filter(y => y.id !== x.id);
     maj();
   });
 }
@@ -3978,6 +4656,34 @@ function exporter(){
   maj();
 }
 
+/* Point-virgule et virgule décimale : c'est ce qu'Excel en français attend
+   par défaut à l'ouverture directe, sans quoi les montants et les colonnes
+   s'entassent dans une seule case. Le BOM en tête évite les accents cassés. */
+function exporterCSVBudget(){
+  const b = bilan(vue.decalage);
+  const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  const lignes = [["Date","Catégorie","Libellé","Montant (€)","Payé par","À rembourser"]];
+  [...b.dep].sort((x,y) => (x.date||"").localeCompare(y.date||"")).forEach(x => {
+    lignes.push([
+      x.date || "",
+      (cdepDe(x.categorie_id)||{}).nom || "",
+      x.libelle || "",
+      String(x.montant ?? 0).replace(".", ","),
+      nomMoyen(x.moyen),
+      x.rembourser ? "Oui" : "Non",
+    ]);
+  });
+  const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const nomFichier = nomDeLaPeriode(vue.decalage).toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `depenses-${nomFichier}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
 function importer(){
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = "application/json,.json";
@@ -4014,12 +4720,20 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; }
+    if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
+    if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
   const bA = c.closest("[data-aller]");
   if(bA){ vue.onglet = bA.dataset.aller; return rendre(); }
   const bC = c.closest("[data-fctx]");
   if(bC){ vue.filtreCtx = bC.dataset.fctx || null; return rendre(); }
+  /* Même bouton, deux origines : la rangée de filtres de l'onglet Tâches,
+     ou le badge #étiquette affiché directement sur une tâche ailleurs dans
+     l'appli (Accueil, Échéances…) — dans ce second cas on bascule aussi
+     vers l'onglet Tâches pour montrer le résultat du filtre. */
+  const bEtq = c.closest("[data-fetq]");
+  if(bEtq){ vue.filtreEtiquette = bEtq.dataset.fetq || null; vue.onglet = "taches"; return rendre(); }
   const bD = c.closest("[data-fdoss]");
   if(bD){ vue.filtreDoss = bD.dataset.fdoss || null; return rendre(); }
   const bPr = c.closest("[data-prelev]");
@@ -4083,6 +4797,10 @@ document.addEventListener("click", ev => {
   const bP = c.closest("[data-periode]");
   if(bP){ const v = +bP.dataset.periode;
     vue.decalage = v === 0 ? 0 : vue.decalage + v; return rendre(); }
+  const bAB = c.closest("[data-anbilan]");
+  if(bAB){ const v = +bAB.dataset.anbilan;
+    vue.anneeBilan = v === 0 ? null : (vue.anneeBilan ?? anneeBilanCourante()) + v;
+    return rendre(); }
 
   /* Traité avant le garde-fou ci-dessous : une ligne de résultat ne porte
      pas de data-act, elle serait sinon purement et simplement ignorée. */
@@ -4138,6 +4856,8 @@ document.addEventListener("click", ev => {
     return choisirEdt(l);
   }
   if(act === "fermerEdt"){ vue.edt = null; return rendre(); }
+  if(act === "ouvrirSemaineCondensee"){ vue.semaineCondensee = true; return rendre(); }
+  if(act === "fermerSemaineCondensee"){ vue.semaineCondensee = false; return rendre(); }
   if(act === "ouvrirSemestre"){ vue.semestre = (vue.moisAgenda || jourISO().slice(0,7)); return rendre(); }
   if(act === "fermerSemestre"){ vue.semestre = null; return rendre(); }
   if(act === "editerEdt"){
@@ -4189,7 +4909,34 @@ document.addEventListener("click", ev => {
   }
   if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
   if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
+  if(act === "ouvrirProjets"){ vue.dossier = null; vue.pageProjets = true; return rendre(); }
+  if(act === "fermerProjets"){ vue.pageProjets = false; return rendre(); }
+  if(act === "fermerProjet"){ vue.projet = null; return rendre(); }
+  if(act === "nouveauProjet") return formulaireProjet(null);
+  if(act === "ajouterLigneProjet") return editerLigneProjet((db.projets||[]).find(x => x.id === b.dataset.projet), null);
+  if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
+  if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
+  if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
+  if(act === "masquerCitation"){ db.reglages.citation_masquee_le = jourISO(); return maj(); }
+  if(act === "exporterCSVBudget") return exporterCSVBudget();
+  if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
+  if(act === "fermerBilanAnnuel"){ vue.pageBilanAnnuel = false; return rendre(); }
+  if(act === "sommeilCoucher"){
+    db.sommeil = db.sommeil || [];
+    db.sommeil.push(touche({ id:uid(), type:"coucher", quand:new Date().toISOString() }));
+    return maj();
+  }
+  if(act === "sommeilLever"){
+    db.sommeil = db.sommeil || [];
+    db.sommeil.push(touche({ id:uid(), type:"lever", quand:new Date().toISOString() }));
+    return maj();
+  }
+  if(act === "ouvrirSommeil"){ vue.pageSommeil = true; return rendre(); }
+  if(act === "fermerSommeil"){ vue.pageSommeil = false; return rendre(); }
+  if(act === "ouvrirCalculatrice") return ouvrirCalculatrice();
+  if(act === "ouvrirGrilleHabitude"){ vue.habitudeGrille = b.dataset.habitude; return rendre(); }
+  if(act === "fermerGrilleHabitude"){ vue.habitudeGrille = null; return rendre(); }
   if(act === "fermerListes"){ vue.pageListes = false; return rendre(); }
   if(act === "fermerListe"){ vue.liste = null; vue.sectionActive = null; return rendre(); }
   if(act === "nouvelleListe") return formulaireListe(null);
@@ -4396,6 +5143,44 @@ document.addEventListener("click", ev => {
     }
   }
 
+  const lp0 = trouver(c, "projet");
+  if(lp0){
+    const p = (db.projets||[]).find(x => x.id === lp0.id); if(!p) return;
+    if(act === "ouvrirProjet"){ vue.projet = p.id; return rendre(); }
+    if(act === "editerNomProjet") return formulaireProjet(p);
+    if(act === "jeterProjet"){
+      const n = (p.lignes||[]).length;
+      if(!confirm(`Supprimer le projet « ${p.nom} »${n ? ` et ses ${n} ligne${n>1?"s":""}` : ""} ?`)) return;
+      jeter("projet", p);
+      db.projets = db.projets.filter(x => x.id !== p.id);
+      if(vue.projet === p.id) vue.projet = null;
+      return maj();
+    }
+  }
+
+  const llp = trouver(c, "ligneprojet");
+  if(llp && (act === "editerLigneProjet" || act === "jeterLigneProjet")){
+    const p = (db.projets||[]).find(x => x.id === llp.elt.dataset.projet);
+    const l = p && (p.lignes||[]).find(y => y.id === llp.id);
+    if(!p || !l) return;
+    if(act === "editerLigneProjet") return editerLigneProjet(p, l);
+    if(!confirm(`Supprimer « ${l.libelle} » ?`)) return;
+    p.lignes = p.lignes.filter(y => y.id !== l.id);
+    touche(p);
+    return maj();
+  }
+
+  const lc0 = trouver(c, "commande");
+  if(lc0 && (act === "basculerCommande" || act === "editerCommande" || act === "jeterCommande")){
+    const cmd = (db.commandes||[]).find(x => x.id === lc0.id); if(!cmd) return;
+    if(act === "basculerCommande"){ cmd.recue = !cmd.recue; touche(cmd); return maj(); }
+    if(act === "editerCommande") return formulaireCommande(cmd);
+    if(!confirm(`Supprimer la commande « ${cmd.nom} » ?`)) return;
+    jeter("commande", cmd);
+    db.commandes = db.commandes.filter(x => x.id !== cmd.id);
+    return maj();
+  }
+
   const lit = trouver(c, "item");
   if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem" || act === "choisirSectionListe")){
     const ll = (db.listes||[]).find(x => x.id === lit.elt.dataset.liste);
@@ -4449,7 +5234,8 @@ document.addEventListener("click", ev => {
       const cible = { "tâche":"taches", "dossier":"dossiers", "contexte":"contextes", "categorie":"categories",
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
-                      "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois", "liste":"listes" }[x.genre];
+                      "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois",
+                      "liste":"listes", "projet":"projets", "commande":"commandes" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     retrouver(x.obj && x.obj.id);
@@ -4780,6 +5566,57 @@ function finGlissementListe(){
 document.addEventListener("pointerup", finGlissementListe);
 document.addEventListener("pointercancel", finGlissementListe);
 
+/* Même mécanique, une troisième fois, pour réordonner les cartes de la
+   page « Projets ». */
+let glissementProjet = null;
+
+function ligneSousProjet(y, conteneur, sauf){
+  const lignes = [...conteneur.querySelectorAll("[data-projet]")].filter(x => x !== sauf);
+  for(const l of lignes){
+    const r = l.getBoundingClientRect();
+    if(y < r.top + r.height / 2) return l;
+  }
+  return null;
+}
+
+document.addEventListener("pointerdown", ev => {
+  const prise = ev.target.closest && ev.target.closest("[data-glisserprojet]");
+  if(!prise) return;
+  const ligne = prise.closest("[data-projet]");
+  const conteneur = ligne && ligne.closest(".rangeable-projets");
+  if(!ligne || !conteneur) return;
+  ev.preventDefault();
+  glissementProjet = { ligne, conteneur };
+  ligne.classList.add("glisse");
+  try{ prise.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", ev => {
+  if(!glissementProjet) return;
+  ev.preventDefault();
+  const { ligne, conteneur } = glissementProjet;
+  const cible = ligneSousProjet(ev.clientY, conteneur, ligne);
+  if(cible) conteneur.insertBefore(ligne, cible);
+  else conteneur.appendChild(ligne);
+});
+
+function finGlissementProjet(){
+  if(!glissementProjet) return;
+  const { ligne, conteneur } = glissementProjet;
+  glissementProjet = null;
+  ligne.classList.remove("glisse");
+  const ids = [...conteneur.querySelectorAll("[data-projet]")].map(x => x.getAttribute("data-projet"));
+  const parId = new Map((db.projets||[]).map(p => [p.id, p]));
+  let change = false;
+  ids.forEach((id, i) => {
+    const p = parId.get(id);
+    if(p && p.ordre !== i){ p.ordre = i; touche(p); change = true; }
+  });
+  if(change) maj();
+}
+document.addEventListener("pointerup", finGlissementProjet);
+document.addEventListener("pointercancel", finGlissementProjet);
+
 function decalerMois(v){
   if(v === 0){ vue.moisAgenda = jourISO().slice(0,7); return; }
   const [a,m] = (vue.moisAgenda || jourISO().slice(0,7)).split("-").map(Number);
@@ -4845,6 +5682,10 @@ setInterval(verifierJour, 60000);
   db.emplois = db.emplois || [];
   db.listes = db.listes || [];
   db.listes.forEach(l => { l.items = l.items || []; });
+  db.sommeil = db.sommeil || [];
+  db.projets = db.projets || [];
+  db.projets.forEach(p => { p.lignes = p.lignes || []; });
+  db.commandes = db.commandes || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
   db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
