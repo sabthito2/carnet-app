@@ -745,7 +745,7 @@ const Sync = (() => {
     db.listes.forEach(l => { l.items = l.items || []; });
     db.sommeil = db.sommeil || [];
     db.projets = db.projets || [];
-    db.projets.forEach(p => { p.lignes = p.lignes || []; });
+    db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || []; if(typeof p.notes !== "string") p.notes = ""; });
     db.commandes = db.commandes || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
@@ -868,7 +868,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 84;
+const VERSION_APP = 88;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1230,7 +1230,7 @@ const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, v
               catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
-              filtreEtiquette:null,
+              filtreEtiquette:null, sectionActiveProjet:null,
               pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false,
               habitudeGrille:null, semaineCondensee:false, anneeBilan:null, pageBilanAnnuel:false };
 
@@ -1874,7 +1874,7 @@ function rafraichirBadge(){
   const zoom = `<button class="loupe ${db.reglages.gros ? "actif" : ""}" data-act="grossir"
     title="Agrandir le texte" aria-label="Agrandir le texte">Aa</button>`;
   const loupe = `<button class="loupe" data-act="recherche" title="Rechercher" aria-label="Rechercher">⌕</button>`;
-  const calc = `<button class="loupe" data-act="ouvrirCalculatrice" title="Calculatrice" aria-label="Calculatrice">🖩</button>`;
+  const calc = `<button class="loupe" data-act="ouvrirCalculatrice" title="Calculatrice" aria-label="Calculatrice">÷</button>`;
   const roue = `<button class="loupe" data-onglet="reglages" title="Réglages" aria-label="Réglages">⚙</button>`;
   /* On ne touche au DOM que si l'affichage change réellement : sinon la
      pastille se reconstruit toutes les secondes pour rien. */
@@ -3483,30 +3483,88 @@ function vueProjetOuvert(){
   const p = (db.projets||[]).find(x => x.id === vue.projet);
   if(!p){ vue.projet = null; return vueProjetsPage(); }
   p.lignes = p.lignes || [];
+  p.taches = p.taches || [];
+  if(typeof p.notes !== "string") p.notes = "";
   const t = totalProjet(p);
+  const items = p.taches.filter(x => !x.titre);
+  const nFaites = items.filter(x => x.coche).length;
+  /* Même mécanique de section active que dans une Liste, mais sa propre
+     variable : un projet et une liste ne partagent jamais leur cible. */
+  const cible = vue.sectionActiveProjet ? p.taches.find(x => x.titre && x.id === vue.sectionActiveProjet) : null;
+  if(!cible) vue.sectionActiveProjet = null;
 
   const h = [`<button class="retour" data-act="fermerProjet">← Projets</button>`,
     `<div class="entete-d"><h1 class="titre">${ech(p.nom)}</h1>
       <button class="btn mini creux" data-projet="${p.id}" data-act="editerNomProjet">Renommer</button></div>`,
-    `<div class="meta" style="margin:0 0 18px"><span class="puce">${euro(t,2)} au total</span></div>`,
-    `<div style="margin-bottom:16px"><button class="btn mini" data-projet="${p.id}" data-act="ajouterLigneProjet">+ Ajouter une ligne</button></div>`];
+    `<div class="meta" style="margin:0 0 18px"><span class="puce">${euro(t,2)} de dépenses</span>${
+      items.length ? `<span class="puce">${nFaites}/${items.length} tâches</span>` : ""}</div>`];
 
+  /* ---------- Dépenses ---------- */
+  h.push(`<div class="oeil">Dépenses</div>`);
+  h.push(`<div style="margin:0 0 12px"><button class="btn mini" data-projet="${p.id}" data-act="ajouterLigneProjet">+ Ajouter une dépense</button></div>`);
   if(!p.lignes.length){
-    h.push(vide("Projet vide", "Ajoutez une première ligne — libellé et montant, une date si vous voulez."));
-    return h.join("");
+    h.push(`<p class="petit-detail" style="margin:0 0 20px">Rien pour l'instant.</p>`);
+  }else{
+    h.push(`<div class="fiche liste" style="margin-bottom:20px">${[...p.lignes].sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(l => `
+      <div class="ligne" data-ligneprojet="${l.id}" data-projet="${p.id}">
+        <div class="corps"><div class="intitule">${ech(l.libelle)}</div>
+          ${l.date ? `<div class="meta"><span class="puce">${dateCourte(l.date)}</span></div>` : ""}</div>
+        <div class="somme">${euro(l.montant,2)}</div>
+        <div class="outils"><button class="ico" data-act="editerLigneProjet" title="Modifier">✎</button>
+          <button class="ico sup" data-act="jeterLigneProjet" title="Supprimer">✕</button></div>
+      </div>`).join("")}</div>`);
   }
 
-  h.push(`<div class="fiche liste">${[...p.lignes].sort((a,b) => (b.date||"").localeCompare(a.date||"")).map(l => `
-    <div class="ligne" data-ligneprojet="${l.id}" data-projet="${p.id}">
-      <div class="corps"><div class="intitule">${ech(l.libelle)}</div>
-        ${l.date ? `<div class="meta"><span class="puce">${dateCourte(l.date)}</span></div>` : ""}</div>
-      <div class="somme">${euro(l.montant,2)}</div>
-      <div class="outils"><button class="ico" data-act="editerLigneProjet" title="Modifier">✎</button>
-        <button class="ico sup" data-act="jeterLigneProjet" title="Supprimer">✕</button></div>
-    </div>`).join("")}</div>`);
+  /* ---------- À faire ---------- */
+  /* Même esprit que dans une Liste : cocher ne fait rien d'autre que
+     visuel, la flèche ↑ seule crée une vraie tâche dans « À faire »,
+     titres de section et glisser-déposer repris à l'identique. */
+  h.push(`<div class="oeil">À faire</div>`);
+  h.push(`<div class="saisie" style="margin-bottom:12px">
+    <input id="tacheProjetSaisie" data-projet="${p.id}"
+      placeholder="${cible ? `Ajouter dans « ${ech(cible.texte)} »…` : "Ajouter une tâche… (terminez par : pour un titre)"}"
+      autocomplete="off" enterkeyhint="done">
+    <button class="btn" data-act="ajouterTacheProjet" data-projet="${p.id}">Ajouter</button></div>`);
+
+  if(cible) h.push(`<div style="margin:0 0 14px"><button class="btn mini creux" data-act="choisirSectionProjet" data-projet="${p.id}" data-tacheprojet="${cible.id}">
+      Ajout dans « ${ech(cible.texte)} » — revenir en fin de liste</button></div>`);
+
+  if(!p.taches.length){
+    h.push(`<p class="petit-detail" style="margin:0 0 20px">Rien pour l'instant.</p>`);
+  }else{
+    h.push(`<div class="fiche liste rangeable-taches-projet" style="margin-bottom:20px">${p.taches.map(x => {
+      if(x.titre){
+        const actif = vue.sectionActiveProjet === x.id;
+        return `<div class="ligne" data-tacheprojet="${x.id}" data-projet="${p.id}">
+        <div class="corps">
+          <button class="intitule" data-act="choisirSectionProjet" title="Ajouter la suite ici"
+            style="font-weight:650;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:${actif?"var(--accent)":"inherit"}">
+            ${ech(x.texte)}${actif ? " · ajout ici" : ""}</button>
+        </div>
+        <div class="outils"><button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer le titre">✕</button></div>
+      </div>`;
+      }
+      return `<div class="ligne ${x.coche?"faite":""}" data-tacheprojet="${x.id}" data-projet="${p.id}">
+        <button class="poignee" data-glissertacheprojet="${x.id}" title="Glisser pour réordonner" aria-label="Déplacer">⠿</button>
+        <div class="cases">
+          <button class="case carre ${x.coche?"coche":""}" data-act="basculerTacheProjet" title="Cocher" aria-label="Cocher">${CHECK}</button>
+          <button class="case fleche" data-act="remonterTacheProjet" title="Faire remonter dans « À faire »" aria-label="Faire remonter dans À faire">↑</button>
+        </div>
+        <div class="corps"><div class="intitule">${ech(x.texte)}</div></div>
+        <div class="outils"><button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer">✕</button></div>
+      </div>`;
+    }).join("")}</div>`);
+  }
+
+  /* ---------- Notes ---------- */
+  h.push(`<div class="oeil">Notes</div>`);
+  h.push(`<div class="bloc-notes" style="margin-bottom:8px"><textarea id="notesProjet" data-projet="${p.id}"
+    placeholder="Numéro de vol, référence, tout ce qui ne rentre pas ailleurs…">${ech(p.notes)}</textarea></div>`);
 
   h.push(piedAide([
-    "Ce total n'est jamais compté dans le budget réel — un projet vit à part, même s'il porte le même nom qu'un dossier.",
+    "Les dépenses de ce projet ne sont jamais comptées dans le budget réel — un projet vit à part.",
+    "Cocher une tâche ne change rien d'autre ; la flèche ↑ seule crée une vraie tâche dans « À faire ».",
+    "Touchez un titre pour y ajouter la suite ; la poignée ⠿ déplace une tâche, y compris vers une autre section.",
   ]));
   return h.join("");
 }
@@ -3789,7 +3847,7 @@ function rendre(){
   dernierEcran = { onglet:vue.onglet, dossier:vue.dossier, mois:vue.moisAgenda,
                    decalage:vue.decalage, sphere:sphere() };
   const a = document.activeElement;
-  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle"];
+  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle","notesProjet","tacheProjetSaisie"];
   const memo = a && gardes.includes(a.id) ? { id:a.id, val:a.value, pos:a.selectionStart } : null;
 
   cible.innerHTML = ({ accueil:vueAccueil, taches:vueTaches, echeances:vueEcheances, agenda:vueAgenda,
@@ -4321,15 +4379,17 @@ function formulaireListe(l){
 
 function formulaireProjet(p){
   const neuf = !p;
-  const x = p || { id:uid(), nom:"", lignes:[] };
+  const x = p || { id:uid(), nom:"", lignes:[], taches:[], notes:"" };
   formulaire(neuf ? "Nouveau projet" : "Renommer le projet", [
     { cle:"nom", nom:"Nom du projet", ph:"Van, voyage en Corse…" },
   ], { ...x }, f => {
     if(!f.nom) return;
     x.nom = f.nom;
     x.lignes = x.lignes || [];
+    x.taches = x.taches || [];
+    if(typeof x.notes !== "string") x.notes = "";
     touche(x);
-    if(neuf){ db.projets = db.projets || []; db.projets.push(x); vue.projet = x.id; }
+    if(neuf){ db.projets = db.projets || []; db.projets.push(x); vue.projet = x.id; vue.sectionActiveProjet = null; }
     maj();
   }, neuf ? null : () => {
     const n = (x.lignes||[]).length;
@@ -4425,6 +4485,34 @@ function ajouterItemListe(listeId){
   inp.value = "";
   maj();
   setTimeout(() => document.getElementById("itemListeSaisie")?.focus(), 0);
+}
+
+/* Même esprit que les cases d'une Liste (cocher est purement visuel, seule
+   la flèche crée une vraie tâche), avec les mêmes titres de section et le
+   même ciblage — juste sa propre variable de section active. */
+function ajouterTacheProjet(projetId){
+  const inp = document.getElementById("tacheProjetSaisie");
+  if(!inp || !inp.value.trim()) return;
+  const p = (db.projets||[]).find(x => x.id === projetId);
+  if(!p) return;
+  const brut = inp.value.trim();
+  const titre = /:\s*$/.test(brut);
+  const texte = titre ? brut.replace(/:\s*$/,"").trim() : brut;
+  if(!texte) return;
+  p.taches = p.taches || [];
+  const nouvelle = { id:uid(), texte, coche:false, titre };
+  if(titre){
+    p.taches.push(nouvelle);
+    vue.sectionActiveProjet = nouvelle.id;
+  }else if(vue.sectionActiveProjet && p.taches.some(x => x.titre && x.id === vue.sectionActiveProjet)){
+    p.taches.splice(finSection(p.taches, vue.sectionActiveProjet), 0, nouvelle);
+  }else{
+    p.taches.push(nouvelle);
+  }
+  touche(p);
+  inp.value = "";
+  maj();
+  setTimeout(() => document.getElementById("tacheProjetSaisie")?.focus(), 0);
 }
 
 function editerCharge(d, l){
@@ -4911,9 +4999,10 @@ document.addEventListener("click", ev => {
   if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
   if(act === "ouvrirProjets"){ vue.dossier = null; vue.pageProjets = true; return rendre(); }
   if(act === "fermerProjets"){ vue.pageProjets = false; return rendre(); }
-  if(act === "fermerProjet"){ vue.projet = null; return rendre(); }
+  if(act === "fermerProjet"){ vue.projet = null; vue.sectionActiveProjet = null; return rendre(); }
   if(act === "nouveauProjet") return formulaireProjet(null);
   if(act === "ajouterLigneProjet") return editerLigneProjet((db.projets||[]).find(x => x.id === b.dataset.projet), null);
+  if(act === "ajouterTacheProjet") return ajouterTacheProjet(b.dataset.projet);
   if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "nouvelleCommande") return formulaireCommande(null);
@@ -5146,7 +5235,7 @@ document.addEventListener("click", ev => {
   const lp0 = trouver(c, "projet");
   if(lp0){
     const p = (db.projets||[]).find(x => x.id === lp0.id); if(!p) return;
-    if(act === "ouvrirProjet"){ vue.projet = p.id; return rendre(); }
+    if(act === "ouvrirProjet"){ vue.projet = p.id; vue.sectionActiveProjet = null; return rendre(); }
     if(act === "editerNomProjet") return formulaireProjet(p);
     if(act === "jeterProjet"){
       const n = (p.lignes||[]).length;
@@ -5168,6 +5257,29 @@ document.addEventListener("click", ev => {
     p.lignes = p.lignes.filter(y => y.id !== l.id);
     touche(p);
     return maj();
+  }
+
+  const ltp = trouver(c, "tacheprojet");
+  if(ltp && (act === "basculerTacheProjet" || act === "remonterTacheProjet" || act === "supprimerTacheProjet" || act === "choisirSectionProjet")){
+    const p = (db.projets||[]).find(x => x.id === ltp.elt.dataset.projet);
+    const x = p && (p.taches||[]).find(y => y.id === ltp.id);
+    if(!p || !x) return;
+    if(act === "choisirSectionProjet"){
+      vue.sectionActiveProjet = vue.sectionActiveProjet === x.id ? null : x.id;
+      return rendre();
+    }
+    if(act === "basculerTacheProjet"){ x.coche = !x.coche; touche(p); return maj(); }
+    if(act === "remonterTacheProjet"){
+      const nouvelle = tacheNeuve({ intitule:x.texte, suivant_le:jourISO(), travail:destinationTravail() });
+      db.taches.push(touche(nouvelle));
+      sauver();
+      return tamponner(ltp.elt, "Ajouté à « À faire »", rendre);
+    }
+    if(act === "supprimerTacheProjet"){
+      p.taches = p.taches.filter(y => y.id !== x.id);
+      touche(p);
+      return maj();
+    }
   }
 
   const lc0 = trouver(c, "commande");
@@ -5253,6 +5365,7 @@ document.addEventListener("keydown", ev => {
   if(ev.target.id === "saisie"){ ev.preventDefault(); ajouterDepuis("saisie", null); }
   if(ev.target.id === "saisieDoss"){ ev.preventDefault(); ajouterDepuis("saisieDoss", ev.target.dataset.dossier); }
   if(ev.target.id === "itemListeSaisie"){ ev.preventDefault(); ajouterItemListe(ev.target.dataset.liste); }
+  if(ev.target.id === "tacheProjetSaisie"){ ev.preventDefault(); ajouterTacheProjet(ev.target.dataset.projet); }
   if(ev.target.id === "dep-montant" || ev.target.id === "dep-libelle"){ ev.preventDefault(); ajouterDepense(); }
 });
 
@@ -5261,6 +5374,10 @@ document.addEventListener("input", ev => {
   if(ev.target.id === "notesDoss"){
     const d = dossDe(ev.target.dataset.dossier);
     if(d){ d.notes = ev.target.value; d.demo = false; touche(d); sauver(); }
+  }
+  if(ev.target.id === "notesProjet"){
+    const p = (db.projets||[]).find(x => x.id === ev.target.dataset.projet);
+    if(p){ p.notes = ev.target.value; touche(p); sauver(); }
   }
 });
 
@@ -5511,6 +5628,59 @@ function finGlissementItem(){
 document.addEventListener("pointerup", finGlissementItem);
 document.addEventListener("pointercancel", finGlissementItem);
 
+/* Même mécanique, une quatrième fois, pour la liste « À faire » d'un
+   Projet — items sans champ ordre séparé, titres fixes, glisser au-delà
+   d'un titre pour changer de section. */
+let glissementTacheProjet = null;
+
+function ligneSousTacheProjet(y, conteneur, sauf){
+  const lignes = [...conteneur.querySelectorAll("[data-tacheprojet]")].filter(x => x !== sauf);
+  for(const l of lignes){
+    const r = l.getBoundingClientRect();
+    if(y < r.top + r.height / 2) return l;
+  }
+  return null;
+}
+
+document.addEventListener("pointerdown", ev => {
+  const prise = ev.target.closest && ev.target.closest("[data-glissertacheprojet]");
+  if(!prise) return;
+  const ligne = prise.closest("[data-tacheprojet]");
+  const conteneur = ligne && ligne.closest(".rangeable-taches-projet");
+  if(!ligne || !conteneur) return;
+  ev.preventDefault();
+  glissementTacheProjet = { ligne, conteneur };
+  ligne.classList.add("glisse");
+  try{ prise.setPointerCapture(ev.pointerId); }catch(e){}
+});
+
+document.addEventListener("pointermove", ev => {
+  if(!glissementTacheProjet) return;
+  ev.preventDefault();
+  const { ligne, conteneur } = glissementTacheProjet;
+  const cible = ligneSousTacheProjet(ev.clientY, conteneur, ligne);
+  if(cible) conteneur.insertBefore(ligne, cible);
+  else conteneur.appendChild(ligne);
+});
+
+function finGlissementTacheProjet(){
+  if(!glissementTacheProjet) return;
+  const { ligne, conteneur } = glissementTacheProjet;
+  glissementTacheProjet = null;
+  ligne.classList.remove("glisse");
+  const p = (db.projets||[]).find(x => x.id === ligne.dataset.projet);
+  if(!p) return;
+  const ids = [...conteneur.querySelectorAll("[data-tacheprojet]")].map(x => x.getAttribute("data-tacheprojet"));
+  const parId = new Map((p.taches||[]).map(x => [x.id, x]));
+  const reordonnees = ids.map(id => parId.get(id)).filter(Boolean);
+  if(reordonnees.length !== (p.taches||[]).length) return;
+  p.taches = reordonnees;
+  touche(p);
+  maj();
+}
+document.addEventListener("pointerup", finGlissementTacheProjet);
+document.addEventListener("pointercancel", finGlissementTacheProjet);
+
 /* Même mécanique, cette fois pour réordonner les listes elles-mêmes sur la
    page « Listes » (ex. faire passer « Voyage » avant « Livres et films »). */
 let glissementListe = null;
@@ -5684,7 +5854,7 @@ setInterval(verifierJour, 60000);
   db.listes.forEach(l => { l.items = l.items || []; });
   db.sommeil = db.sommeil || [];
   db.projets = db.projets || [];
-  db.projets.forEach(p => { p.lignes = p.lignes || []; });
+  db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || []; if(typeof p.notes !== "string") p.notes = ""; });
   db.commandes = db.commandes || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
