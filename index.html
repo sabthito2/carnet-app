@@ -15,7 +15,8 @@
     --filet:#C7CABE; --filet-fort:#AEB2A4;
     --accent:#1E5A6E; --accent-pale:#DCE8EC;
     --rouge:#A8372B; --rouge-pale:#F6E3E0; --vert:#3D7A50;
-    --r:3px;
+    --r:10px;
+    --ombre:0 1px 3px rgba(28,34,48,.07);
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
     --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
   }
@@ -58,7 +59,7 @@
   .oeil .cpt{color:var(--accent)}
   .oeil .a-droite{font-family:var(--mono);font-size:10.5px;color:var(--encre-3);order:3;letter-spacing:.06em}
 
-  .fiche{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r)}
+  .fiche{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);box-shadow:var(--ombre)}
   .liste{display:flex;flex-direction:column}
   .liste>*+*{border-top:1px solid var(--filet)}
 
@@ -203,7 +204,7 @@
   .filtre.urgent-f.on .n{color:var(--rouge)}
 
   /* ---------- Budget ---------- */
-  .compteur{border:1px solid var(--filet);background:var(--fiche);border-radius:var(--r);
+  .compteur{border:1px solid var(--filet);background:var(--fiche);border-radius:var(--r);box-shadow:var(--ombre);
     padding:12px 15px;margin-bottom:18px}
   .cpt-l{display:flex;align-items:baseline;gap:10px;padding:3px 0;flex-wrap:wrap}
   .cpt-n{font-size:13.5px;color:var(--encre-2);flex:1;min-width:120px}
@@ -340,7 +341,7 @@
   .vide.mini{padding:9px 13px;text-align:left}
   .vide.mini b{display:inline;font-size:13.5px;font-weight:500;color:var(--encre-2);margin:0}
   .bandeau{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--accent);background:var(--accent-pale);
-    border-radius:var(--r);padding:10px 13px;margin-bottom:20px;font-size:13.5px}
+    border-radius:var(--r);padding:10px 13px;margin-bottom:20px;font-size:13.5px;box-shadow:var(--ombre)}
   .bandeau.alerte{border-color:var(--rouge);background:var(--rouge-pale)}
   .bandeau .g{flex:1;min-width:180px}
   .bloc{margin-bottom:30px}
@@ -421,7 +422,7 @@
   /* ---------- Agenda ---------- */
   .nav-mois{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
   .barre-mois{display:flex;gap:11px;align-items:center;flex-wrap:wrap;margin-bottom:16px;
-    padding:9px 12px;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche)}
+    padding:9px 12px;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche);box-shadow:var(--ombre)}
   .barre-mois.ailleurs{border-color:var(--accent);background:var(--accent-pale)}
   .titre-mois{display:flex;flex-direction:column;line-height:1.25}
   .titre-mois .nom{font-size:16px;font-weight:640;text-transform:capitalize}
@@ -521,6 +522,17 @@
     background:transparent;font-size:17px;display:inline-flex;align-items:center;justify-content:center;
     padding:0;line-height:1}
   .carre-action:hover{border-color:var(--accent);background:var(--fiche)}
+  /* Mur de notes (Projets) : grille de cartes sobres, esprit Notes/Rappels —
+     une seule teinte, pas de post-it multicolores. */
+  .mur-notes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+  .carte-note{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);box-shadow:var(--ombre);
+    padding:12px 13px;min-height:88px;text-align:left;display:block;width:100%;font:inherit;color:inherit;cursor:pointer}
+  .carte-note b{display:block;font-size:13.5px;margin-bottom:4px}
+  .carte-note p{margin:0;font-size:12px;color:var(--encre-2);white-space:pre-wrap;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .carte-note-plus{display:flex;align-items:center;justify-content:center;color:var(--encre-3);
+    border:1.5px dashed var(--filet-fort);background:transparent;box-shadow:none;font-size:24px}
+  .carte-note-plus:hover{border-color:var(--accent);color:var(--accent)}
     /* Sur téléphone, chaque bouton doit rester atteignable au pouce. */
     .ico{padding:9px 11px;font-size:16px}
     .case{width:26px;height:26px}
@@ -745,7 +757,9 @@ const Sync = (() => {
     db.listes.forEach(l => { l.items = l.items || []; });
     db.sommeil = db.sommeil || [];
     db.projets = db.projets || [];
-    db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || []; if(typeof p.notes !== "string") p.notes = ""; });
+    db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || [];
+    if(typeof p.notes === "string"){ if(p.notes.trim()) (p.mur = p.mur || []).push({ id:uid(), titre:"", texte:p.notes }); delete p.notes; }
+    p.mur = p.mur || []; });
     db.commandes = db.commandes || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
@@ -868,7 +882,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 88;
+const VERSION_APP = 91;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2568,6 +2582,7 @@ function vueTaches(){
     "À la saisie : <b>@</b>contexte · <b>#</b>dossier · <b>@samedi</b> <b>demain</b> <b>+3j</b> <b>12/09</b> pour la date · <b>'</b> pour « À faire ».",
     "Le rond rouge marque une tâche prioritaire ; le filtre rouge ne montre qu'elles.",
   ]));
+  h.push(`<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`);
   return h.join("");
 }
 
@@ -2578,7 +2593,8 @@ function vueEcheances(){
   const noms = ["En retard","30 jours","3 mois","Plus tard"];
   const h = [`<div class="entete-mob"><h1 class="titre">Échéances</h1><div class="jour">${dateCourte(j)}</div></div>`,
     `<div style="margin-bottom:6px"><button class="btn" data-act="nouvelleEcheance">Nouvelle échéance</button></div>`];
-  if(!l.length) return h.join("") + vide("Aucune échéance");
+  const FAB = `<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`;
+  if(!l.length) return h.join("") + vide("Aucune échéance") + FAB;
   for(let s = 0; s < 4; s++){
     const g = l.filter(t => seau(t) === s);
     if(g.length) h.push(groupe(noms[s], g.length, enFiche(g.map(t => ligneTache(t, { veille:true })))));
@@ -2587,6 +2603,7 @@ function vueEcheances(){
     "Toutes les tâches qui portent une date.",
     "Chacune remonte dans l'inbox au moment de son <b>préavis</b>, et se reconduit seule si elle est récurrente.",
   ]));
+  h.push(FAB);
   return h.join("");
 }
 
@@ -2956,17 +2973,6 @@ function vueBudget(){
       ${ligne("Budget initial", euro(b.disponible,0))}
       ${ligne("Charges retirées", euro(b.charges,0))}
     </div>`);
-
-    h.push(`<button class="aide-q" data-act="voirExplication">${
-      vue.voirExplication ? "Masquer l'explication" : "Comment ce calcul fonctionne ?"}</button>`);
-    if(vue.voirExplication)
-      h.push(`<p class="explique">
-        « Ce qu'il y avait au départ », ce sont vos revenus une fois les factures et abonnements retirés.
-        Vos dépenses du quotidien viennent s'y soustraire au fil du mois : ce qu'il reste est le montant ci-dessus.
-        ${b.sortiePonctuelle > 0
-          ? `Ce mois-ci, une facture annuelle est en plus retirée en entier : elle est donc comptée deux fois,
-             une fois lissée et une fois en totalité. C'est une marge de sécurité volontaire, modifiable dans Réglages.`
-          : ""}</p>`);
   }
 
   /* ---------- 5. Les dépenses saisies ---------- */
@@ -2992,9 +2998,6 @@ function vueBudget(){
     .slice(0, 6);
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
     ${jours.length?`<span class="cpt">${euro(totalMois,2)}</span>`:""}</div>`);
-  if(jours.length)
-    h.push(`<div style="margin:-10px 0 12px">
-      <button class="btn mini creux" data-act="exporterCSVBudget">Export CSV — ${ech(nomPeriode)}</button></div>`);
   if(ponctuelsDuMois.length){
     const somme = ponctuelsDuMois.reduce((s,p) => s + (p.l.montant || 0), 0);
     const liste = ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ");
@@ -3115,7 +3118,9 @@ function vueBudget(){
   const totalReel = factures.reduce((s,x) => s + x.reel, 0);
 
   const encoreDu = resteAPrelever(b.deb, b.fin);
-  h.push(`<div class="oeil">Factures et abonnements<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  if(jours.length) h.push(`<div style="margin:4px 0 -10px">
+    <button class="btn mini creux" data-act="exporterCSVBudget">Export CSV — ${ech(nomPeriode)}</button></div>`);
+  h.push(`<div class="oeil">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
   if(b.courante)
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${
       encoreDu > 0
@@ -3164,7 +3169,8 @@ function vueBudget(){
 
   h.push(piedAide([
     "Le <b>solde</b> part de vos revenus, retire les factures, puis les dépenses du mois.",
-    "Une facture annuelle est étalée sur douze mois ; le mois où elle tombe, elle est aussi retirée en entier.",
+    "« Ce qu'il y avait au départ » (Budget initial), ce sont vos revenus une fois les factures et abonnements retirés ; vos dépenses du quotidien viennent s'y soustraire au fil du mois.",
+    "Une facture annuelle est étalée sur douze mois ; le mois où elle tombe, elle est aussi retirée en entier — comptée deux fois par sécurité, modifiable dans Réglages.",
     "Une dépense en <b>espèces</b> n'est pas recomptée : elle a déjà été décomptée au retrait. Elle sert à savoir où l'argent est parti.",
   ]));
   h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
@@ -3484,7 +3490,11 @@ function vueProjetOuvert(){
   if(!p){ vue.projet = null; return vueProjetsPage(); }
   p.lignes = p.lignes || [];
   p.taches = p.taches || [];
-  if(typeof p.notes !== "string") p.notes = "";
+  if(typeof p.notes === "string"){
+    if(p.notes.trim()) (p.mur = p.mur || []).push({ id:uid(), titre:"", texte:p.notes });
+    delete p.notes;
+  }
+  p.mur = p.mur || [];
   const t = totalProjet(p);
   const items = p.taches.filter(x => !x.titre);
   const nFaites = items.filter(x => x.coche).length;
@@ -3557,9 +3567,16 @@ function vueProjetOuvert(){
   }
 
   /* ---------- Notes ---------- */
+  /* Un mur de notes titrées plutôt qu'une seule zone de texte : plusieurs
+     petites choses à noter (vol, contact, idée) valent mieux séparées que
+     bout à bout dans un même pavé. */
   h.push(`<div class="oeil">Notes</div>`);
-  h.push(`<div class="bloc-notes" style="margin-bottom:8px"><textarea id="notesProjet" data-projet="${p.id}"
-    placeholder="Numéro de vol, référence, tout ce qui ne rentre pas ailleurs…">${ech(p.notes)}</textarea></div>`);
+  h.push(`<div class="mur-notes">${p.mur.map(n => `
+    <button class="carte-note" data-act="ouvrirNoteProjet" data-projet="${p.id}" data-note="${n.id}">
+      ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
+    </button>`).join("")}
+    <button class="carte-note carte-note-plus" data-act="ouvrirNoteProjet" data-projet="${p.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
+  </div>`);
 
   h.push(piedAide([
     "Les dépenses de ce projet ne sont jamais comptées dans le budget réel — un projet vit à part.",
@@ -3847,7 +3864,7 @@ function rendre(){
   dernierEcran = { onglet:vue.onglet, dossier:vue.dossier, mois:vue.moisAgenda,
                    decalage:vue.decalage, sphere:sphere() };
   const a = document.activeElement;
-  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle","notesProjet","tacheProjetSaisie"];
+  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle","tacheProjetSaisie"];
   const memo = a && gardes.includes(a.id) ? { id:a.id, val:a.value, pos:a.selectionStart } : null;
 
   cible.innerHTML = ({ accueil:vueAccueil, taches:vueTaches, echeances:vueEcheances, agenda:vueAgenda,
@@ -4379,7 +4396,7 @@ function formulaireListe(l){
 
 function formulaireProjet(p){
   const neuf = !p;
-  const x = p || { id:uid(), nom:"", lignes:[], taches:[], notes:"" };
+  const x = p || { id:uid(), nom:"", lignes:[], taches:[], mur:[] };
   formulaire(neuf ? "Nouveau projet" : "Renommer le projet", [
     { cle:"nom", nom:"Nom du projet", ph:"Van, voyage en Corse…" },
   ], { ...x }, f => {
@@ -4387,7 +4404,7 @@ function formulaireProjet(p){
     x.nom = f.nom;
     x.lignes = x.lignes || [];
     x.taches = x.taches || [];
-    if(typeof x.notes !== "string") x.notes = "";
+    x.mur = x.mur || [];
     touche(x);
     if(neuf){ db.projets = db.projets || []; db.projets.push(x); vue.projet = x.id; vue.sectionActiveProjet = null; }
     maj();
@@ -4397,6 +4414,34 @@ function formulaireProjet(p){
     jeter("projet", x);
     db.projets = db.projets.filter(y => y.id !== x.id);
     if(vue.projet === x.id) vue.projet = null;
+    maj();
+  });
+}
+
+/* Une note du mur : titre + texte, comme le Bloc-notes mais titrée et
+   multipliable. Rien à sauver si les deux champs sont vides — évite de
+   remplir le mur de post-it fantômes après un "+" suivi d'un "Annuler"
+   distrait. */
+function ouvrirNoteProjet(projetId, noteId){
+  const p = (db.projets||[]).find(x => x.id === projetId);
+  if(!p) return;
+  p.mur = p.mur || [];
+  const neuf = !noteId;
+  const n = neuf ? { id:uid(), titre:"", texte:"" } : p.mur.find(x => x.id === noteId);
+  if(!n) return;
+  formulaire(neuf ? "Nouvelle note" : "Modifier la note", [
+    { cle:"titre", nom:"Titre", ph:"Vol, contact, idée…" },
+    { cle:"texte", nom:"Texte", type:"textarea" },
+  ], { ...n }, f => {
+    const titre = (f.titre||"").trim(), texte = f.texte||"";
+    if(!titre && !texte.trim()) return;
+    n.titre = titre; n.texte = texte;
+    if(neuf) p.mur.push(n);
+    touche(p);
+    maj();
+  }, neuf ? null : () => {
+    p.mur = p.mur.filter(x => x.id !== n.id);
+    touche(p);
     maj();
   });
 }
@@ -5003,6 +5048,7 @@ document.addEventListener("click", ev => {
   if(act === "nouveauProjet") return formulaireProjet(null);
   if(act === "ajouterLigneProjet") return editerLigneProjet((db.projets||[]).find(x => x.id === b.dataset.projet), null);
   if(act === "ajouterTacheProjet") return ajouterTacheProjet(b.dataset.projet);
+  if(act === "ouvrirNoteProjet") return ouvrirNoteProjet(b.dataset.projet, b.dataset.note);
   if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "nouvelleCommande") return formulaireCommande(null);
@@ -5044,7 +5090,6 @@ document.addEventListener("click", ev => {
   if(act === "basculerRangement"){ vue.rangement = !vue.rangement; return rendre(); }
   if(act === "voirArgent"){ vue.voirArgent = !vue.voirArgent; return rendre(); }
   if(act === "voirRevenus"){ vue.voirRevenus = !vue.voirRevenus; return rendre(); }
-  if(act === "voirExplication"){ vue.voirExplication = !vue.voirExplication; return rendre(); }
   if(act === "toutReglees"){ vue.toutReglees = !vue.toutReglees; return rendre(); }
   if(act === "viderReglees"){
     const n = reglees().length;
@@ -5374,10 +5419,6 @@ document.addEventListener("input", ev => {
   if(ev.target.id === "notesDoss"){
     const d = dossDe(ev.target.dataset.dossier);
     if(d){ d.notes = ev.target.value; d.demo = false; touche(d); sauver(); }
-  }
-  if(ev.target.id === "notesProjet"){
-    const p = (db.projets||[]).find(x => x.id === ev.target.dataset.projet);
-    if(p){ p.notes = ev.target.value; touche(p); sauver(); }
   }
 });
 
@@ -5854,7 +5895,9 @@ setInterval(verifierJour, 60000);
   db.listes.forEach(l => { l.items = l.items || []; });
   db.sommeil = db.sommeil || [];
   db.projets = db.projets || [];
-  db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || []; if(typeof p.notes !== "string") p.notes = ""; });
+  db.projets.forEach(p => { p.lignes = p.lignes || []; p.taches = p.taches || [];
+    if(typeof p.notes === "string"){ if(p.notes.trim()) (p.mur = p.mur || []).push({ id:uid(), titre:"", texte:p.notes }); delete p.notes; }
+    p.mur = p.mur || []; });
   db.commandes = db.commandes || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
