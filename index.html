@@ -908,7 +908,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 98;
+const VERSION_APP = 99;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1876,10 +1876,10 @@ const ONGLETS = [
 /* Le rouge et le vert sont réservés aux alertes et aux tâches réglées :
    les teintes proposées s'en tiennent donc à distance. */
 const TEINTES = [
-  { cle:"petrole", nom:"Bleu pétrole", val:"#1E5A6E", pale:"#DCE8EC" },
-  { cle:"nuit",    nom:"Bleu nuit",    val:"#2B3E6B", pale:"#DEE3F0" },
-  { cle:"prune",   nom:"Prune",        val:"#6B3FA0", pale:"#EBE3F7" },
-  { cle:"brique",  nom:"Terre cuite",  val:"#9A4A2F", pale:"#F2E1D9" },
+  { cle:"petrole", nom:"Bleu pétrole", val:"#1E5A6E", pale:"#DCE8EC", paleSombre:"#1F3A42" },
+  { cle:"nuit",    nom:"Bleu nuit",    val:"#2B3E6B", pale:"#DEE3F0", paleSombre:"#26304A" },
+  { cle:"prune",   nom:"Prune",        val:"#6B3FA0", pale:"#EBE3F7", paleSombre:"#3A2E4A" },
+  { cle:"brique",  nom:"Terre cuite",  val:"#9A4A2F", pale:"#F2E1D9", paleSombre:"#4A3226" },
 ];
 function appliquerTaille(){
   const b = document.body;
@@ -1898,7 +1898,14 @@ function appliquerSombre(){
 function appliquerTeinte(){
   const t = TEINTES.find(x => x.cle === (db.reglages.accent || "petrole")) || TEINTES[0];
   const r = document.documentElement;
-  if(r && r.style){ r.style.setProperty("--accent", t.val); r.style.setProperty("--accent-pale", t.pale); }
+  if(r && r.style){
+    r.style.setProperty("--accent", t.val);
+    /* --accent-pale sert de fond à des badges/bandeaux où le texte est
+       --encre : en mode nuit --encre devient clair, donc le même pâle très
+       clair rendrait ce texte invisible (texte clair sur fond clair). On
+       bascule alors sur un compagnon sombre de la même teinte. */
+    r.style.setProperty("--accent-pale", (db.reglages.sombre && t.paleSombre) ? t.paleSombre : t.pale);
+  }
 }
 
 const ETATS_SYNC = {
@@ -5117,6 +5124,7 @@ document.addEventListener("click", ev => {
   if(act === "basculerSombre"){
     db.reglages.sombre = !db.reglages.sombre;
     appliquerSombre();
+    appliquerTeinte();
     return maj();
   }
   if(act === "ajoutRapide") return ouvrirAjoutRapide();
