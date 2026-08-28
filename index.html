@@ -383,6 +383,12 @@
   .surl-jaune{background:#F0E39B}
   .surl-rose{background:#F3CFDA}
   .surl-vert{background:#C8E0C4}
+  /* En mode nuit, le texte hérite d'une couleur claire (--encre) : les
+     mêmes pastels clairs deviendraient illisibles. On assombrit juste ces
+     trois teintes-là plutôt que de figer la couleur du texte. */
+  body.sombre .surl-jaune{background:#5C4E1E}
+  body.sombre .surl-rose{background:#4D2C38}
+  body.sombre .surl-vert{background:#2F4A32}
 
   /* ---------- Vue semestrielle ---------- */
   .sem-cadre{overflow-x:auto;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche)}
@@ -397,6 +403,7 @@
   .sem-case.hors{background:var(--papier);border-top-color:var(--papier);cursor:default}
   .sem-case.we{background:var(--fiche-2)}
   .sem-case.ferie{background:#F7E2E9}
+  body.sombre .sem-case.ferie{background:#4A2530}
   .sem-case.vac{box-shadow:inset 3px 0 0 var(--accent)}
   .sem-case.auj{background:var(--accent-pale)}
   .sem-case.auj .sem-jour{color:var(--accent);font-weight:700}
@@ -410,6 +417,9 @@
   .sem-e.surl-jaune{background:#F0E39B}
   .sem-e.surl-rose{background:#F3CFDA}
   .sem-e.surl-vert{background:#C8E0C4}
+  body.sombre .sem-e.surl-jaune{background:#5C4E1E}
+  body.sombre .sem-e.surl-rose{background:#4D2C38}
+  body.sombre .sem-e.surl-vert{background:#2F4A32}
 
   /* ---------- Semaine type ---------- */
   .edt-cadre{overflow-x:auto;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche);padding:6px}
@@ -431,6 +441,9 @@
   .edt-bloc.surl-jaune{background:#F0E39B;border-left-color:#C9A93A}
   .edt-bloc.surl-rose{background:#F3CFDA;border-left-color:#C2708D}
   .edt-bloc.surl-vert{background:#C8E0C4;border-left-color:#6E9E68}
+  body.sombre .edt-bloc.surl-jaune{background:#5C4E1E;border-left-color:#D4B84A}
+  body.sombre .edt-bloc.surl-rose{background:#4D2C38;border-left-color:#D488A3}
+  body.sombre .edt-bloc.surl-vert{background:#2F4A32;border-left-color:#7FB578}
 
   /* ---------- Agenda ---------- */
   .nav-mois{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
@@ -895,7 +908,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 97;
+const VERSION_APP = 98;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
