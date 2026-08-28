@@ -895,7 +895,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 96;
+const VERSION_APP = 97;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1958,8 +1958,12 @@ function chercher(q){
   });
   (db.rendez_vous||[]).forEach(x => {
     if(!ok(colle(x.intitule, x.notes))) return;
+    /* dateLongue() seule omet l'année (elle sert ailleurs à afficher « demain,
+       vendredi 28 août », où l'année est évidente) — mais dans une recherche,
+       justement, l'année est ce qui permet de repérer une fréquence dans le
+       temps (ex. suivre des migraines d'une année sur l'autre). */
     r.push({ genre:"Rendez-vous", titre:x.intitule,
-      detail:[dateLongue(x.date), x.heure, (x.cote||"perso") === "pro" ? "Pro" : "Perso"].filter(Boolean).join(" · "),
+      detail:[`${dateLongue(x.date)} ${x.date.slice(0,4)}`, x.heure, (x.cote||"perso") === "pro" ? "Pro" : "Perso"].filter(Boolean).join(" · "),
       aller:() => { vue.onglet = "agenda"; vue.moisAgenda = x.date.slice(0,7); } });
   });
   db.depenses.forEach(x => {
