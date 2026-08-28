@@ -908,7 +908,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 99;
+const VERSION_APP = 101;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1267,11 +1267,11 @@ function nomAppareil(){
 let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
-              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false,
+              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false, recapOuvert:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
               filtreEtiquette:null, sectionActiveProjet:null,
-              pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false,
+              pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false, noteOuverte:null,
               habitudeGrille:null, semaineCondensee:false, anneeBilan:null, pageBilanAnnuel:false };
 
 let tempo = null;
@@ -2307,7 +2307,7 @@ function vueAccueil(){
   /* Le compte des retards porte sur toutes les échéances dépassées, y compris
      celles déjà placées dans « À faire » : sinon on en annonce deux quand
      l'onglet Échéances en montre trois. */
-  const retard = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) < 0);
+  const retard = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 0);
   const b = bilan(0);
   const dj = versDate(j);
   const h = [];
@@ -3002,7 +3002,10 @@ function vueBudget(){
       <span class="cpt-v ${cl||""}">${valeur}</span>
       ${note ? `<span class="cpt-note">${note}</span>` : ""}</div>`;
 
-    h.push(`<div class="compteur">
+    h.push(`<button class="oeil" data-act="basculerRecap"
+      style="width:100%;border:0;background:none;cursor:pointer;text-align:left;padding:0">
+      Récap ${vue.recapOuvert ? "▾" : "▸"}</button>`);
+    if(vue.recapOuvert) h.push(`<div class="compteur">
       ${ligne(b.courante ? "Solde" : "Solde sur " + nomPeriode, euro(b.reste,0),
               b.courante ? `soit ${euro(b.reste / b.encore, 0)} par jour pendant ${b.encore} jours` : "",
               b.reste < 0 ? "neg" : "")}
@@ -3221,6 +3224,7 @@ function vueBudget(){
 
 /* ---- Suivi ---- */
 function vueSuivi(){
+  if(vue.noteOuverte) return vueNoteOuverte();
   if(vue.dossier) return vueDossier();
   if(vue.liste) return vueListeOuverte();
   if(vue.pageListes) return vueListesPage();
@@ -3394,10 +3398,10 @@ function vueDossier(){
   d.mur = d.mur || [];
   h.push(`<div class="oeil">Notes</div>`);
   h.push(`<div class="mur-notes">${d.mur.map(n => `
-    <button class="carte-note" data-act="ouvrirNoteDossier" data-dossier="${d.id}" data-note="${n.id}">
+    <button class="carte-note" data-act="ouvrirNoteGrand" data-genre="dossier" data-parent="${d.id}" data-note="${n.id}">
       ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
     </button>`).join("")}
-    <button class="carte-note carte-note-plus" data-act="ouvrirNoteDossier" data-dossier="${d.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
+    <button class="carte-note carte-note-plus" data-act="ouvrirNoteGrand" data-genre="dossier" data-parent="${d.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
   </div>`);
   return h.join("");
 }
@@ -3625,10 +3629,10 @@ function vueProjetOuvert(){
      bout à bout dans un même pavé. */
   h.push(`<div class="oeil">Notes</div>`);
   h.push(`<div class="mur-notes">${p.mur.map(n => `
-    <button class="carte-note" data-act="ouvrirNoteProjet" data-projet="${p.id}" data-note="${n.id}">
+    <button class="carte-note" data-act="ouvrirNoteGrand" data-genre="projet" data-parent="${p.id}" data-note="${n.id}">
       ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
     </button>`).join("")}
-    <button class="carte-note carte-note-plus" data-act="ouvrirNoteProjet" data-projet="${p.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
+    <button class="carte-note carte-note-plus" data-act="ouvrirNoteGrand" data-genre="projet" data-parent="${p.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
   </div>`);
 
   h.push(piedAide([
@@ -3671,6 +3675,35 @@ function vueCommandesPage(){
     "Cocher marque la commande reçue sans la supprimer — elle passe simplement en bas, barrée.",
   ]));
   return h.join("");
+}
+
+/* ---- Note (grande fenêtre) ---- */
+/* Remplace l'ancienne petite boîte de dialogue pour les notes de Projets et
+   Dossiers : sur téléphone, un textarea de 74px dans une fenêtre modale
+   était trop juste pour écrire confortablement. Ici, toute la page est à
+   disposition, et tout s'enregistre au fil de la frappe — pas de bouton
+   "Enregistrer" à chercher. */
+function vueNoteOuverte(){
+  const ref = vue.noteOuverte;
+  const parentDe = () => ref.genre === "projet" ? (db.projets||[]).find(x => x.id === ref.parentId) : dossDe(ref.parentId);
+  const retourVersParent = () => { vue.noteOuverte = null; return ref.genre === "projet" ? vueProjetOuvert() : vueDossier(); };
+  const parent = parentDe();
+  if(!parent) return retourVersParent();
+  parent.mur = parent.mur || [];
+  const n = ref.noteId ? parent.mur.find(x => x.id === ref.noteId) : null;
+  if(ref.noteId && !n) return retourVersParent();
+  const titre = n ? n.titre : "", texte = n ? n.texte : "";
+
+  return `<button class="retour" data-act="fermerNote">← ${ech(parent.nom)}</button>
+    <input id="noteTitreGrand" value="${ech(titre)}" placeholder="Titre de la note"
+      data-genre="${ref.genre}" data-parent="${ref.parentId}" data-note="${ref.noteId || ""}"
+      style="width:100%;background:transparent;border:0;border-bottom:1px solid var(--filet);
+        font-size:19px;font-weight:600;padding:8px 2px;margin-bottom:10px">
+    <textarea id="noteTexteGrand" placeholder="Écrivez ici…"
+      data-genre="${ref.genre}" data-parent="${ref.parentId}" data-note="${ref.noteId || ""}"
+      style="width:100%;min-height:58vh;background:transparent;border:0;padding:8px 2px;
+        font-size:16px;line-height:1.5;resize:none">${ech(texte)}</textarea>
+    ${n ? `<div style="margin-top:14px"><button class="btn mini danger" data-act="supprimerNoteGrand">Supprimer cette note</button></div>` : ""}`;
 }
 
 /* ---- Réglages ---- */
@@ -3917,7 +3950,7 @@ function rendre(){
   dernierEcran = { onglet:vue.onglet, dossier:vue.dossier, mois:vue.moisAgenda,
                    decalage:vue.decalage, sphere:sphere() };
   const a = document.activeElement;
-  const gardes = ["saisie","saisieDoss","dep-montant","dep-libelle","tacheProjetSaisie"];
+  const gardes = ["saisie","saisieDoss","dep-montant","dep-libelle","tacheProjetSaisie","noteTitreGrand","noteTexteGrand"];
   const memo = a && gardes.includes(a.id) ? { id:a.id, val:a.value, pos:a.selectionStart } : null;
 
   cible.innerHTML = ({ accueil:vueAccueil, taches:vueTaches, echeances:vueEcheances, agenda:vueAgenda,
@@ -4471,61 +4504,6 @@ function formulaireProjet(p){
   });
 }
 
-/* Une note du mur : titre + texte, comme le Bloc-notes mais titrée et
-   multipliable. Rien à sauver si les deux champs sont vides — évite de
-   remplir le mur de post-it fantômes après un "+" suivi d'un "Annuler"
-   distrait. */
-function ouvrirNoteProjet(projetId, noteId){
-  const p = (db.projets||[]).find(x => x.id === projetId);
-  if(!p) return;
-  p.mur = p.mur || [];
-  const neuf = !noteId;
-  const n = neuf ? { id:uid(), titre:"", texte:"" } : p.mur.find(x => x.id === noteId);
-  if(!n) return;
-  formulaire(neuf ? "Nouvelle note" : "Modifier la note", [
-    { cle:"titre", nom:"Titre", ph:"Vol, contact, idée…" },
-    { cle:"texte", nom:"Texte", type:"textarea" },
-  ], { ...n }, f => {
-    const titre = (f.titre||"").trim(), texte = f.texte||"";
-    if(!titre && !texte.trim()) return;
-    n.titre = titre; n.texte = texte;
-    if(neuf) p.mur.push(n);
-    touche(p);
-    maj();
-  }, neuf ? null : () => {
-    p.mur = p.mur.filter(x => x.id !== n.id);
-    touche(p);
-    maj();
-  });
-}
-
-/* Même mur, cette fois accroché à un Dossier plutôt qu'à un Projet — un
-   dossier « Van » peut ainsi porter une fiche « Entretien », une fiche
-   « Suivi km », etc. */
-function ouvrirNoteDossier(dossierId, noteId){
-  const d = dossDe(dossierId);
-  if(!d) return;
-  d.mur = d.mur || [];
-  const neuf = !noteId;
-  const n = neuf ? { id:uid(), titre:"", texte:"" } : d.mur.find(x => x.id === noteId);
-  if(!n) return;
-  formulaire(neuf ? "Nouvelle note" : "Modifier la note", [
-    { cle:"titre", nom:"Titre", ph:"Entretien, suivi km…" },
-    { cle:"texte", nom:"Texte", type:"textarea" },
-  ], { ...n }, f => {
-    const titre = (f.titre||"").trim(), texte = f.texte||"";
-    if(!titre && !texte.trim()) return;
-    n.titre = titre; n.texte = texte;
-    if(neuf) d.mur.push(n);
-    touche(d);
-    maj();
-  }, neuf ? null : () => {
-    d.mur = d.mur.filter(x => x.id !== n.id);
-    touche(d);
-    maj();
-  });
-}
-
 /* Une ligne de projet n'a ni périodicité ni lien avec les dossiers : elle
    ne peut structurellement jamais entrer dans totalCharges(). */
 function editerLigneProjet(p, l){
@@ -4956,7 +4934,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -5157,14 +5135,29 @@ document.addEventListener("click", ev => {
   if(act === "nouveauProjet") return formulaireProjet(null);
   if(act === "ajouterLigneProjet") return editerLigneProjet((db.projets||[]).find(x => x.id === b.dataset.projet), null);
   if(act === "ajouterTacheProjet") return ajouterTacheProjet(b.dataset.projet);
-  if(act === "ouvrirNoteProjet") return ouvrirNoteProjet(b.dataset.projet, b.dataset.note);
-  if(act === "ouvrirNoteDossier") return ouvrirNoteDossier(b.dataset.dossier, b.dataset.note);
+  if(act === "ouvrirNoteGrand"){
+    vue.noteOuverte = { genre: b.dataset.genre, parentId: b.dataset.parent, noteId: b.dataset.note || null };
+    return rendre();
+  }
+  if(act === "fermerNote"){ vue.noteOuverte = null; return rendre(); }
+  if(act === "supprimerNoteGrand"){
+    const ref = vue.noteOuverte;
+    if(!ref || !ref.noteId) return;
+    const parent = ref.genre === "projet" ? (db.projets||[]).find(x => x.id === ref.parentId) : dossDe(ref.parentId);
+    if(!parent) return;
+    if(!confirm("Supprimer cette note ?")) return;
+    parent.mur = (parent.mur||[]).filter(x => x.id !== ref.noteId);
+    touche(parent);
+    vue.noteOuverte = null;
+    return maj();
+  }
   if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
   if(act === "exporterCSVBudget") return exporterCSVBudget();
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
+  if(act === "basculerRecap"){ vue.recapOuvert = !vue.recapOuvert; return rendre(); }
   if(act === "fermerBilanAnnuel"){ vue.pageBilanAnnuel = false; return rendre(); }
   if(act === "sommeilCoucher"){
     db.sommeil = db.sommeil || [];
@@ -5537,6 +5530,28 @@ document.addEventListener("keydown", ev => {
 
 document.addEventListener("input", ev => {
   Sync.noterGeste();
+  if(ev.target.id === "noteTitreGrand" || ev.target.id === "noteTexteGrand"){
+    const genre = ev.target.dataset.genre, parentId = ev.target.dataset.parent, noteId = ev.target.dataset.note;
+    const parent = genre === "projet" ? (db.projets||[]).find(x => x.id === parentId) : dossDe(parentId);
+    if(!parent) return;
+    parent.mur = parent.mur || [];
+    let n = noteId ? parent.mur.find(x => x.id === noteId) : null;
+    const titre = (document.getElementById("noteTitreGrand")?.value || "").trim();
+    const texte = document.getElementById("noteTexteGrand")?.value || "";
+    if(!n){
+      if(!titre && !texte.trim()) return;   /* rien à créer tant que tout est vide */
+      n = { id: noteId || uid(), titre, texte };
+      parent.mur.push(n);
+      vue.noteOuverte.noteId = n.id;
+      ev.target.dataset.note = n.id;
+      const autreChamp = document.getElementById(ev.target.id === "noteTitreGrand" ? "noteTexteGrand" : "noteTitreGrand");
+      if(autreChamp) autreChamp.dataset.note = n.id;
+    }else{
+      n.titre = titre; n.texte = texte;
+    }
+    touche(parent);
+    sauver();
+  }
 });
 
 /* Filet de sécurité : avant tout redessin, on recopie dans les données ce
