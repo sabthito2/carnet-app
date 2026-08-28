@@ -19,7 +19,20 @@
     --ombre:0 1px 3px rgba(28,34,48,.07);
     --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
     --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    --btn-survol:#2A3144;
   }
+  /* Mode nuit : on inverse juste la palette neutre (papier/encre/filet),
+     l'accent choisi dans Réglages reste le même — pas une appli différente,
+     la même, en sombre. */
+  body.sombre{
+    --papier:#1B1E23; --fiche:#24272D; --fiche-2:#2A2E34;
+    --encre:#E7E8E3; --encre-2:#A3A9B1; --encre-3:#6E747C;
+    --filet:#383C43; --filet-fort:#4B5058;
+    --rouge:#D97767; --rouge-pale:#3A2620; --vert:#5FA876;
+    --ombre:0 1px 3px rgba(0,0,0,.35);
+    --btn-survol:#D5D6D0;
+  }
+  body.sombre dialog::backdrop{background:rgba(0,0,0,.55)}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{background:var(--papier);color:var(--encre);font-family:var(--sans);font-size:15px;line-height:1.45;
@@ -51,7 +64,7 @@
   .grand-jour .sem{font-size:19px;font-weight:500;color:var(--encre-2);text-transform:capitalize}
   .grand-jour .chiffre{font-family:var(--mono);font-size:46px;line-height:1;font-weight:500;
     letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-  .grand-jour .mois{font-size:22px;font-weight:560}
+  .grand-jour .mois{font-size:22px;font-weight:400}
   .sous{color:var(--encre-2);font-size:13.5px;margin:0 0 22px}
   .oeil{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--encre-3);
     display:flex;align-items:center;gap:10px;margin:26px 0 9px}
@@ -168,7 +181,7 @@
 
   .btn{background:var(--encre);color:var(--papier);border:1px solid var(--encre);border-radius:var(--r);
     padding:9px 15px;font-size:14px;font-weight:500}
-  .btn:hover{background:#2A3144}
+  .btn:hover{background:var(--btn-survol)}
   .btn.creux{background:transparent;color:var(--encre);border-color:var(--filet-fort)}
   .btn.creux:hover{background:var(--fiche);border-color:var(--encre-2)}
   .btn.mini{padding:5px 11px;font-size:12.5px}
@@ -504,10 +517,10 @@
     /* La loupe est le seul accès à la recherche sur téléphone : elle doit
        se voir et s'atteindre sans viser. */
     .loupe{font-size:29px;padding:6px 10px;color:var(--encre-2)}
-    .entete-mob .jour{display:flex;align-items:center;gap:4px}
+    .entete-mob .jour{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
     .mini-carre{width:20px;height:20px;margin-right:16px}
     .fab{right:16px;bottom:calc(70px + env(safe-area-inset-bottom));width:56px;height:56px;font-size:29px}
-    .entete-mob{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+    .entete-mob{display:flex;flex-direction:column-reverse;align-items:stretch;gap:6px;margin-bottom:14px}
     .entete-mob .jour{margin:0}
     /* Habillage du « grand jour » : un dégradé doux, pas criard, et qui
        reste correct même écarté par le zoom du mode grand caractère —
@@ -763,7 +776,7 @@ const Sync = (() => {
     db.commandes = db.commandes || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
-    appliquerTeinte(); appliquerTaille();
+    appliquerTeinte(); appliquerTaille(); appliquerSombre();
     bascule(); purgerCorbeille(); dedoublonner();
     Stockage.ecrire(structuredClone(db));
     cfg.base = db.modifie_le || null;
@@ -882,7 +895,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 91;
+const VERSION_APP = 96;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1861,6 +1874,14 @@ function appliquerTaille(){
   b.classList.toggle("gros", !!db.reglages.gros);
 }
 
+function appliquerSombre(){
+  const b = document.body;
+  if(!b || !b.classList || typeof b.classList.toggle !== "function") return;
+  b.classList.toggle("sombre", !!db.reglages.sombre);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute("content", db.reglages.sombre ? "#1B1E23" : "#E6E8E0");
+}
+
 function appliquerTeinte(){
   const t = TEINTES.find(x => x.cle === (db.reglages.accent || "petrole")) || TEINTES[0];
   const r = document.documentElement;
@@ -1889,6 +1910,8 @@ function rafraichirBadge(){
     title="Agrandir le texte" aria-label="Agrandir le texte">Aa</button>`;
   const loupe = `<button class="loupe" data-act="recherche" title="Rechercher" aria-label="Rechercher">⌕</button>`;
   const calc = `<button class="loupe" data-act="ouvrirCalculatrice" title="Calculatrice" aria-label="Calculatrice">÷</button>`;
+  const sombre = `<button class="loupe ${db.reglages.sombre ? "actif" : ""}" data-act="basculerSombre"
+    title="Mode nuit" aria-label="Mode nuit">☾</button>`;
   const roue = `<button class="loupe" data-onglet="reglages" title="Réglages" aria-label="Réglages">⚙</button>`;
   /* On ne touche au DOM que si l'affichage change réellement : sinon la
      pastille se reconstruit toutes les secondes pour rien. */
@@ -1900,7 +1923,7 @@ function rafraichirBadge(){
   noeuds.forEach(n => {
     n.querySelectorAll(".sync,.loupe").forEach(x => x.remove());
     if(html) n.insertAdjacentHTML("beforeend", " " + html);
-    n.insertAdjacentHTML("beforeend", " " + zoom + loupe + calc + roue);
+    n.insertAdjacentHTML("beforeend", " " + zoom + loupe + calc + sombre + roue);
   });
 }
 
@@ -2209,26 +2232,6 @@ const vide = (t, x, style) => `<div class="vide ${style || ""}"><b>${t}</b>${x |
 const groupe = (t,c,x) => `<div class="oeil">${t}${c!=null?` <span class="cpt">${c}</span>`:""}</div>${x}`;
 const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
 
-/* Petites phrases pour la fin de journée : écrites ici, pas empruntées à
-   quelqu'un — pas de souci de droits, et un ton qui reste le nôtre. Le choix
-   du jour est stable (pas aléatoire à chaque rendu), pour ne pas changer
-   sous les yeux à chaque interaction. */
-const CITATIONS_SOIR = [
-  "Une journée qui se termine n'a pas besoin d'être parfaite pour compter.",
-  "Ce qui n'est pas fait aujourd'hui peut très bien attendre demain.",
-  "Le repos fait autant avancer que le travail.",
-  "Tu as fait ce que tu as pu, avec ce que tu avais. C'est déjà beaucoup.",
-  "Demain reste une page blanche, quoi qu'il se soit passé aujourd'hui.",
-  "Un petit pas reste un pas.",
-  "La liste peut attendre. Le sommeil, moins.",
-  "Rien n'oblige à tout finir avant de se poser.",
-];
-function citationDuSoir(){
-  const [an, mo, jo] = jourISO().split("-").map(Number);
-  const rang = Math.floor(new Date(an, mo - 1, jo).getTime() / 86400000);
-  return CITATIONS_SOIR[((rang % CITATIONS_SOIR.length) + CITATIONS_SOIR.length) % CITATIONS_SOIR.length];
-}
-
 /* Sommeil en 2 taps : on ne peut pas lire le mode avion depuis un site web
    (aucun site ne le peut, c'est bloqué par le système), donc l'heure du
    coucher/lever se pose à la main, mais en un seul geste — pas besoin de
@@ -2243,7 +2246,7 @@ function nuitsRecentes(n = 7){
     if(e.type === "coucher") enCours = e;
     else if(e.type === "lever" && enCours){
       const heures = (new Date(e.quand) - new Date(enCours.quand)) / 3600000;
-      if(heures > 0) nuits.push({ coucher:enCours.quand, lever:e.quand, heures });
+      if(heures > 0) nuits.push({ coucher:enCours.quand, lever:e.quand, heures, coucherId:enCours.id, leverId:e.id });
       enCours = null;
     }
   });
@@ -2252,6 +2255,10 @@ function nuitsRecentes(n = 7){
 const formatDureeSommeil = heures => {
   const h = Math.floor(heures), m = Math.round((heures - h) * 60);
   return m ? `${h}h${String(m).padStart(2,"0")}` : `${h}h`;
+};
+const formatHeureSommeil = iso => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2,"0")}h${String(d.getMinutes()).padStart(2,"0")}`;
 };
 
 /* Compte à rebours : une simple option sur un rendez-vous existant, plutôt
@@ -2297,35 +2304,32 @@ function vueAccueil(){
     h.push(`<p style="margin:-8px 0 16px;font-size:12.5px;color:var(--accent)">✨ ${ech(grandJour.nom)}, aujourd'hui !</p>`);
 
   /* Compte à rebours : option posée sur un rendez-vous existant plutôt
-     qu'un réglage séparé — voir prochainCompteARebours(). */
+     qu'un réglage séparé — voir prochainCompteARebours(). Volontairement
+     discret : une ligne de texte, sans cadre ni couleur d'alerte. */
   const cr = prochainCompteARebours(j);
   if(cr){
     const txt = cr.n > 0 ? `J-${cr.n} avant ${ech(cr.r.intitule)}`
       : cr.n === 0 ? `C'est aujourd'hui : ${ech(cr.r.intitule)} !`
       : `${ech(cr.r.intitule)} — il y a ${-cr.n} j`;
-    h.push(`<div class="bandeau" style="margin-bottom:12px"><div class="g">⏳ ${txt}</div></div>`);
+    h.push(`<p style="margin:-6px 0 16px;font-size:12.5px;color:var(--encre-3)">${txt}</p>`);
   }
 
   /* Sommeil : deux carrés-icônes discrets (mêmes gestes qu'ailleurs dans
-     l'appli), un troisième pour le bilan chiffré. La dernière nuit
-     calculée s'affiche à côté dès qu'une paire coucher→lever existe. */
-  const nuits = nuitsRecentes(1);
+     l'appli), un troisième pour le bilan chiffré. Volontairement pas de
+     durée affichée ici — juste les gestes, le bilan se consulte à part,
+     seulement si on va le chercher. */
   h.push(`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
     <button class="carre-action" data-act="sommeilCoucher" title="Je me couche" aria-label="Je me couche">🛏️</button>
     <button class="carre-action" data-act="sommeilLever" title="Je me lève" aria-label="Je me lève">☀️</button>
     <button class="carre-action" data-act="ouvrirSommeil" title="Bilan sommeil" aria-label="Bilan sommeil">📊</button>
-    ${nuits.length ? `<span style="font-size:12.5px;color:var(--encre-3)">dernière nuit : ${formatDureeSommeil(nuits[0].heures)}</span>` : ""}
   </div>`);
   /* Pas de récapitulatif chiffré : on lit les listes elles-mêmes. */
 
   if(!Stockage.persistant())
     h.push(`<div class="bandeau alerte"><div class="g"><b>Stockage indisponible ici.</b> Rien ne sera conservé. Téléchargez le fichier et ouvrez-le dans votre navigateur.</div></div>`);
-  if(new Date().getHours() >= 22 && db.reglages.citation_masquee_le !== j)
-    h.push(`<div class="bandeau citation-soir"><div class="g" style="font-style:italic">${ech(citationDuSoir())}</div>
-      <button class="ico" data-act="masquerCitation" title="Masquer pour ce soir" aria-label="Masquer">✕</button></div>`);
   if(retard.length)
     h.push(`<button class="filet-rappel doux" data-aller="echeances">
-      <span class="point-retard"></span>${retard.length} échéance${retard.length>1?"s":""} à rattraper, no stress</button>`);
+      <span class="point-retard"></span>${retard.length} échéance${retard.length>1?"s":""} à rattraper</button>`);
   const versionAncienne = Sync.versionEnRetard && Sync.versionEnRetard();
   if(versionAncienne)
     h.push(`<div class="bandeau alerte"><div class="g">
@@ -2446,18 +2450,31 @@ function vueAccueil(){
 
 /* ---- Bilan sommeil ---- */
 function vuePageSommeil(){
-  const nuits = nuitsRecentes(90);
+  const nuits = nuitsRecentes(3650);
   const h = [`<button class="retour" data-act="fermerSommeil">← Accueil</button>`,
-    `<div class="entete-d"><h1 class="titre">Bilan sommeil</h1></div>`,
-    `<div style="height:16px"></div>`];
+    `<div class="entete-d"><h1 class="titre">Bilan sommeil</h1></div>`];
   if(!nuits.length)
     return h.join("") + vide("Aucune nuit enregistrée", "Utilisez 🛏️ et ☀️ en Accueil pour commencer.");
-  h.push(`<div class="fiche liste">${nuits.map(n => `
-    <div class="ligne">
-      <div class="corps"><div class="intitule">${dateCourte(jourISO(new Date(n.lever)))}</div></div>
+  h.push(`<div style="margin:0 0 16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn mini creux" data-act="exporterCSVSommeil">Export CSV</button>
+    <button class="btn mini creux" data-act="viderSommeil">Vider l'historique</button>
+  </div>`);
+  h.push(`<div class="fiche liste">${nuits.map(n => {
+    const iso = jourISO(new Date(n.lever));
+    return `<div class="ligne">
+      <div class="corps">
+        <div class="intitule">${JOURS[versDate(iso).getDay()]} ${dateCourte(iso)}</div>
+        <div class="petit-detail">${formatHeureSommeil(n.coucher)}-${formatHeureSommeil(n.lever)}</div>
+      </div>
       <div class="somme">${formatDureeSommeil(n.heures)}</div>
-    </div>`).join("")}</div>`);
-  h.push(piedAide(["Du plus récent au plus ancien, une paire coucher → lever par ligne."]));
+      <div class="outils"><button class="ico sup" data-act="supprimerNuit"
+        data-coucher="${n.coucherId}" data-lever="${n.leverId}" title="Supprimer">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+  h.push(piedAide([
+    "Du plus récent au plus ancien, une paire coucher → lever par ligne.",
+    "Exportez avant de vider si vous voulez garder une trace — la suppression est définitive.",
+  ]));
   return h.join("");
 }
 
@@ -3039,7 +3056,8 @@ function vueBudget(){
           ${x.moyen && x.moyen !== MOYEN_DEFAUT ? `<span class="puce">${nomMoyen(x.moyen)}</span>` : ""}
           ${enEspeces(x) ? `<span class="puce">déjà décompté</span>` : ""}
           ${x.rembourser && !x.rembourse ? `<span class="puce ctx">à rembourser</span>` : ""}
-          ${x.rembourse ? `<span class="puce">remboursé</span>` : ""}</div></div>
+          ${x.rembourse ? `<span class="puce">remboursé</span>` : ""}</div>
+        ${x.note ? `<div class="petit-detail" style="margin-top:2px">${ech(x.note)}</div>` : ""}</div>
       <div class="somme"${enEspeces(x) ? ` style="color:var(--encre-3)"` : ""}>${euro(x.montant,2)}</div>
       <div class="outils">
         <button class="ico ${x.rembourser?"actif":""}" data-act="marquerRemb"
@@ -3216,7 +3234,7 @@ function vueSuivi(){
     <th>Dossier</th><th>Catégorie</th><th>Accès</th><th>Identifiant</th><th>N° contrat</th><th>Coût</th><th>Échéances</th><th>Tâches</th><th></th>
     </tr></thead><tbody>${tri.map(d => { const x = info(d); return `<tr data-dossier="${d.id}">
       <td><button class="nom" data-act="ouvrir">${ech(d.nom)}</button>
-        ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</td>
+        ${(d.mur||[]).length ? `<span class="note-min">${(d.mur||[]).length} note${(d.mur||[]).length>1?"s":""}</span>` : ""}</td>
       <td>${x.c ? ech(x.c.nom) : "—"}</td><td>${x.lien}</td>
       <td class="num">${ech(d.identifiant) || "—"}</td><td class="num">${ech(d.contrat) || "—"}</td>
       <td class="num">${x.cout}</td>
@@ -3239,7 +3257,7 @@ function vueSuivi(){
         [x.n ? `▪ ${x.n} tâche${x.n>1?"s":""}` : "",
          x.remontees ? `${x.remontees} remontée${x.remontees>1?"s":""}` : "",
          x.nEch ? `${x.nEch} échéance${x.nEch>1?"s":""}` : ""].filter(Boolean).join(", ")}</div>` : ""}
-      ${d.notes ? `<span class="note-min">${ech(d.notes.split("\n")[0])}</span>` : ""}</div>
+      ${(d.mur||[]).length ? `<span class="note-min">${(d.mur||[]).length} note${(d.mur||[]).length>1?"s":""}</span>` : ""}</div>
     <div class="outils"><button class="ico" data-act="editer">✎</button><button class="ico sup" data-act="jeter">✕</button></div>
   </div>`; }).join("")}</div>`);
 
@@ -3270,6 +3288,11 @@ function vueSuivi(){
 function vueDossier(){
   const d = dossDe(vue.dossier);
   if(!d){ vue.dossier = null; return vueSuivi(); }
+  if(typeof d.notes === "string"){
+    if(d.notes.trim()) (d.mur = d.mur || []).push({ id:uid(), titre:"", texte:d.notes });
+    delete d.notes;
+  }
+  d.mur = d.mur || [];
   const c = catDe(d.categorie_id);
   const tousDuDossier = db.taches.filter(t => t.dossier_id === d.id);
   const toutes = tousDuDossier.filter(passeSphere);
@@ -3341,11 +3364,17 @@ function vueDossier(){
     else if(duJour.length) h.push(enFiche(duJour.map(t => ligneTache(t, { sansDossier:true, reglee:true }))));
   }
 
-  /* Les notes ferment la fiche : c'est la zone la plus libre, elle a donc
-     besoin de place, et rien ne doit être repoussé au-delà. */
-  h.push(`<div class="oeil">Notes</div>
-    <div class="bloc-notes grand"><textarea id="notesDoss" data-dossier="${d.id}"
-      placeholder="">${ech(d.notes)}</textarea></div>`);
+  /* Le mur de notes ferme la fiche : mêmes cartes titrées que dans un
+     Projet — un dossier comme le van peut avoir sa fiche entretien, sa
+     fiche kilométrage, etc. */
+  d.mur = d.mur || [];
+  h.push(`<div class="oeil">Notes</div>`);
+  h.push(`<div class="mur-notes">${d.mur.map(n => `
+    <button class="carte-note" data-act="ouvrirNoteDossier" data-dossier="${d.id}" data-note="${n.id}">
+      ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
+    </button>`).join("")}
+    <button class="carte-note carte-note-plus" data-act="ouvrirNoteDossier" data-dossier="${d.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
+  </div>`);
   return h.join("");
 }
 
@@ -3864,7 +3893,7 @@ function rendre(){
   dernierEcran = { onglet:vue.onglet, dossier:vue.dossier, mois:vue.moisAgenda,
                    decalage:vue.decalage, sphere:sphere() };
   const a = document.activeElement;
-  const gardes = ["saisie","saisieDoss","notesDoss","dep-montant","dep-libelle","tacheProjetSaisie"];
+  const gardes = ["saisie","saisieDoss","dep-montant","dep-libelle","tacheProjetSaisie"];
   const memo = a && gardes.includes(a.id) ? { id:a.id, val:a.value, pos:a.selectionStart } : null;
 
   cible.innerHTML = ({ accueil:vueAccueil, taches:vueTaches, echeances:vueEcheances, agenda:vueAgenda,
@@ -4345,20 +4374,20 @@ function editerAnniversaire(a){
 function editerDossier(d){
   const neuf = !d;
   const x = d || { id:uid(), nom:"", categorie_id:db.categories[0]?.id||null, url:"", identifiant:"", contrat:"",
-                   montant:null, periodicite:"", lignes:[], notes:"" };
+                   montant:null, periodicite:"", lignes:[], mur:[] };
   formulaire(neuf ? "Nouveau dossier" : "Modifier le dossier", [
     { cle:"nom", nom:"Nom" },
     { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCat() },
     { cle:"url", nom:"Lien vers le site", type:"url", ph:"https://" },
     { cle:"identifiant", nom:"Identifiant", duo:true },
     { cle:"contrat", nom:"N° de contrat" },
-    { cle:"notes", nom:"Notes", type:"textarea" },
   ], { ...x }, f => {
     if(!f.nom) return;
     Object.assign(x, { nom:f.nom, categorie_id:f.categorie_id || null,
       url:f.url && !/^https?:\/\//i.test(f.url) ? "https://" + f.url : f.url,
-      identifiant:f.identifiant, contrat:f.contrat, notes:f.notes, demo:false });
+      identifiant:f.identifiant, contrat:f.contrat, demo:false });
     x.lignes = x.lignes || [];
+    x.mur = x.mur || [];
     touche(x);
     if(neuf) db.dossiers.push(x);
     maj();
@@ -4442,6 +4471,33 @@ function ouvrirNoteProjet(projetId, noteId){
   }, neuf ? null : () => {
     p.mur = p.mur.filter(x => x.id !== n.id);
     touche(p);
+    maj();
+  });
+}
+
+/* Même mur, cette fois accroché à un Dossier plutôt qu'à un Projet — un
+   dossier « Van » peut ainsi porter une fiche « Entretien », une fiche
+   « Suivi km », etc. */
+function ouvrirNoteDossier(dossierId, noteId){
+  const d = dossDe(dossierId);
+  if(!d) return;
+  d.mur = d.mur || [];
+  const neuf = !noteId;
+  const n = neuf ? { id:uid(), titre:"", texte:"" } : d.mur.find(x => x.id === noteId);
+  if(!n) return;
+  formulaire(neuf ? "Nouvelle note" : "Modifier la note", [
+    { cle:"titre", nom:"Titre", ph:"Entretien, suivi km…" },
+    { cle:"texte", nom:"Texte", type:"textarea" },
+  ], { ...n }, f => {
+    const titre = (f.titre||"").trim(), texte = f.texte||"";
+    if(!titre && !texte.trim()) return;
+    n.titre = titre; n.texte = texte;
+    if(neuf) d.mur.push(n);
+    touche(d);
+    maj();
+  }, neuf ? null : () => {
+    d.mur = d.mur.filter(x => x.id !== n.id);
+    touche(d);
     maj();
   });
 }
@@ -4669,11 +4725,12 @@ function editerDepense(x){
     { cle:"rembourser", nom:"À se faire rembourser", type:"select",
       options:[{v:"",n:"Non"},{v:"1",n:"Oui"}], duo:true },
     { cle:"moyen", nom:"Payé par", type:"select", options:MOYENS.map(m => ({v:m.cle,n:m.nom})) },
+    { cle:"note", nom:"Petite note (facultatif)", type:"textarea", ph:"Une précision sur cette dépense…" },
   ], { ...x, rembourser: x.rembourser ? "1" : "", moyen: x.moyen || MOYEN_DEFAUT }, d => {
     const m = lireMontant(d.montant);
     if(m === null) return;
     Object.assign(x, { montant:m, date:d.date || x.date, libelle:d.libelle,
-      categorie_id:d.categorie_id || null, rembourser: d.rembourser === "1", moyen:d.moyen });
+      categorie_id:d.categorie_id || null, rembourser: d.rembourser === "1", moyen:d.moyen, note:d.note || "" });
     touche(x);
     /* Si la date renvoie à un autre mois, on y emmène l'écran : sinon la
        dépense semble s'être évaporée. */
@@ -4813,6 +4870,28 @@ function exporterCSVBudget(){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `depenses-${nomFichier}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function exporterCSVSommeil(){
+  const nuits = [...nuitsRecentes(3650)].reverse();   /* le plus ancien en premier, plus naturel en tableur */
+  const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  const lignes = [["Jour","Coucher","Lever","Durée (h)"]];
+  nuits.forEach(n => {
+    const iso = jourISO(new Date(n.lever));
+    lignes.push([
+      `${JOURS[versDate(iso).getDay()]} ${dateCourte(iso)}`,
+      formatHeureSommeil(n.coucher),
+      formatHeureSommeil(n.lever),
+      String(Math.round(n.heures * 100) / 100).replace(".", ","),
+    ]);
+  });
+  const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `sommeil-${jourISO()}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
@@ -5018,6 +5097,11 @@ document.addEventListener("click", ev => {
     appliquerTaille();
     return maj();
   }
+  if(act === "basculerSombre"){
+    db.reglages.sombre = !db.reglages.sombre;
+    appliquerSombre();
+    return maj();
+  }
   if(act === "ajoutRapide") return ouvrirAjoutRapide();
   if(act === "depenseRapide") return ouvrirDepenseRapide();
   if(act === "blocNotes") return ouvrirBlocNotes();
@@ -5049,11 +5133,11 @@ document.addEventListener("click", ev => {
   if(act === "ajouterLigneProjet") return editerLigneProjet((db.projets||[]).find(x => x.id === b.dataset.projet), null);
   if(act === "ajouterTacheProjet") return ajouterTacheProjet(b.dataset.projet);
   if(act === "ouvrirNoteProjet") return ouvrirNoteProjet(b.dataset.projet, b.dataset.note);
+  if(act === "ouvrirNoteDossier") return ouvrirNoteDossier(b.dataset.dossier, b.dataset.note);
   if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
-  if(act === "masquerCitation"){ db.reglages.citation_masquee_le = jourISO(); return maj(); }
   if(act === "exporterCSVBudget") return exporterCSVBudget();
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
   if(act === "fermerBilanAnnuel"){ vue.pageBilanAnnuel = false; return rendre(); }
@@ -5069,6 +5153,18 @@ document.addEventListener("click", ev => {
   }
   if(act === "ouvrirSommeil"){ vue.pageSommeil = true; return rendre(); }
   if(act === "fermerSommeil"){ vue.pageSommeil = false; return rendre(); }
+  if(act === "exporterCSVSommeil") return exporterCSVSommeil();
+  if(act === "viderSommeil"){
+    const n = (db.sommeil||[]).length;
+    if(!confirm(`Effacer tout l'historique de sommeil (${n} entrée${n>1?"s":""}) ? Pensez à exporter avant si vous voulez garder une trace — c'est définitif.`)) return;
+    db.sommeil = [];
+    return maj();
+  }
+  if(act === "supprimerNuit"){
+    if(!confirm("Supprimer cette nuit ?")) return;
+    db.sommeil = (db.sommeil||[]).filter(e => e.id !== b.dataset.coucher && e.id !== b.dataset.lever);
+    return maj();
+  }
   if(act === "ouvrirCalculatrice") return ouvrirCalculatrice();
   if(act === "ouvrirGrilleHabitude"){ vue.habitudeGrille = b.dataset.habitude; return rendre(); }
   if(act === "fermerGrilleHabitude"){ vue.habitudeGrille = null; return rendre(); }
@@ -5416,22 +5512,12 @@ document.addEventListener("keydown", ev => {
 
 document.addEventListener("input", ev => {
   Sync.noterGeste();
-  if(ev.target.id === "notesDoss"){
-    const d = dossDe(ev.target.dataset.dossier);
-    if(d){ d.notes = ev.target.value; d.demo = false; touche(d); sauver(); }
-  }
 });
 
 /* Filet de sécurité : avant tout redessin, on recopie dans les données ce
    qui est en cours de frappe dans une zone de texte. Sans cela, un rendu
    déclenché au mauvais moment pouvait ne garder qu'une partie de la phrase. */
 function figerSaisieEnCours(){
-  const z = document.getElementById("notesDoss");
-  if(!z || !z.dataset) return;
-  const d = dossDe(z.dataset.dossier);
-  if(d && typeof z.value === "string" && d.notes !== z.value){
-    d.notes = z.value; d.demo = false; touche(d); sauver();
-  }
 }
 document.addEventListener("change", ev => {
   const a = ev.target.dataset?.act;
@@ -5900,13 +5986,15 @@ setInterval(verifierJour, 60000);
     p.mur = p.mur || []; });
   db.commandes = db.commandes || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
-  db.dossiers.forEach(d => { d.lignes = d.lignes || []; });
+  db.dossiers.forEach(d => { d.lignes = d.lignes || [];
+    if(typeof d.notes === "string"){ if(d.notes.trim()) (d.mur = d.mur || []).push({ id:uid(), titre:"", texte:d.notes }); delete d.notes; }
+    d.mur = d.mur || []; });
   db.vacances = (db.vacances && db.vacances.length) ? db.vacances : vacancesNeuves();
   db.anniversaires = (db.anniversaires && db.anniversaires.length) ? db.anniversaires : anniversairesNeufs();
   db.categories_depense = db.categories_depense?.length ? db.categories_depense : etatNeuf().categories_depense;
   db.taches = db.taches.map(t => tacheNeuve(t));
   if(!db.modifie_le) db.modifie_le = new Date().toISOString();
-  appliquerTeinte(); appliquerTaille();
+  appliquerTeinte(); appliquerTaille(); appliquerSombre();
   bascule(); purgerCorbeille();
   if(db.reglages.archive_avant) appliquerCoupure(db, db.reglages.archive_avant);
   if(dedoublonner()) sauver();   /* une réparation compte comme une modification */
