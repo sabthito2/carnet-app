@@ -908,7 +908,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 101;
+const VERSION_APP = 102;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2369,7 +2369,7 @@ function vueAccueil(){
      nettement séparés : d'un coup d'œil, on doit savoir si c'est aujourd'hui
      qu'il se passe quelque chose, ou seulement demain. */
   const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
-  const paquet = iso => ({ iso, rdv:rdvDu(iso), anni:anniDu(iso), ferie:ferieDe(iso) });
+  const paquet = iso => ({ iso, rdv:rdvDu(iso).filter(r => !r.masque_accueil), anni:anniDu(iso), ferie:ferieDe(iso) });
 
   const lignesDuJour = p => {
     const l = [];
@@ -2382,7 +2382,8 @@ function vueAccueil(){
       <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
         <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
           ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
-        ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div></div>`));
+        ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div>
+      <button class="ico" data-act="masquerRdvAccueil" title="Ne plus voir en Accueil" aria-label="Ne plus voir en Accueil">✕</button></div>`));
     p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
       <div class="heure-c">${iconeAnniv(a)}</div>
       <div class="corps"><div class="intitule">${ech(a.nom)}</div></div></div>`));
@@ -2630,8 +2631,8 @@ function vueTaches(){
 /* ---- Échéances ---- */
 function vueEcheances(){
   const j = jourISO(), l = datees().filter(passeSphere);
-  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 30 ? 1 : n <= 90 ? 2 : 3; };
-  const noms = ["En retard","30 jours","3 mois","Plus tard"];
+  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 10 ? 1 : n <= 90 ? 2 : 3; };
+  const noms = ["En retard","10 jours","3 mois","Plus tard"];
   const h = [`<div class="entete-mob"><h1 class="titre">Échéances</h1><div class="jour">${dateCourte(j)}</div></div>`,
     `<div style="margin-bottom:6px"><button class="btn" data-act="nouvelleEcheance">Nouvelle échéance</button></div>`];
   const FAB = `<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`;
@@ -2824,12 +2825,12 @@ const enMinutes = h => { const [a,b] = String(h||"0:0").split(":").map(Number); 
 function vueSemaineCondensee(){
   const j = jourISO();
   const sem = semaineDe(j);
-  const b = bilan(0);
+  const semSuiv = semaineDe(jourISO(new Date(versDate(sem[6]).getTime() + 86400000)));
   const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
     `<div class="entete-d"><h1 class="titre">Cette semaine</h1></div>`,
     `<div style="height:8px"></div>`];
 
-  h.push(`<div class="fiche liste">${sem.map((iso,k) => {
+  const blocSemaine = jours => `<div class="fiche liste">${jours.map((iso,k) => {
     const rdv = rdvDu(iso);
     const tas = datees().filter(t => passeSphere(t) && t.date_due === iso && t.statut !== "done");
     const estAuj = iso === j;
@@ -2841,20 +2842,18 @@ function vueSemaineCondensee(){
       <div class="corps">
         <div class="intitule">${estAuj?"<b>":""}${JOURS_EDT[k]} ${versDate(iso).getDate()}${estAuj?"</b>":""}</div>
         ${morceaux.length
-          ? morceaux.map(m => `<div class="petit-detail">${m}</div>`).join("")
+          ? morceaux.map(m => `<div style="font-size:13.5px;color:var(--encre-3);line-height:1.4;margin-top:3px">${m}</div>`).join("")
           : `<div class="note-min">Rien de prévu</div>`}
       </div>
     </div>`;
-  }).join("")}</div>`);
+  }).join("")}</div>`;
 
-  h.push(`<div class="oeil" style="margin-top:18px">Budget du mois</div>`);
-  h.push(`<div class="fiche liste"><div class="ligne">
-    <div class="corps"><div class="intitule">Reste ce mois-ci</div></div>
-    <div class="somme" style="color:${b.reste<0?"var(--rouge)":"inherit"}">${euro(b.reste,0)}</div>
-  </div></div>`);
+  h.push(blocSemaine(sem));
+  h.push(`<div class="oeil" style="margin-top:18px">Semaine prochaine</div>`);
+  h.push(blocSemaine(semSuiv));
 
   h.push(piedAide([
-    "Semaine du lundi au dimanche en cours. Le budget affiché reste celui du mois entier, pas seulement de la semaine.",
+    "Semaine du lundi au dimanche, celle en cours puis la suivante.",
   ]));
   return h.join("");
 }
@@ -4331,7 +4330,7 @@ function editerRdv(r, dateProposee){
   const an = +x.date.slice(0,4), courant = new Date().getFullYear();
   const annees = [];
   for(let a = courant - 1; a <= courant + 3; a++) annees.push({ v:a, n:String(a) });
-  formulaire(neuf ? "Nouveau rendez-vous" : "Modifier le rendez-vous", [
+  const champs = [
     { cle:"intitule", nom:"Intitulé", ph:"Réunion, déjeuner, rendez-vous…" },
     { cle:"jour", nom:"Jour", type:"text", mode:"numeric", duo:true },
     { cle:"heure", nom:"Heure", type:"text", ph:"9h30" },
@@ -4347,9 +4346,16 @@ function editerRdv(r, dateProposee){
     { cle:"compte_a_rebours", nom:"Compte à rebours en Accueil", type:"select",
       options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
-  ], { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1,
+  ];
+  /* Ce champ ne s'affiche que si l'événement est déjà masqué en Accueil —
+     pas la peine d'encombrer la fiche pour un réglage que personne
+     n'utilise dans le cas normal. */
+  if(x.masque_accueil) champs.push({ cle:"masque_accueil", nom:"Affichage en Accueil", type:"select",
+    options:[{v:"1",n:"Masqué"},{v:"",n:"Afficher de nouveau"}] });
+  formulaire(neuf ? "Nouveau rendez-vous" : "Modifier le rendez-vous", champs,
+    { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1,
        repete:x.repete || "", repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois"),
-       compte_a_rebours: x.compte_a_rebours ? "1" : "" }, d => {
+       compte_a_rebours: x.compte_a_rebours ? "1" : "", masque_accueil: x.masque_accueil ? "1" : "" }, d => {
     const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
     const dim = new Date(aa, mm, 0).getDate();
@@ -4365,6 +4371,7 @@ function editerRdv(r, dateProposee){
       exceptions: x.exceptions || [],
       compte_a_rebours: d.compte_a_rebours === "1",
     });
+    if("masque_accueil" in d) x.masque_accueil = d.masque_accueil === "1";
     touche(x);
     if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
     vue.moisAgenda = x.date.slice(0,7);
@@ -5304,6 +5311,12 @@ document.addEventListener("click", ev => {
       jeter("rendez-vous", r); db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id); return maj();
     }
     if(act === "editerRdv") return editerRdv(r);
+    if(act === "masquerRdvAccueil"){
+      if(!confirm("Supprimer l'événement de l'affichage en Accueil ?\n\nL'événement lui-même n'est pas supprimé — juste retiré de cette page. Vous pourrez le remettre depuis sa fiche.")) return;
+      r.masque_accueil = true;
+      touche(r);
+      return maj();
+    }
     return;
   }
   const lhab = trouver(c, "habitude");
