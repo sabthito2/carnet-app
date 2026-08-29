@@ -383,6 +383,12 @@
   .surl-jaune{background:#F0E39B}
   .surl-rose{background:#F3CFDA}
   .surl-vert{background:#C8E0C4}
+  /* Carnet de bord : une petite note du jour (« route Toulon-Ajaccio »,
+     « migraine »…) plutôt qu'un vrai rendez-vous — en italique, sans
+     assombrir : la même couleur pleine que le texte normal, pour rester
+     aussi lisible. Un seul nom de classe couvre les 4 endroits où un
+     rendez-vous peut s'afficher (Accueil, Agenda, six mois, emploi du temps). */
+  .surl-carnet{font-style:italic}
   /* En mode nuit, le texte hérite d'une couleur claire (--encre) : les
      mêmes pastels clairs deviendraient illisibles. On assombrit juste ces
      trois teintes-là plutôt que de figer la couleur du texte. */
@@ -412,8 +418,9 @@
   .sem-evts{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
   .sem-e{font-size:11px;font-weight:500;line-height:1.35;display:block;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:2px;padding:0 3px}
-  .sem-e.perso{background:var(--accent-pale);color:var(--encre)}
-  .sem-e.pro{background:var(--fiche-2);color:var(--encre-2);border-left:2px solid var(--filet-fort)}
+  .sem-e.perso{color:var(--encre)}
+  .sem-e.pro{background:#D6D2C4;color:var(--encre);border-left:3px solid var(--encre-2)}
+  body.sombre .sem-e.pro{background:#4A473C}
   .sem-e.surl-jaune{background:#F0E39B}
   .sem-e.surl-rose{background:#F3CFDA}
   .sem-e.surl-vert{background:#C8E0C4}
@@ -908,7 +915,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 14;
-const VERSION_APP = 102;
+const VERSION_APP = 106;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2792,9 +2799,16 @@ function vueSemestre(){
       cases.push(`<div class="${classes.join(" ")}" data-jourdate="${iso}"
         ${ferie ? `title="${ech(ferie)}"` : (vac ? `title="Vacances ${ech(vac)}"` : "")}>
         <span class="sem-jour">${lettres[dow]}${d}</span>
-        <span class="sem-evts">${rdv.map(r =>
-          `<b class="sem-e ${(r.cote||"perso") === "pro" ? "pro" : "perso"} ${r.couleur ? "surl-" + r.couleur : ""}"
-             data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv">${ech(r.intitule)}</b>`).join("")}</span>
+        <span class="sem-evts">${rdv.map(r => {
+          const estPro = (r.cote||"perso") === "pro";
+          /* Dans cette vue précise, le Pro garde un seul et unique fond,
+             quel que soit le surligneur choisi — trop de couleurs à la fois
+             rend la lecture d'ensemble plus difficile. Seul l'italique
+             « carnet de bord » n'est pas une couleur : il reste appliqué. */
+          const classeCouleur = r.couleur && (!estPro || r.couleur === "carnet") ? "surl-" + r.couleur : "";
+          return `<b class="sem-e ${estPro ? "pro" : "perso"} ${classeCouleur}"
+             data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv">${ech(r.intitule)}</b>`;
+        }).join("")}</span>
       </div>`);
     }
     return `<div class="sem-col">
@@ -2827,16 +2841,24 @@ function vueSemaineCondensee(){
   const sem = semaineDe(j);
   const semSuiv = semaineDe(jourISO(new Date(versDate(sem[6]).getTime() + 86400000)));
   const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
-    `<div class="entete-d"><h1 class="titre">Cette semaine</h1></div>`,
+    `<div class="entete-d"><h1 class="titre">Cette semaine</h1>${
+      (db.reglages.google_client_id && db.reglages.google_api_key)
+        ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
+             title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
+             ${googleEtat === "chargement" ? "…" : "G"}</button>` : ""}</div>`,
     `<div style="height:8px"></div>`];
+  if(googleEtat === "erreur" && googleMessage)
+    h.push(`<p style="margin:-4px 0 14px;font-size:12.5px;color:var(--rouge)">Google Agenda : ${ech(googleMessage)}</p>`);
 
   const blocSemaine = jours => `<div class="fiche liste">${jours.map((iso,k) => {
     const rdv = rdvDu(iso);
     const tas = datees().filter(t => passeSphere(t) && t.date_due === iso && t.statut !== "done");
+    const goog = googleVisible ? evenementsGoogleDu(iso) : [];
     const estAuj = iso === j;
     const morceaux = [
       ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
+      ...goog.map(g => `<span style="font-style:italic;color:var(--encre-3)">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
     return `<div class="ligne">
       <div class="corps">
@@ -2854,7 +2876,9 @@ function vueSemaineCondensee(){
 
   h.push(piedAide([
     "Semaine du lundi au dimanche, celle en cours puis la suivante.",
-  ]));
+    (db.reglages.google_client_id && db.reglages.google_api_key)
+      ? "Le bouton <b>G</b> affiche vos événements Google (en italique) pour les deux semaines ; un second clic les masque sans rien redemander." : null,
+  ].filter(Boolean)));
   return h.join("");
 }
 
@@ -4342,7 +4366,8 @@ function editerRdv(r, dateProposee){
     { cle:"repete_fin", nom:"Répéter jusqu'au", type:"date" },
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
     { cle:"couleur", nom:"Surligneur", type:"select", options:[
-        {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"}] },
+        {v:"",n:"— aucun —"},{v:"jaune",n:"Jaune"},{v:"rose",n:"Rose"},{v:"vert",n:"Vert"},
+        {v:"carnet",n:"Carnet de bord (italique)"}] },
     { cle:"compte_a_rebours", nom:"Compte à rebours en Accueil", type:"select",
       options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
@@ -5162,6 +5187,7 @@ document.addEventListener("click", ev => {
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
+  if(act === "actualiserGoogleSemaine") return actualiserGoogleSemaine();
   if(act === "exporterCSVBudget") return exporterCSVBudget();
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
   if(act === "basculerRecap"){ vue.recapOuvert = !vue.recapOuvert; return rendre(); }
@@ -5629,8 +5655,7 @@ function evenementsGoogleDu(iso){
   return (googleCache[mois] && googleCache[mois][iso]) || [];
 }
 
-async function recupererEvenementsGoogle(){
-  const moisRef = vue.moisAgenda || jourISO().slice(0, 7);
+async function recupererEvenementsGoogleMois(moisRef){
   const [an, mo] = moisRef.split("-").map(Number);
   const debut = new Date(an, mo - 1, 1);
   const fin = new Date(an, mo, 1);
@@ -5655,6 +5680,26 @@ async function recupererEvenementsGoogle(){
   googleCache[moisRef] = parJour;
 }
 
+/* Authentification seule, partagée par les deux boutons « G » (celui de
+   l'Agenda du mois, et celui de la vue semaine) — chacun fait ensuite sa
+   propre requête, sur un ou plusieurs mois selon ce qu'il affiche. */
+async function authentifierGoogle(){
+  await chargerScriptsGoogle();
+  await initGapiClient();
+  if(!googleTokenClient || googleTokenClient.__clientId !== db.reglages.google_client_id){
+    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: db.reglages.google_client_id,
+      scope: "https://www.googleapis.com/auth/calendar.events.readonly",
+      callback: "", // fixé juste avant chaque requête, ci-dessous
+    });
+    googleTokenClient.__clientId = db.reglages.google_client_id;
+  }
+  await new Promise((res, rej) => {
+    googleTokenClient.callback = (resp) => resp && resp.error ? rej(resp) : res();
+    googleTokenClient.requestAccessToken({ prompt: window.gapi.client.getToken() ? "" : "consent" });
+  });
+}
+
 async function actualiserGoogle(){
   /* Masquer ne redemande jamais rien à Google : c'est juste un repli visuel,
      gratuit en données, comme décocher une case. */
@@ -5670,21 +5715,40 @@ async function actualiserGoogle(){
   googleEtat = "chargement"; googleMessage = "";
   maj();
   try{
-    await chargerScriptsGoogle();
-    await initGapiClient();
-    if(!googleTokenClient || googleTokenClient.__clientId !== db.reglages.google_client_id){
-      googleTokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: db.reglages.google_client_id,
-        scope: "https://www.googleapis.com/auth/calendar.events.readonly",
-        callback: "", // fixé juste avant chaque requête, ci-dessous
-      });
-      googleTokenClient.__clientId = db.reglages.google_client_id;
-    }
-    await new Promise((res, rej) => {
-      googleTokenClient.callback = (resp) => resp && resp.error ? rej(resp) : res();
-      googleTokenClient.requestAccessToken({ prompt: window.gapi.client.getToken() ? "" : "consent" });
-    });
-    await recupererEvenementsGoogle();
+    await authentifierGoogle();
+    await recupererEvenementsGoogleMois(vue.moisAgenda || jourISO().slice(0, 7));
+    googleEtat = "connecte";
+    googleVisible = true;
+  }catch(e){
+    googleEtat = "erreur";
+    googleMessage = (e && (e.error_description || e.message || e.error)) || "Connexion refusée ou interrompue.";
+    googleVisible = false;
+  }
+  maj();
+}
+
+/* Même bouton à bascule, pour la vue « Cette semaine » — elle peut couvrir
+   deux mois à la fois (cette semaine + la suivante, parfois à cheval sur un
+   changement de mois), donc une requête par mois concerné plutôt qu'une
+   seule comme dans l'Agenda du mois. */
+async function actualiserGoogleSemaine(){
+  if(googleVisible){
+    googleVisible = false;
+    return maj();
+  }
+  if(!db.reglages.google_client_id || !db.reglages.google_api_key){
+    googleEtat = "erreur";
+    googleMessage = "Renseignez le Client ID et la clé API dans Réglages d'abord.";
+    return maj();
+  }
+  googleEtat = "chargement"; googleMessage = "";
+  maj();
+  try{
+    await authentifierGoogle();
+    const sem = semaineDe(jourISO());
+    const semSuiv = semaineDe(jourISO(new Date(versDate(sem[6]).getTime() + 86400000)));
+    const mois = [...new Set([...sem, ...semSuiv].map(iso => iso.slice(0,7)))];
+    for(const m of mois) await recupererEvenementsGoogleMois(m);
     googleEtat = "connecte";
     googleVisible = true;
   }catch(e){
