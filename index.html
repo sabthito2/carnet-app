@@ -298,9 +298,10 @@
   .filet-rappel:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
   .filet-rappel.doux{margin:-4px 0 14px;font-size:11px;color:var(--encre-2)}
   .filet-rappel.doux .point-retard{width:7px;height:7px;margin-right:6px;vertical-align:0}
-  .lien-mois{background:none;border:0;padding:0;color:var(--accent);font-size:13.5px;
-    text-decoration:underline;text-underline-offset:3px}
-  .lien-mois:hover{color:var(--encre)}
+  .lien-mois{background:var(--fiche);border:1px solid var(--filet);border-radius:20px;
+    padding:6px 12px;color:var(--encre);font-size:13px;white-space:nowrap;display:inline-block}
+  .lien-mois b{color:var(--accent);font-weight:600}
+  .lien-mois:hover{border-color:var(--accent)}
   /* Détachée des rendez-vous : ce sont deux informations sans rapport,
      elles ne doivent pas se lire comme un même bloc. */
   .prive{display:inline-flex;align-items:baseline;gap:9px;border:1px solid var(--filet);background:transparent;
@@ -954,7 +955,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 114;
+const VERSION_APP = 115;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3317,9 +3318,9 @@ function vueBudget(){
     const ailleurs = aVenirMois;
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
       ailleurs.length
-        ? `À venir sur d'autres mois : ${ailleurs.map(n =>
-            `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} (${euro(montantMouvementDuMois(n),2)})</button>`
-          ).join(" · ")}`
+        ? `À venir sur d'autres mois :<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">${ailleurs.map(n =>
+            `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
+          ).join("")}</div>`
         : "La première saisie se fait en deux gestes : un montant, une catégorie."));
   }
   else h.push(jours.map(d => {
@@ -3356,10 +3357,11 @@ function vueBudget(){
   }).join(""));
 
   if(jours.length && aVenirMois.length)
-    h.push(`<p class="petit-detail" style="margin:10px 0 0">À venir sur d'autres mois : ${
+    h.push(`<div class="petit-detail" style="margin:12px 0 0">À venir sur d'autres mois :</div>
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:6px">${
       aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
-        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} (${euro(montantMouvementDuMois(n),2)})</button>`
-      ).join(" · ")}</p>`);
+        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
+      ).join("")}</div>`);
 
   if(b.dep.length){
     const tot = {};
