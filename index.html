@@ -593,6 +593,7 @@
 </div>
 <nav class="barre" id="barre"></nav>
 <dialog id="dlg"></dialog>
+<dialog id="dlgApercu"></dialog>
 
 <script>
 "use strict";
@@ -953,7 +954,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 112;
+const VERSION_APP = 113;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1021,13 +1022,30 @@ async function memoriserPieceJointe(file){
   return { id, nom, type, taille: blob.size };
 }
 
+/* iOS Safari bloque souvent window.open() dès qu'il arrive après une
+   attente asynchrone, même très courte (ce qui est notre cas : on va
+   chercher la pièce dans IndexedDB avant de pouvoir l'afficher) — le
+   nouvel onglet reste alors bloqué sans message d'erreur visible. On
+   affiche donc l'aperçu directement dans l'appli, jamais dans un nouvel
+   onglet, et dans une fenêtre séparée de la fiche pour ne pas perdre ce
+   qui était en train d'être modifié dessous. */
 async function ouvrirPieceJointe(resume){
   if(!resume || !resume.id) return;
   const piece = await Stockage.lirePiece(resume.id);
   if(!piece){ alert("Cette pièce jointe n'est pas disponible sur cet appareil — elle est stockée en local et ne suit pas la synchronisation."); return; }
   const url = URL.createObjectURL(piece.blob);
-  window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const estImage = (piece.type||"").startsWith("image/");
+  dlgApercu.innerHTML = `<div class="dlg-t">${ech(resume.nom)}</div>
+    <div class="dlg-c" style="padding:0 0 12px">
+      ${estImage
+        ? `<img src="${url}" style="max-width:100%;display:block;margin:0 auto;border-radius:0 0 var(--r) var(--r)">`
+        : `<iframe src="${url}" style="width:100%;height:68vh;border:0;display:block"></iframe>`}
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini creux" id="apercuFermer">Fermer</button></div>`;
+  try{ dlgApercu.showModal(); }catch(e){}
+  const nettoyer = () => { try{ URL.revokeObjectURL(url); }catch(e){} };
+  dlgApercu.querySelector("#apercuFermer").onclick = () => { dlgApercu.close(); nettoyer(); };
+  dlgApercu.addEventListener("close", nettoyer, { once:true });
 }
 
 /* Pour sortir une pièce jointe du navigateur — vers les Fichiers ou les
@@ -4266,6 +4284,7 @@ function rendre(){
    7. FORMULAIRES
    ===================================================================== */
 const dlg = document.getElementById("dlg");
+const dlgApercu = document.getElementById("dlgApercu");
 function formulaire(titre, champs, valeurs, onOk, onSup, extra){
   const ligne = c => {
     const v = valeurs[c.cle] ?? c.defaut ?? "";
