@@ -953,7 +953,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 110;
+const VERSION_APP = 112;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1049,12 +1049,12 @@ async function telechargerPieceJointe(resume){
    identifient l'objet porteur pour router les clics (voir les data-pj-*). */
 function blocPieceJointe(genre, refId, resume){
   if(resume) return `<div class="piece-jointe">
-    <button class="pj-nom" data-act="voirPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Ouvrir">
+    <button type="button" class="pj-nom" data-act="voirPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Ouvrir">
       ${resume.type === "application/pdf" ? "Document" : "Photo"} : ${ech(resume.nom)}
       <span class="petit-detail">(${formatTaille(resume.taille)})</span>
     </button>
-    <button class="ico" data-act="telechargerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Télécharger vers l'appareil">⇩</button>
-    <button class="ico sup" data-act="retirerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Retirer la pièce jointe">✕</button>
+    <button type="button" class="ico" data-act="telechargerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Télécharger vers l'appareil">⇩</button>
+    <button type="button" class="ico sup" data-act="retirerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Retirer la pièce jointe">✕</button>
   </div>`;
   return `<label class="btn mini creux pj-ajouter">+ Ajouter une photo ou un document
     <input type="file" accept="image/*,application/pdf" data-pjgenre="${genre}" data-pjid="${refId}" style="display:none">
@@ -3896,7 +3896,7 @@ function vueCommandesPage(){
   });
   h.push(`<div class="fiche liste">${tri.map(cmd => {
     const retard = !cmd.recue && cmd.date_estimee && cmd.date_estimee < jourISO();
-    return `<div class="ligne ${cmd.recue?"faite":""}" data-commande="${cmd.id}">
+    return `<div class="ligne ${cmd.recue?"faite":""}" data-commande="${cmd.id}" data-act="editerCommande">
       <button class="case carre ${cmd.recue?"coche":""}" data-act="basculerCommande" title="Marquer reçue" aria-label="Marquer reçue">${CHECK}</button>
       <div class="corps"><div class="intitule">${ech(cmd.nom)}</div>
         <div class="meta">
@@ -3932,7 +3932,7 @@ function vueGarantiesPage(){
     const n = ecartJours(j, fin);
     const expiree = n < 0;
     const bientot = !expiree && n <= 60;
-    return `<div class="ligne" data-garantie="${g.id}">
+    return `<div class="ligne" data-garantie="${g.id}" data-act="editerGarantie">
       <div class="corps"><div class="intitule">${ech(g.nom)}</div>
         <div class="meta">
           <span class="puce ${expiree?"chaud":bientot?"ctx":""}">${expiree ? "expirée le " : "jusqu'au "}${dateCourte(fin)}</span>
