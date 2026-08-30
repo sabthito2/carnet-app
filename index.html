@@ -566,6 +566,11 @@
   .carte-note-plus{display:flex;align-items:center;justify-content:center;color:var(--encre-3);
     border:1.5px dashed var(--filet-fort);background:transparent;box-shadow:none;font-size:24px}
   .carte-note-plus:hover{border-color:var(--accent);color:var(--accent)}
+  .piece-jointe{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .piece-jointe .pj-nom{background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);
+    padding:7px 11px;font-size:13px;text-align:left;flex:1;min-width:0;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+  .pj-ajouter{cursor:pointer;margin-top:10px}
     /* Sur téléphone, chaque bouton doit rester atteignable au pouce. */
     .ico{padding:9px 11px;font-size:16px}
     .case{width:26px;height:26px}
@@ -597,13 +602,20 @@
    Pour brancher une synchro un jour : réécrire lire() et ecrire().
    ===================================================================== */
 const Stockage = (() => {
-  const NOM = "carnet", MAG = "etat", CLE = "db";
+  const NOM = "carnet", MAG = "etat", CLE = "db", PIECES = "pieces";
+  const VERSION_IDB = 2;
   let idb = null, memoire = {}, dispo = false;
   function ouvrir(){
     return new Promise(res => {
       if(!("indexedDB" in window)) return res(null);
-      let r; try{ r = indexedDB.open(NOM, 1); }catch(e){ return res(null); }
-      r.onupgradeneeded = () => { if(!r.result.objectStoreNames.contains(MAG)) r.result.createObjectStore(MAG); };
+      let r; try{ r = indexedDB.open(NOM, VERSION_IDB); }catch(e){ return res(null); }
+      r.onupgradeneeded = () => {
+        const base = r.result;
+        if(!base.objectStoreNames.contains(MAG)) base.createObjectStore(MAG);
+        /* Pièces jointes (photos, documents) : un magasin à part, jamais
+           synchronisé — reste sur cet appareil, contrairement au reste. */
+        if(!base.objectStoreNames.contains(PIECES)) base.createObjectStore(PIECES);
+      };
       r.onsuccess = () => res(r.result);
       r.onerror = () => res(null);
       setTimeout(() => res(null), 2500);
@@ -631,7 +643,31 @@ const Stockage = (() => {
       }catch(e){ res(false); }
     });
   }
-  return { init, lire, ecrire, persistant: () => dispo };
+  function ecrirePiece(id, piece){
+    return new Promise(res => {
+      if(!idb) return res(false);
+      try{ const t = idb.transaction(PIECES,"readwrite").objectStore(PIECES).put(piece, id);
+        t.onsuccess = () => res(true); t.onerror = () => res(false);
+      }catch(e){ res(false); }
+    });
+  }
+  function lirePiece(id){
+    return new Promise(res => {
+      if(!idb || !id) return res(null);
+      try{ const t = idb.transaction(PIECES,"readonly").objectStore(PIECES).get(id);
+        t.onsuccess = () => res(t.result ?? null); t.onerror = () => res(null);
+      }catch(e){ res(null); }
+    });
+  }
+  function supprimerPiece(id){
+    return new Promise(res => {
+      if(!idb || !id) return res(false);
+      try{ const t = idb.transaction(PIECES,"readwrite").objectStore(PIECES).delete(id);
+        t.onsuccess = () => res(true); t.onerror = () => res(false);
+      }catch(e){ res(false); }
+    });
+  }
+  return { init, lire, ecrire, persistant: () => dispo, ecrirePiece, lirePiece, supprimerPiece };
 })();
 
 /* =====================================================================
@@ -794,6 +830,8 @@ const Sync = (() => {
     if(typeof p.notes === "string"){ if(p.notes.trim()) (p.mur = p.mur || []).push({ id:uid(), titre:"", texte:p.notes }); delete p.notes; }
     p.mur = p.mur || []; });
     db.commandes = db.commandes || [];
+    db.moyens = (db.moyens && db.moyens.length) ? db.moyens : MOYENS_SEED.map(m => ({ ...m }));
+    db.garanties = db.garanties || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
     appliquerTeinte(); appliquerTaille(); appliquerSombre();
@@ -914,11 +952,168 @@ const Sync = (() => {
 /* =====================================================================
    2. MODÈLE
    ===================================================================== */
-const VERSION_SCHEMA = 14;
-const VERSION_APP = 106;
+const VERSION_SCHEMA = 16;
+const VERSION_APP = 110;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
+
+/* =====================================================================
+   PIÈCES JOINTES (photos, documents) — stockées uniquement en local
+   (voir Stockage.ecrirePiece/lirePiece/supprimerPiece ci-dessus), jamais
+   dans le fichier synchronisé. L'objet lui-même ne garde qu'un petit
+   résumé { id, nom, type, taille } : assez pour l'afficher, montrer une
+   pièce absente sur un autre appareil, mais rien de lourd à synchroniser.
+   ===================================================================== */
+function formatTaille(o){
+  if(o == null) return "";
+  if(o < 1024) return `${o} o`;
+  if(o < 1024*1024) return `${Math.round(o/1024)} Ko`;
+  return `${(o/(1024*1024)).toFixed(1)} Mo`;
+}
+
+/* Redimensionne et compresse une image avant stockage — une photo de
+   téléphone fait souvent plusieurs Mo ; ramenée à 1600px de large et en
+   JPEG à qualité 82%, elle tient en quelques centaines de Ko sans perte
+   visible à l'écran. Un PDF ou autre document n'est jamais touché. */
+function comprimerImage(file, maxDim = 1600, qualite = 0.82){
+  return new Promise((resolve) => {
+    try{
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      const echec = () => { try{ URL.revokeObjectURL(url); }catch(e){} resolve(file); }; // on garde l'original si ça rate
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          const ratio = Math.min(maxDim / width, maxDim / height);
+          width = Math.round(width * ratio); height = Math.round(height * ratio);
+        }
+        try{
+          const toile = document.createElement("canvas");
+          toile.width = width; toile.height = height;
+          toile.getContext("2d").drawImage(img, 0, 0, width, height);
+          toile.toBlob(blob => { try{ URL.revokeObjectURL(url); }catch(e){} resolve(blob || file); }, "image/jpeg", qualite);
+        }catch(e){ echec(); }
+      };
+      img.onerror = echec;
+      img.src = url;
+    }catch(e){ resolve(file); } // navigateur sans URL.createObjectURL ou autre imprévu : on garde l'original
+  });
+}
+
+/* Lit un <input type="file">, compresse si c'est une image, enregistre en
+   local et renvoie le petit résumé à accrocher à l'objet (dépense, note,
+   garantie…) — ne touche pas encore à la synchronisation ni au rendu :
+   c'est à l'appelant de faire `ref.piece_jointe = resume; touche(ref); maj();`. */
+async function memoriserPieceJointe(file){
+  if(!file) return null;
+  const estImage = (file.type||"").startsWith("image/");
+  let blob = file, type = file.type || "application/octet-stream";
+  if(estImage){ blob = await comprimerImage(file); type = "image/jpeg"; }
+  if(blob.size > 15*1024*1024){
+    alert("Ce fichier dépasse 15 Mo, trop lourd pour être stocké sur l'appareil. Essayez une version plus légère.");
+    return null;
+  }
+  const id = uid();
+  const nom = estImage ? file.name.replace(/\.[^.]+$/, "") + ".jpg" : file.name;
+  const ok = await Stockage.ecrirePiece(id, { blob, type, nom });
+  if(!ok){ alert("Impossible d'enregistrer la pièce jointe sur cet appareil."); return null; }
+  return { id, nom, type, taille: blob.size };
+}
+
+async function ouvrirPieceJointe(resume){
+  if(!resume || !resume.id) return;
+  const piece = await Stockage.lirePiece(resume.id);
+  if(!piece){ alert("Cette pièce jointe n'est pas disponible sur cet appareil — elle est stockée en local et ne suit pas la synchronisation."); return; }
+  const url = URL.createObjectURL(piece.blob);
+  window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/* Pour sortir une pièce jointe du navigateur — vers les Fichiers ou les
+   Photos de l'iPhone, par exemple — plutôt que de compter uniquement sur
+   ce stockage local qu'un nettoyage de Safari pourrait effacer. */
+async function telechargerPieceJointe(resume){
+  if(!resume || !resume.id) return;
+  const piece = await Stockage.lirePiece(resume.id);
+  if(!piece){ alert("Cette pièce jointe n'est pas disponible sur cet appareil — elle est stockée en local et ne suit pas la synchronisation."); return; }
+  const url = URL.createObjectURL(piece.blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = resume.nom || "piece-jointe";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* Petit bloc HTML réutilisable : soit le résumé de la pièce jointe avec
+   ses actions, soit une invite à en ajouter une. `genre` et `refId`
+   identifient l'objet porteur pour router les clics (voir les data-pj-*). */
+function blocPieceJointe(genre, refId, resume){
+  if(resume) return `<div class="piece-jointe">
+    <button class="pj-nom" data-act="voirPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Ouvrir">
+      ${resume.type === "application/pdf" ? "Document" : "Photo"} : ${ech(resume.nom)}
+      <span class="petit-detail">(${formatTaille(resume.taille)})</span>
+    </button>
+    <button class="ico" data-act="telechargerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Télécharger vers l'appareil">⇩</button>
+    <button class="ico sup" data-act="retirerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Retirer la pièce jointe">✕</button>
+  </div>`;
+  return `<label class="btn mini creux pj-ajouter">+ Ajouter une photo ou un document
+    <input type="file" accept="image/*,application/pdf" data-pjgenre="${genre}" data-pjid="${refId}" style="display:none">
+  </label>`;
+}
+
+/* Retrouve/applique le résumé d'une pièce jointe pour l'un des porteurs
+   actuels (dépense, note de projet ou de dossier). Seul endroit à étendre
+   si un jour un quatrième type doit aussi pouvoir en porter une. */
+function lireResumePJ(genre, refId){
+  if(genre === "depense") return ((db.depenses||[]).find(x => x.id === refId) || {}).piece_jointe || null;
+  if(genre === "garantie") return ((db.garanties||[]).find(x => x.id === refId) || {}).piece_jointe || null;
+  if(genre === "noteProjet" || genre === "noteDossier"){
+    const [pid, nid] = refId.split("::");
+    const parent = genre === "noteProjet" ? (db.projets||[]).find(x => x.id === pid) : dossDe(pid);
+    const n = parent && (parent.mur||[]).find(y => y.id === nid);
+    return (n && n.piece_jointe) || null;
+  }
+  return null;
+}
+function appliquerPJ(genre, refId, resume){
+  if(genre === "depense"){
+    const x = (db.depenses||[]).find(y => y.id === refId);
+    if(!x) return;
+    x.piece_jointe = resume; touche(x);
+  }else if(genre === "garantie"){
+    const x = (db.garanties||[]).find(y => y.id === refId);
+    if(!x) return;
+    x.piece_jointe = resume; touche(x);
+  }else if(genre === "noteProjet" || genre === "noteDossier"){
+    const [pid, nid] = refId.split("::");
+    const parent = genre === "noteProjet" ? (db.projets||[]).find(x => x.id === pid) : dossDe(pid);
+    const n = parent && (parent.mur||[]).find(y => y.id === nid);
+    if(!n) return;
+    n.piece_jointe = resume; touche(parent);
+  }else return;
+  /* Si une fenêtre modale (la fiche dépense, par exemple) est encore
+     ouverte et affiche cette pièce jointe, on la rafraîchit sur place —
+     sans ça elle resterait figée sur l'ancien état jusqu'à rouvrir la
+     fiche. Même esprit que pour les sous-tâches d'une tâche. */
+  if(dlg.open){
+    const cible = dlg.querySelector(`[data-pjgenre="${genre}"][data-pjid="${refId}"]`);
+    const conteneur = cible && cible.closest(".piece-jointe, .pj-ajouter");
+    if(conteneur){
+      const temp = document.createElement("div");
+      temp.innerHTML = blocPieceJointe(genre, refId, resume);
+      conteneur.replaceWith(temp.firstElementChild);
+    }
+  }
+  maj();
+}
+document.addEventListener("change", ev => {
+  const inp = ev.target;
+  if(!(inp.matches && inp.matches('input[type="file"][data-pjgenre]'))) return;
+  const genre = inp.dataset.pjgenre, refId = inp.dataset.pjid;
+  const file = inp.files[0];
+  if(!file) return;
+  memoriserPieceJointe(file).then(resume => { if(resume) appliquerPJ(genre, refId, resume); });
+});
 
 const jourISO = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -956,15 +1151,19 @@ function resteEnMots(iso, ref = jourISO()){
    décomptées au moment du retrait, donc les recompter à la dépense ferait
    payer deux fois. On les enregistre pour savoir où l'argent est parti,
    sans les ajouter au total. */
-const MOYENS = [
-  { cle:"cbl", nom:"CB L" },
-  { cle:"cbb", nom:"CB B" },
-  { cle:"cbw", nom:"CB W" },
-  { cle:"cheque", nom:"Chèque" },
-  { cle:"especes", nom:"Espèces" },
+/* Moyens de paiement : réglables par l'utilisatrice (comme les contextes et
+   catégories), plutôt que figés dans le code. « especes » reste un
+   identifiant protégé — le calcul du budget s'appuie dessus pour ne pas
+   recompter un retrait déjà décompté. */
+const MOYENS_SEED = [
+  { id:"cbl", nom:"CB L" },
+  { id:"cbb", nom:"CB B" },
+  { id:"cbw", nom:"CB W" },
+  { id:"cheque", nom:"Chèque" },
+  { id:"especes", nom:"Espèces" },
 ];
 const MOYEN_DEFAUT = "cbl";
-const nomMoyen = c => (MOYENS.find(m => m.cle === c) || {}).nom || "";
+const nomMoyen = c => ((db.moyens||[]).find(m => m.id === c) || {}).nom || "";
 const enEspeces = x => x.moyen === "especes";
 
 const PERIODES = { mensuel:1, bimestriel:2, trimestriel:3, semestriel:6, annuel:12, biennal:24 };
@@ -1086,6 +1285,8 @@ function etatNeuf(){
     sommeil: [],
     projets: [],
     commandes: [],
+    moyens: MOYENS_SEED.map(m => ({ ...m })),
+    garanties: [],
     bloc_notes: "",
     supprimes: [],
     corbeille: [],
@@ -1126,6 +1327,14 @@ function migrer(d){
     x.version_schema = 4;
     x.rendez_vous = x.rendez_vous || [];
     x.anniversaires = (x.anniversaires && x.anniversaires.length) ? x.anniversaires : anniversairesNeufs();
+  }
+  if((x.version_schema ?? 15) < 16){
+    x.version_schema = 16;
+    x.garanties = x.garanties || [];
+  }
+  if((x.version_schema ?? 14) < 15){
+    x.version_schema = 15;
+    x.moyens = (x.moyens && x.moyens.length) ? x.moyens : MOYENS_SEED.map(m => ({ ...m }));
   }
   if((x.version_schema ?? 13) < 14){
     x.version_schema = 14;
@@ -1181,7 +1390,7 @@ function migrer(d){
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
                      "habitudes","habitudes_faites","emplois","listes","sommeil","projets","commandes",
-                     "anniversaires","vacances","contextes","categories","categories_depense"];
+                     "anniversaires","vacances","contextes","categories","categories_depense","moyens","garanties"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
    élément modifié des deux côtés, on retient celui du carnet le plus
@@ -1278,7 +1487,7 @@ const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, v
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
               filtreEtiquette:null, sectionActiveProjet:null,
-              pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false, noteOuverte:null,
+              pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false, noteOuverte:null, pageGaranties:false,
               habitudeGrille:null, semaineCondensee:false, anneeBilan:null, pageBilanAnnuel:false };
 
 let tempo = null;
@@ -2120,8 +2329,8 @@ function ouvrirDepenseRapide(){
   }
   const chips = () => db.categories_depense.map(c =>
     `<button class="filtre ${vue.catDep===c.id?"on":""}" data-catdep="${c.id}">${ech(c.nom)}</button>`).join("");
-  const moyens = () => MOYENS.map(m =>
-    `<button class="filtre ${(vue.moyen||MOYEN_DEFAUT)===m.cle?"on":""}" data-moyeneclair="${m.cle}">${m.nom}</button>`).join("");
+  const moyens = () => (db.moyens||[]).map(m =>
+    `<button class="filtre ${(vue.moyen||MOYEN_DEFAUT)===m.id?"on":""}" data-moyeneclair="${m.id}">${ech(m.nom)}</button>`).join("");
   dlg.innerHTML = `<div class="dlg-c" style="padding:14px 15px">
       <div class="saisie" style="margin-bottom:10px">
         <input id="dep-eclair-montant" class="champ-rech" style="flex:0 0 120px" inputmode="decimal"
@@ -2310,7 +2519,7 @@ function vueAccueil(){
   const j = jourISO();
   const suiv = suivantes().filter(t => passeSphere(t) && (!vue.filtreUrgent || t.urgent));
   const dejaFaire = new Set(suiv.map(t => t.id));
-  const proches = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 60 && !dejaFaire.has(t.id));
+  const proches = datees().filter(t => passeSphere(t) && ecartJours(j, t.date_due) <= 15 && !dejaFaire.has(t.id));
   /* Le compte des retards porte sur toutes les échéances dépassées, y compris
      celles déjà placées dans « À faire » : sinon on en annonce deux quand
      l'onglet Échéances en montre trois. */
@@ -2468,7 +2677,7 @@ function vueAccueil(){
     h.push(groupe("En attente d'une réponse", attentes.length,
       enFiche(attentes.map(t => ligneTache(t, { attente:true })))));
 
-  h.push(groupe("Échéances · 2 mois", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
+  h.push(groupe("Échéances · 15 jours", proches.length || null, proches.length ? enFiche(proches.map(t => ligneTache(t)))
     : vide("Aucune échéance en vue", "Rien ne tombe dans les deux mois qui viennent.")));
   const f = faitesLe(j).filter(passeSphere);
   if(f.length) h.push(groupe("Réglé aujourd'hui", f.length, enFiche(f.map(t => ligneTache(t, { reglee:true })))));
@@ -3240,6 +3449,7 @@ function vueBudget(){
     "« Ce qu'il y avait au départ » (Budget initial), ce sont vos revenus une fois les factures et abonnements retirés ; vos dépenses du quotidien viennent s'y soustraire au fil du mois.",
     "Une facture annuelle est étalée sur douze mois ; le mois où elle tombe, elle est aussi retirée en entier — comptée deux fois par sécurité, modifiable dans Réglages.",
     "Une dépense en <b>espèces</b> n'est pas recomptée : elle a déjà été décomptée au retrait. Elle sert à savoir où l'argent est parti.",
+    "Une dépense <b>à rembourser</b> est bien retirée du solde, comme n'importe quelle dépense — le montant « avancé » affiché est juste un repère, pas un ajout au solde. Le solde remonte seulement une fois le remboursement encaissé.",
   ]));
   h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
   return h.join("");
@@ -3254,12 +3464,15 @@ function vueSuivi(){
   if(vue.projet) return vueProjetOuvert();
   if(vue.pageProjets) return vueProjetsPage();
   if(vue.pageCommandes) return vueCommandesPage();
+  if(vue.pageGaranties) return vueGarantiesPage();
+  const alerteGaranties = db.garanties.filter(g => ecartJours(jourISO(), ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois")) <= 60).length;
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
     `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
        <button class="btn" data-act="nouveauDossier">Nouveau dossier</button>
        <button class="btn creux" data-act="ouvrirListes">Listes${db.listes.length ? ` <span class="cpt">${db.listes.length}</span>` : ""}</button>
        <button class="btn creux" data-act="ouvrirProjets">Projets${db.projets.length ? ` <span class="cpt">${db.projets.length}</span>` : ""}</button>
        <button class="btn creux" data-act="ouvrirCommandes">Commandes${db.commandes.filter(c=>!c.recue).length ? ` <span class="cpt">${db.commandes.filter(c=>!c.recue).length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirGaranties">Garanties${alerteGaranties ? ` <span class="cpt">${alerteGaranties}</span>` : ""}</button>
      </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -3700,6 +3913,41 @@ function vueCommandesPage(){
   return h.join("");
 }
 
+/* ---- Garanties ---- */
+/* Même esprit que Commandes : une liste courte, triée par urgence — ici la
+   date de fin de garantie plutôt qu'une date de livraison. La pièce jointe
+   (photo de la facture) est précisément ce qui rend cette liste utile le
+   jour où on doit faire valoir une garantie. */
+function vueGarantiesPage(){
+  const j = jourISO();
+  const h = [`<button class="retour" data-act="fermerGaranties">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Garanties</h1>
+      <button class="btn mini" data-act="nouvelleGarantie">Nouvelle garantie</button></div>`,
+    `<div style="height:16px"></div>`];
+  if(!db.garanties.length)
+    return h.join("") + vide("Aucune garantie enregistrée", "La facture agrafée ici, plus besoin de la retrouver le jour où elle sert.");
+  const avecFin = db.garanties.map(g => ({ g, fin: ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois") }));
+  const tri = avecFin.sort((a,b) => a.fin.localeCompare(b.fin));
+  h.push(`<div class="fiche liste">${tri.map(({g, fin}) => {
+    const n = ecartJours(j, fin);
+    const expiree = n < 0;
+    const bientot = !expiree && n <= 60;
+    return `<div class="ligne" data-garantie="${g.id}">
+      <div class="corps"><div class="intitule">${ech(g.nom)}</div>
+        <div class="meta">
+          <span class="puce ${expiree?"chaud":bientot?"ctx":""}">${expiree ? "expirée le " : "jusqu'au "}${dateCourte(fin)}</span>
+          ${g.piece_jointe ? `<span class="puce">${g.piece_jointe.type === "application/pdf" ? "document" : "photo"} jointe</span>` : ""}
+        </div></div>
+      <div class="outils"><button class="ico" data-act="editerGarantie" title="Modifier">✎</button>
+        <button class="ico sup" data-act="jeterGarantie" title="Supprimer">✕</button></div>
+    </div>`;
+  }).join("")}</div>`);
+  h.push(piedAide([
+    "Triées par date de fin de garantie, la plus proche d'abord.",
+  ]));
+  return h.join("");
+}
+
 /* ---- Note (grande fenêtre) ---- */
 /* Remplace l'ancienne petite boîte de dialogue pour les notes de Projets et
    Dossiers : sur téléphone, un textarea de 74px dans une fenêtre modale
@@ -3726,6 +3974,7 @@ function vueNoteOuverte(){
       data-genre="${ref.genre}" data-parent="${ref.parentId}" data-note="${ref.noteId || ""}"
       style="width:100%;min-height:58vh;background:transparent;border:0;padding:8px 2px;
         font-size:16px;line-height:1.5;resize:none">${ech(texte)}</textarea>
+    ${n ? blocPieceJointe(ref.genre === "projet" ? "noteProjet" : "noteDossier", `${ref.parentId}::${ref.noteId}`, n.piece_jointe) : ""}
     ${n ? `<div style="margin-top:14px"><button class="btn mini danger" data-act="supprimerNoteGrand">Supprimer cette note</button></div>` : ""}`;
 }
 
@@ -3859,6 +4108,7 @@ function vueReglages(){
   ${listeMod("Contextes de tâche", db.contextes, "contexte")}
   ${listeMod("Catégories de dossier", db.categories, "categorie")}
   ${listeMod("Catégories de dépense", db.categories_depense, "cdepense")}
+  ${listeMod("Moyens de paiement", db.moyens, "moyen")}
 
   ${(() => {
     const an = new Date().getFullYear();
@@ -4580,6 +4830,32 @@ function formulaireCommande(cmd){
   });
 }
 
+const DUREES_GARANTIE = [
+  { v:6, n:"6 mois" }, { v:12, n:"1 an" }, { v:24, n:"2 ans" },
+  { v:36, n:"3 ans" }, { v:60, n:"5 ans" }, { v:120, n:"10 ans" },
+];
+function formulaireGarantie(g){
+  const neuf = !g;
+  const x = g || { id:uid(), nom:"", date_achat:jourISO(), duree_mois:24, notes:"" };
+  formulaire(neuf ? "Nouvelle garantie" : "Modifier la garantie", [
+    { cle:"nom", nom:"Objet", ph:"Lave-linge, ordinateur…" },
+    { cle:"date_achat", nom:"Date d'achat", type:"date", duo:true },
+    { cle:"duree_mois", nom:"Durée de garantie", type:"select", options:DUREES_GARANTIE },
+    { cle:"notes", nom:"Notes (facultatif)", type:"textarea", ph:"N° de série, référence, magasin…" },
+  ], { ...x }, f => {
+    if(!f.nom || !f.date_achat) return;
+    Object.assign(x, { nom:f.nom, date_achat:f.date_achat, duree_mois:+f.duree_mois || 12, notes:f.notes||"" });
+    touche(x);
+    if(neuf){ db.garanties = db.garanties || []; db.garanties.push(x); }
+    maj();
+  }, neuf ? null : () => {
+    if(x.piece_jointe) Stockage.supprimerPiece(x.piece_jointe.id);
+    jeter("garantie", x);
+    db.garanties = db.garanties.filter(y => y.id !== x.id);
+    maj();
+  }, blocPieceJointe("garantie", x.id, x.piece_jointe));
+}
+
 /* Position juste après le dernier élément d'une section (donc juste avant
    le titre suivant, ou en toute fin si c'est la dernière section). */
 function finSection(items, titreId){
@@ -4758,7 +5034,7 @@ function editerDepense(x){
     { cle:"categorie_id", nom:"Catégorie", type:"select", options:optCdep(), duo:true },
     { cle:"rembourser", nom:"À se faire rembourser", type:"select",
       options:[{v:"",n:"Non"},{v:"1",n:"Oui"}], duo:true },
-    { cle:"moyen", nom:"Payé par", type:"select", options:MOYENS.map(m => ({v:m.cle,n:m.nom})) },
+    { cle:"moyen", nom:"Payé par", type:"select", options:(db.moyens||[]).map(m => ({v:m.id,n:m.nom})) },
     { cle:"note", nom:"Petite note (facultatif)", type:"textarea", ph:"Une précision sur cette dépense…" },
   ], { ...x, rembourser: x.rembourser ? "1" : "", moyen: x.moyen || MOYEN_DEFAUT }, d => {
     const m = lireMontant(d.montant);
@@ -4772,7 +5048,10 @@ function editerDepense(x){
     vue.surligne = x.id;
     if(!x.rembourser) x.rembourse = false;
     maj();
-  }, () => { jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); maj(); });
+  }, () => {
+    if(x.piece_jointe) Stockage.supprimerPiece(x.piece_jointe.id);
+    jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); maj();
+  }, blocPieceJointe("depense", x.id, x.piece_jointe));
 }
 
 function editerListe(genre, item){
@@ -4780,7 +5059,12 @@ function editerListe(genre, item){
   const x = item || (genre === "contexte" ? { id:uid(), nom:"", alias:[] } : { id:uid(), nom:"" });
   const champs = [{ cle:"nom", nom:"Nom" }];
   if(genre === "contexte") champs.push({ cle:"alias", nom:"Alias de saisie (virgules)", ph:"tel, phone, appel" });
-  const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense" }[genre];
+  const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense", moyen:"moyens" }[genre];
+  /* « especes » est un identifiant protégé : le calcul du budget s'appuie
+     dessus (une dépense en espèces n'est pas recomptée, déjà décomptée au
+     retrait). Le renommer reste possible, le supprimer casserait ce calcul
+     silencieusement — mieux vaut le dire clairement plutôt que deviner. */
+  const protege = genre === "moyen" && !neuf && x.id === "especes";
   formulaire(neuf ? "Nouvel élément" : "Modifier", champs, { ...x, alias:(x.alias||[]).join(", ") }, d => {
     if(!d.nom) return;
     x.nom = d.nom;
@@ -4788,7 +5072,8 @@ function editerListe(genre, item){
     touche(x);
     if(neuf) db[tas].push(x);
     maj();
-  }, neuf ? null : () => {
+  }, protege ? null : (neuf ? null : () => {
+    if(genre === "moyen" && !confirm(`Supprimer « ${x.nom} » ? Les dépenses déjà réglées ainsi garderont ce moyen, juste sans nom affiché.`)) return;
     jeter(genre, x);
     db[tas] = db[tas].filter(y => y.id !== x.id);
     if(genre === "contexte"){
@@ -4796,12 +5081,12 @@ function editerListe(genre, item){
       if(vue.filtreCtx === x.id) vue.filtreCtx = null;
     }else if(genre === "categorie"){
       db.dossiers.forEach(d => { if(d.categorie_id === x.id) d.categorie_id = null; });
-    }else{
+    }else if(genre === "cdepense"){
       db.depenses.forEach(p => { if(p.categorie_id === x.id) p.categorie_id = null; });
       if(vue.catDep === x.id) vue.catDep = null;
     }
     maj();
-  });
+  }));
 }
 
 /* =====================================================================
@@ -4966,7 +5251,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -4999,8 +5284,6 @@ document.addEventListener("click", ev => {
     if(z && dlg.__moyens) z.innerHTML = dlg.__moyens();
     return;
   }
-  const bMoy = c.closest("[data-moyen]");
-  if(bMoy){ vue.moyen = bMoy.dataset.moyen; return rendre(); }
   const bH = c.closest("[data-hab]");
   if(bH){ basculerHabitude(bH.dataset.hab, bH.dataset.hjour); return maj(); }
   const bS = c.closest("[data-sphere]");
@@ -5178,13 +5461,27 @@ document.addEventListener("click", ev => {
     const parent = ref.genre === "projet" ? (db.projets||[]).find(x => x.id === ref.parentId) : dossDe(ref.parentId);
     if(!parent) return;
     if(!confirm("Supprimer cette note ?")) return;
+    const noteASupprimer = (parent.mur||[]).find(x => x.id === ref.noteId);
+    if(noteASupprimer && noteASupprimer.piece_jointe) Stockage.supprimerPiece(noteASupprimer.piece_jointe.id);
     parent.mur = (parent.mur||[]).filter(x => x.id !== ref.noteId);
     touche(parent);
     vue.noteOuverte = null;
     return maj();
   }
+  if(act === "voirPJ"){ return ouvrirPieceJointe(lireResumePJ(b.dataset.pjgenre, b.dataset.pjid)); }
+  if(act === "telechargerPJ"){ return telechargerPieceJointe(lireResumePJ(b.dataset.pjgenre, b.dataset.pjid)); }
+  if(act === "retirerPJ"){
+    if(!confirm("Retirer cette pièce jointe ? Elle reste stockée sur l'appareil jusqu'à ce que vous la retiriez ici.")) return;
+    const resume = lireResumePJ(b.dataset.pjgenre, b.dataset.pjid);
+    if(resume) Stockage.supprimerPiece(resume.id);
+    appliquerPJ(b.dataset.pjgenre, b.dataset.pjid, null);
+    return;
+  }
   if(act === "ouvrirCommandes"){ vue.dossier = null; vue.pageCommandes = true; return rendre(); }
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
+  if(act === "ouvrirGaranties"){ vue.dossier = null; vue.pageGaranties = true; return rendre(); }
+  if(act === "fermerGaranties"){ vue.pageGaranties = false; return rendre(); }
+  if(act === "nouvelleGarantie") return formulaireGarantie(null);
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
   if(act === "actualiserGoogleSemaine") return actualiserGoogleSemaine();
@@ -5233,6 +5530,7 @@ document.addEventListener("click", ev => {
   if(act === "ajouter-contexte") return editerListe("contexte", null);
   if(act === "ajouter-categorie") return editerListe("categorie", null);
   if(act === "ajouter-cdepense") return editerListe("cdepense", null);
+  if(act === "ajouter-moyen") return editerListe("moyen", null);
   if(act === "basculerFaites"){ vue.voirFaites = !vue.voirFaites; return rendre(); }
   if(act === "basculerRangement"){ vue.rangement = !vue.rangement; return rendre(); }
   if(act === "voirArgent"){ vue.voirArgent = !vue.voirArgent; return rendre(); }
@@ -5372,7 +5670,10 @@ document.addEventListener("click", ev => {
       return maj();
     }
     if(act === "rembourser") return encaisserRemboursement(x);
-    if(act === "jeter"){ jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); return maj(); }
+    if(act === "jeter"){
+      if(x.piece_jointe) Stockage.supprimerPiece(x.piece_jointe.id);
+      jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); return maj();
+    }
   }
 
   const lrt = trouver(c, "rentree");
@@ -5491,6 +5792,17 @@ document.addEventListener("click", ev => {
     return maj();
   }
 
+  const lg0 = trouver(c, "garantie");
+  if(lg0 && (act === "editerGarantie" || act === "jeterGarantie")){
+    const g = (db.garanties||[]).find(x => x.id === lg0.id); if(!g) return;
+    if(act === "editerGarantie") return formulaireGarantie(g);
+    if(!confirm(`Supprimer la garantie « ${g.nom} » ?`)) return;
+    if(g.piece_jointe) Stockage.supprimerPiece(g.piece_jointe.id);
+    jeter("garantie", g);
+    db.garanties = db.garanties.filter(x => x.id !== g.id);
+    return maj();
+  }
+
   const lit = trouver(c, "item");
   if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem" || act === "choisirSectionListe")){
     const ll = (db.listes||[]).find(x => x.id === lit.elt.dataset.liste);
@@ -5514,10 +5826,10 @@ document.addEventListener("click", ev => {
     }
   }
 
-  for(const genre of ["contexte","categorie","cdepense"]){
+  for(const genre of ["contexte","categorie","cdepense","moyen"]){
     const l = trouver(c, genre);
     if(l && act === "editer"){
-      const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense" }[genre];
+      const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense", moyen:"moyens" }[genre];
       const item = db[tas].find(x => x.id === l.id);
       if(item) return editerListe(genre, item);
     }
@@ -5545,7 +5857,7 @@ document.addEventListener("click", ev => {
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
                       "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois",
-                      "liste":"listes", "projet":"projets", "commande":"commandes" }[x.genre];
+                      "liste":"listes", "projet":"projets", "commande":"commandes", "moyen":"moyens", "garantie":"garanties" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     retrouver(x.obj && x.obj.id);
@@ -6102,6 +6414,8 @@ setInterval(verifierJour, 60000);
     if(typeof p.notes === "string"){ if(p.notes.trim()) (p.mur = p.mur || []).push({ id:uid(), titre:"", texte:p.notes }); delete p.notes; }
     p.mur = p.mur || []; });
   db.commandes = db.commandes || [];
+  db.moyens = (db.moyens && db.moyens.length) ? db.moyens : MOYENS_SEED.map(m => ({ ...m }));
+  db.garanties = db.garanties || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || [];
     if(typeof d.notes === "string"){ if(d.notes.trim()) (d.mur = d.mur || []).push({ id:uid(), titre:"", texte:d.notes }); delete d.notes; }
