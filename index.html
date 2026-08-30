@@ -954,7 +954,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 113;
+const VERSION_APP = 114;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1723,6 +1723,17 @@ function moisAvecMouvement(fenetre = 18){
     }
   }
   return [...s];
+}
+
+/* Même filtre que moisAvecMouvement() ci-dessus, pour que le montant
+   affiché entre parenthèses corresponde toujours exactement à ce qui a
+   fait apparaître ce mois dans la liste — jamais une charge mensuelle
+   « normale », qui n'a rien d'exceptionnel à signaler. */
+function montantMouvementDuMois(n){
+  const deb = debutPeriode(n), fin = finPeriode(deb);
+  return toutesLignes()
+    .filter(({ l }) => PERIODES[l.periodicite] > 1 && l.mois && l.jour)
+    .reduce((s, { l }) => s + l.montant * datesPrelevement(l, deb, fin).length, 0);
 }
 
 function nomDeLaPeriode(decalage){
@@ -3307,7 +3318,7 @@ function vueBudget(){
     h.push(vide(b.courante ? "Aucune dépense ce mois-ci" : `Aucune dépense en ${nomPeriode}`,
       ailleurs.length
         ? `À venir sur d'autres mois : ${ailleurs.map(n =>
-            `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
+            `<button class="lien-mois" data-saut="${n}" title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} (${euro(montantMouvementDuMois(n),2)})</button>`
           ).join(" · ")}`
         : "La première saisie se fait en deux gestes : un montant, une catégorie."));
   }
@@ -3347,7 +3358,7 @@ function vueBudget(){
   if(jours.length && aVenirMois.length)
     h.push(`<p class="petit-detail" style="margin:10px 0 0">À venir sur d'autres mois : ${
       aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
-        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)}</button>`
+        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} (${euro(montantMouvementDuMois(n),2)})</button>`
       ).join(" · ")}</p>`);
 
   if(b.dep.length){
