@@ -955,7 +955,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 115;
+const VERSION_APP = 117;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1151,6 +1151,7 @@ function ajouterPeriode(iso, n, unite){
 }
 
 const MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+const MOIS_ABREGE = ["janv","fév","mars","avril","mai","juin","juil","août","sept","oct","nov","déc"];
 const JOURS = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
 const dateLongue = iso => { const d = versDate(iso); return `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`; };
 const dateMoyenne = iso => { const d = versDate(iso); return `${d.getDate()} ${MOIS[d.getMonth()].slice(0,4)}`; };
@@ -1743,7 +1744,7 @@ function nomDeLaPeriode(decalage){
   if(d.getMonth() === f.getMonth()) return `${MOIS[f.getMonth()]} ${f.getFullYear()}`;
   /* Mois budgétaire à cheval : le nommer par son seul mois de fin fait
      chercher en janvier une facture du 28 décembre. On nomme les deux. */
-  return `${MOIS[d.getMonth()].slice(0,4)}–${MOIS[f.getMonth()].slice(0,4)} ${f.getFullYear()}`;
+  return `${MOIS_ABREGE[d.getMonth()]}–${MOIS_ABREGE[f.getMonth()]} ${f.getFullYear()}`;
 }
 
 function decalagePeriode(iso){
