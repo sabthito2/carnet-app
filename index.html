@@ -556,6 +556,10 @@
     background:transparent;font-size:17px;display:inline-flex;align-items:center;justify-content:center;
     padding:0;line-height:1}
   .carre-action:hover{border-color:var(--accent);background:var(--fiche)}
+  /* Retour visuel net après un tap le soir : un liseret épais et coloré,
+     assez marqué pour se voir même dans le noir, qui s'efface tout seul. */
+  .carre-action.confirme{border-color:var(--accent);border-width:2px;
+    box-shadow:0 0 0 3px var(--accent-pale);transition:box-shadow .15s,border-color .15s}
   /* Mur de notes (Projets) : grille de cartes sobres, esprit Notes/Rappels —
      une seule teinte, pas de post-it multicolores. */
   .mur-notes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
@@ -834,6 +838,7 @@ const Sync = (() => {
     db.commandes = db.commandes || [];
     db.moyens = (db.moyens && db.moyens.length) ? db.moyens : MOYENS_SEED.map(m => ({ ...m }));
     db.garanties = db.garanties || [];
+    db.bilans_mensuels = db.bilans_mensuels || {};
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
     appliquerTeinte(); appliquerTaille(); appliquerSombre();
@@ -955,7 +960,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 117;
+const VERSION_APP = 121;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1307,6 +1312,7 @@ function etatNeuf(){
     commandes: [],
     moyens: MOYENS_SEED.map(m => ({ ...m })),
     garanties: [],
+    bilans_mensuels: {},
     bloc_notes: "",
     supprimes: [],
     corbeille: [],
@@ -1475,6 +1481,10 @@ function fusionner(a, b) {
   const coupure = [a.reglages, b.reglages].map(r => (r||{}).archive_avant || "").sort().pop();
   if(coupure) appliquerCoupure(out, coupure);
   out.reglages = Object.assign({}, faible.reglages || {}, fort.reglages || {});
+  /* Chaque mois n'est écrit qu'une fois, pour toujours : une simple union
+     des clés des deux appareils suffit, jamais un remplacement en bloc qui
+     effacerait un instantané pris ailleurs. */
+  out.bilans_mensuels = Object.assign({}, faible.bilans_mensuels || {}, fort.bilans_mensuels || {});
   out.modifie_le = (a.modifie_le || "") > (b.modifie_le || "") ? a.modifie_le : b.modifie_le;
   return out;
 }
@@ -1727,15 +1737,20 @@ function moisAvecMouvement(fenetre = 18){
   return [...s];
 }
 
-/* Même filtre que moisAvecMouvement() ci-dessus, pour que le montant
+/* Même logique que moisAvecMouvement() ci-dessus, pour que le montant
    affiché entre parenthèses corresponde toujours exactement à ce qui a
-   fait apparaître ce mois dans la liste — jamais une charge mensuelle
-   « normale », qui n'a rien d'exceptionnel à signaler. */
+   fait apparaître ce mois dans la liste — les deux raisons possibles :
+   une charge non mensuelle qui y tombe, OU une dépense ponctuelle datée
+   dans ce mois (le second oubli faisait sous-compter le vrai montant). */
 function montantMouvementDuMois(n){
   const deb = debutPeriode(n), fin = finPeriode(deb);
-  return toutesLignes()
+  const charges = toutesLignes()
     .filter(({ l }) => PERIODES[l.periodicite] > 1 && l.mois && l.jour)
     .reduce((s, { l }) => s + l.montant * datesPrelevement(l, deb, fin).length, 0);
+  const depenses = db.depenses
+    .filter(x => decalagePeriode(x.date) === n)
+    .reduce((s, x) => s + (x.montant||0), 0);
+  return charges + depenses;
 }
 
 function nomDeLaPeriode(decalage){
@@ -1915,16 +1930,60 @@ function calculerBilanAnnuel(anBase){
   const rentrees = (db.rentrees||[]).filter(r => r.recu && r.date && r.date >= deb && r.date <= fin);
   const totalRentrees = rentrees.reduce((s,r) => s + (r.montant||0), 0);
   const tachesFaites = (db.taches||[]).filter(t => t.fait_le && t.fait_le >= deb && t.fait_le <= fin).length;
-  return { deb, fin, dep, total, parCategorie, moisTries, rentrees, totalRentrees, tachesFaites };
+  /* Les charges figées à la fin de chaque mois — voir
+     enregistrerInstantanesMensuels(). Absentes pour le mois en cours (pas
+     encore terminé) et pour tout mois d'avant l'apparition de cette
+     fonctionnalité : dans ces cas, on retombe sur le taux actuel, sans
+     garantie d'exactitude historique. Le solde, lui, n'est jamais figé —
+     toujours recalculé avec les dépenses telles qu'elles sont aujourd'hui,
+     y compris celles rentrées en retard. */
+  const parMoisFige = [];
+  { let [an, mo] = deb.slice(0,7).split("-").map(Number);
+    for(let i = 0; i < 12; i++){
+      const cle = `${an}-${String(mo).padStart(2,"0")}`;
+      const fige = (db.bilans_mensuels||{})[cle];
+      const decal = decalagePeriode(`${cle}-15`);
+      const b = bilan(decal);
+      parMoisFige.push({ cle, chargesFigees: !!fige,
+        charges: fige ? fige.charges : Math.round(b.charges * 100) / 100,
+        solde: Math.round(b.reste * 100) / 100 });
+      mo++; if(mo > 12){ mo = 1; an++; }
+    }
+  }
+  return { deb, fin, dep, total, parCategorie, moisTries, rentrees, totalRentrees, tachesFaites, parMoisFige };
 }
 
 /* =====================================================================
    4. MÉCANIQUE QUOTIDIENNE
    ===================================================================== */
+/* Fige uniquement les CHARGES de chaque mois calendaire qui vient de se
+   terminer — jamais le solde. Les dépenses, elle les rentre parfois après
+   coup, avec du retard : un solde figé trop tôt resterait faux pour
+   toujours, même une fois les dépenses complétées. Seul le prix d'une
+   charge (Netflix, etc.) a besoin d'être protégé d'un changement futur ;
+   le solde, lui, reste toujours recalculé en direct dans le Bilan annuel. */
+function enregistrerInstantanesMensuels(dernierJour, aujourdhui){
+  db.bilans_mensuels = db.bilans_mensuels || {};
+  const moisDernier = dernierJour.slice(0,7), moisAuj = aujourdhui.slice(0,7);
+  if(moisDernier === moisAuj) return;
+  let [an, mo] = moisDernier.split("-").map(Number);
+  let garde = 0;
+  while(`${an}-${String(mo).padStart(2,"0")}` !== moisAuj && garde++ < 36){
+    const cle = `${an}-${String(mo).padStart(2,"0")}`;
+    if(!db.bilans_mensuels[cle]){
+      const decal = decalagePeriode(`${cle}-15`);
+      const b = bilan(decal);
+      db.bilans_mensuels[cle] = { charges: Math.round(b.charges * 100) / 100 };
+    }
+    mo++; if(mo > 12){ mo = 1; an++; }
+  }
+}
+
 function bascule(){
   const j = jourISO();
   if(db.reglages.dernier_bascule === j) return;
   if(db.reglages.dernier_bascule){
+    enregistrerInstantanesMensuels(db.reglages.dernier_bascule, j);
     db.taches.forEach(t => {
       if(t.statut !== "done" && t.suivant_le && t.suivant_le < j){ t.reports++; t.suivant_le = j; }
     });
@@ -3227,8 +3286,23 @@ function vueBilanAnnuel(){
         <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
   }
 
+  h.push(`<div class="oeil" style="margin-top:18px">Charges et solde, mois par mois</div>`);
+  h.push(`<div class="fiche liste">${r.parMoisFige.map(m => {
+    const [an,mo] = m.cle.split("-").map(Number);
+    return `<div class="ligne">
+      <div class="corps"><div class="intitule">${MOIS[mo-1]} ${an}</div>
+        <div class="meta">
+          <span class="puce">${euro(m.charges,0)} de charges${m.chargesFigees ? "" : " (estimation actuelle)"}</span>
+          <span class="puce ${m.solde<0?"chaud":""}">${euro(m.solde,0)} de solde</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("")}</div>`);
+
   h.push(piedAide([
-    "Les revenus réguliers n'apparaissent pas ici : réglés comme un taux mensuel actuel plutôt qu'un historique daté, un total sur douze mois serait trompeur.",
+    "Les revenus réguliers n'apparaissent pas en détail : réglés comme un taux mensuel actuel plutôt qu'un historique daté, un total sur douze mois serait trompeur.",
+    "Les <b>charges</b> sont figées à la première ouverture du carnet après la fin de chaque mois — modifier un prix plus tard ne change plus ce chiffre-là. Sans instantané pour ce mois (trop tôt, ou mois en cours), c'est le tarif actuel qui s'affiche à la place, sans garantie.",
+    "Le <b>solde</b>, lui, n'est jamais figé : il se recalcule toujours avec les dépenses telles qu'elles sont aujourd'hui — pour rester juste même si certaines ont été rentrées en retard.",
   ]));
   return h.join("");
 }
@@ -3430,6 +3504,8 @@ function vueBudget(){
   if(jours.length) h.push(`<div style="margin:4px 0 -10px">
     <button class="btn mini creux" data-act="exporterCSVBudget">Export CSV — ${ech(nomPeriode)}</button></div>`);
   h.push(`<div class="oeil">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  if(toutesLignes().length) h.push(`<div style="margin:-8px 0 12px">
+    <button class="btn mini creux" data-act="exporterCSVCharges">Export CSV — Charges</button></div>`);
   if(b.courante)
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${
       encoreDu > 0
@@ -5248,6 +5324,30 @@ function exporterCSVSommeil(){
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+/* Uniquement les charges (jamais les dépenses ponctuelles) : un instantané
+   de « ce que ça coûte aujourd'hui », à lancer chaque fois qu'un montant
+   change, pour se constituer soi-même un historique de prix au fil des
+   exports gardés de côté. */
+function exporterCSVCharges(){
+  const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  const lignes = [["Dossier","Charge","Montant","Périodicité","Équivalent mensuel"]];
+  toutesLignes().forEach(({ l, d }) => {
+    lignes.push([
+      d.nom, l.libelle,
+      String(Math.round(l.montant * 100) / 100).replace(".", ","),
+      l.periodicite,
+      String(Math.round(parMois(l) * 100) / 100).replace(".", ","),
+    ]);
+  });
+  const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `charges-${jourISO()}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
 function importer(){
   const inp = document.createElement("input");
   inp.type = "file"; inp.accept = "application/json,.json";
@@ -5525,16 +5625,23 @@ document.addEventListener("click", ev => {
   if(act === "sommeilCoucher"){
     db.sommeil = db.sommeil || [];
     db.sommeil.push(touche({ id:uid(), type:"coucher", quand:new Date().toISOString() }));
-    return maj();
+    sauver();
+    b.classList.add("confirme");
+    setTimeout(() => b.classList.remove("confirme"), 900);
+    return;
   }
   if(act === "sommeilLever"){
     db.sommeil = db.sommeil || [];
     db.sommeil.push(touche({ id:uid(), type:"lever", quand:new Date().toISOString() }));
-    return maj();
+    sauver();
+    b.classList.add("confirme");
+    setTimeout(() => b.classList.remove("confirme"), 900);
+    return;
   }
   if(act === "ouvrirSommeil"){ vue.pageSommeil = true; return rendre(); }
   if(act === "fermerSommeil"){ vue.pageSommeil = false; return rendre(); }
   if(act === "exporterCSVSommeil") return exporterCSVSommeil();
+  if(act === "exporterCSVCharges") return exporterCSVCharges();
   if(act === "viderSommeil"){
     const n = (db.sommeil||[]).length;
     if(!confirm(`Effacer tout l'historique de sommeil (${n} entrée${n>1?"s":""}) ? Pensez à exporter avant si vous voulez garder une trace — c'est définitif.`)) return;
@@ -6449,6 +6556,7 @@ setInterval(verifierJour, 60000);
   db.commandes = db.commandes || [];
   db.moyens = (db.moyens && db.moyens.length) ? db.moyens : MOYENS_SEED.map(m => ({ ...m }));
   db.garanties = db.garanties || [];
+  db.bilans_mensuels = db.bilans_mensuels || {};
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || [];
     if(typeof d.notes === "string"){ if(d.notes.trim()) (d.mur = d.mur || []).push({ id:uid(), titre:"", texte:d.notes }); delete d.notes; }
