@@ -376,6 +376,9 @@
   .champ input:focus,.champ select:focus,.champ textarea:focus{border-color:var(--accent);outline:none}
   .duo{display:flex;gap:11px}
   .duo>*{flex:1;min-width:0}
+  .segment{display:flex;background:var(--fiche);border-radius:var(--r);padding:3px;margin-bottom:13px;gap:3px}
+  .segment button{flex:1;border:0;background:none;padding:9px;border-radius:7px;font-size:13.5px;color:var(--encre-2)}
+  .segment button.actif{background:var(--papier);color:var(--encre);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 
   dialog{border:1px solid var(--filet-fort);border-radius:var(--r);background:var(--papier);color:var(--encre);padding:0;
     width:min(490px,calc(100vw - 28px));box-shadow:0 20px 50px rgba(28,34,48,.22);max-height:88dvh}
@@ -1070,7 +1073,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 129;
+const VERSION_APP = 130;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1673,6 +1676,7 @@ const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, v
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
               filtreEtiquette:null, sectionActiveProjet:null,
               pageProjets:false, projet:null, pageSommeil:false, pageCommandes:false, noteOuverte:null, pageGaranties:false,
+              pageAstronomie:false, astroMode:"jour", astroAffiche:false,
               habitudeGrille:null, semaineCondensee:false, anneeBilan:null, pageBilanAnnuel:false };
 
 let tempo = null;
@@ -3755,6 +3759,7 @@ function vueSuivi(){
   if(vue.pageProjets) return vueProjetsPage();
   if(vue.pageCommandes) return vueCommandesPage();
   if(vue.pageGaranties) return vueGarantiesPage();
+  if(vue.pageAstronomie) return vueAstronomiePage();
   const alerteGaranties = db.garanties.filter(g => ecartJours(jourISO(), ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois")) <= 60).length;
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
     `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
@@ -3763,6 +3768,7 @@ function vueSuivi(){
        <button class="btn creux" data-act="ouvrirProjets">Projets${db.projets.length ? ` <span class="cpt">${db.projets.length}</span>` : ""}</button>
        <button class="btn creux" data-act="ouvrirCommandes">Commandes${db.commandes.filter(c=>!c.recue).length ? ` <span class="cpt">${db.commandes.filter(c=>!c.recue).length}</span>` : ""}</button>
        <button class="btn creux" data-act="ouvrirGaranties">Garanties${alerteGaranties ? ` <span class="cpt">${alerteGaranties}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirAstronomie">Astronomie</button>
      </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -4236,6 +4242,78 @@ function vueGarantiesPage(){
     "Triées par date de fin de garantie, la plus proche d'abord.",
   ]));
   return h.join("");
+}
+
+/* ---- Astronomie ---- */
+function vueAstronomiePage(){
+  const mode = vue.astroMode || "jour";
+  const h = [`<button class="retour" data-act="fermerAstronomie">← Suivi</button>`,
+    `<h1 class="titre" style="margin-bottom:16px">Astronomie</h1>`,
+    `<div class="segment">
+      <button class="${mode==="jour"?"actif":""}" data-act="astroMode" data-mode="jour">Un jour</button>
+      <button class="${mode==="periode"?"actif":""}" data-act="astroMode" data-mode="periode">Une période</button>
+    </div>`];
+  if(mode === "jour"){
+    h.push(`<div class="champ"><input type="date" id="astroDateJour" value="${vue.astroDateJour || jourISO()}"></div>`);
+  }else{
+    h.push(`<div class="duo">
+      <div class="champ"><span>Du</span><input type="date" id="astroDateDebut" value="${vue.astroDateDebut || jourISO()}"></div>
+      <div class="champ"><span>Au</span><input type="date" id="astroDateFin" value="${vue.astroDateFin || jourISO()}"></div>
+    </div>`);
+  }
+  h.push(`<button class="btn" style="width:100%" data-act="astroVoirCiel">Voir le ciel</button>`);
+  h.push(`<div style="height:18px"></div>`);
+
+  if(vue.astroAffiche){
+    if(!astroCache || !astroCache.jours)
+      h.push(`<p class="petit-detail">${astroErreur ? "Astronomie indisponible hors connexion." : "Données pas encore récupérées — réessaie dans un instant."}</p>`);
+    else if(mode === "jour")
+      h.push(rendreAstroJour(vue.astroDateJour || jourISO()));
+    else
+      h.push(rendreAstroPeriode(vue.astroDateDebut || jourISO(), vue.astroDateFin || jourISO()));
+  }
+  return h.join("");
+}
+
+function rendreAstroJour(dateISO){
+  const a = astroCache.jours[dateISO];
+  if(!a) return `<p class="petit-detail">Pas de données pour ce jour (hors de la période couverte par le fichier).</p>`;
+  const lendemain = ajouterPeriode(dateISO, 1, "jour");
+  return `<p style="font-size:13.5px;color:var(--encre-2);margin:0 0 10px">Nuit du ${dateCourte(dateISO)} au ${dateCourte(lendemain)}</p>
+    <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
+    <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
+      ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
+    <div class="fiche liste">${PLANETES_ASTRO.map(p => {
+      const d = a.planetes[p] || {};
+      const heures = (d.lever || d.coucher)
+        ? `<span class="petit-detail">${d.lever ? `↑ ${d.lever}` : ""}${d.lever && d.coucher ? "  " : ""}${d.coucher ? `↓ ${d.coucher}` : ""}</span>` : "";
+      return `<div class="ligne"><div class="corps">
+        <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}</div>
+        <div class="meta"><span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>${heures}</div>
+      </div></div>`;
+    }).join("")}</div>`;
+}
+
+function rendreAstroPeriode(debut, fin){
+  if(debut > fin) [debut, fin] = [fin, debut];
+  const jours = [];
+  let curseur = debut, garde = 0;
+  while(curseur <= fin && garde++ < 62){ jours.push(curseur); curseur = ajouterPeriode(curseur, 1, "jour"); }
+  if(garde >= 62) jours.push("…");
+  return `<div class="fiche liste">${jours.map(d => {
+    if(d === "…") return `<div class="ligne"><div class="corps"><div class="petit-detail">Période limitée à 62 nuits par affichage.</div></div></div>`;
+    const a = astroCache.jours[d];
+    if(!a) return `<div class="ligne"><div class="corps"><div class="intitule">${dateCourte(d)}</div>
+      <div class="petit-detail">Pas de données</div></div></div>`;
+    const visibles = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible);
+    return `<div class="ligne">
+      <div class="corps"><div class="intitule">${dateCourte(d)}</div></div>
+      <div class="outils" style="display:flex;align-items:center;gap:6px">
+        ${svgLune(a.lune.phase, 15)}
+        ${visibles.length ? visibles.map(p => iconePlanete(p, 15)).join("") : `<span class="petit-detail">rien de notable</span>`}
+      </div>
+    </div>`;
+  }).join("")}</div>`;
 }
 
 /* ---- Note (grande fenêtre) ---- */
@@ -5566,7 +5644,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -5797,6 +5875,20 @@ document.addEventListener("click", ev => {
   if(act === "fermerCommandes"){ vue.pageCommandes = false; return rendre(); }
   if(act === "ouvrirGaranties"){ vue.dossier = null; vue.pageGaranties = true; return rendre(); }
   if(act === "fermerGaranties"){ vue.pageGaranties = false; return rendre(); }
+  if(act === "ouvrirAstronomie"){ vue.dossier = null; vue.pageAstronomie = true; return rendre(); }
+  if(act === "fermerAstronomie"){ vue.pageAstronomie = false; return rendre(); }
+  if(act === "astroMode"){ vue.astroMode = b.dataset.mode; vue.astroAffiche = false; return rendre(); }
+  if(act === "astroVoirCiel"){
+    if((vue.astroMode || "jour") === "jour"){
+      vue.astroDateJour = document.getElementById("astroDateJour")?.value || jourISO();
+    }else{
+      vue.astroDateDebut = document.getElementById("astroDateDebut")?.value || jourISO();
+      vue.astroDateFin = document.getElementById("astroDateFin")?.value || vue.astroDateDebut;
+    }
+    vue.astroAffiche = true;
+    if(!astroCache) recupererAstro(true).then(rendre);
+    return rendre();
+  }
   if(act === "nouvelleGarantie") return formulaireGarantie(null);
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
