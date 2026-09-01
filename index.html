@@ -1073,7 +1073,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 130;
+const VERSION_APP = 131;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1184,6 +1184,7 @@ function ouvrirDetailAstro(){
           <div class="meta">
             <span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>
             ${d.lever ? `<span class="puce">lever ${d.lever}</span>` : ""}
+            ${d.meridien ? `<span class="puce">point haut ${d.meridien}</span>` : ""}
             ${d.coucher ? `<span class="puce">coucher ${d.coucher}</span>` : ""}
           </div></div></div>`;
       }).join("")}</div>
@@ -4285,8 +4286,8 @@ function rendreAstroJour(dateISO){
       ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
     <div class="fiche liste">${PLANETES_ASTRO.map(p => {
       const d = a.planetes[p] || {};
-      const heures = (d.lever || d.coucher)
-        ? `<span class="petit-detail">${d.lever ? `↑ ${d.lever}` : ""}${d.lever && d.coucher ? "  " : ""}${d.coucher ? `↓ ${d.coucher}` : ""}</span>` : "";
+      const heures = (d.lever || d.coucher || d.meridien)
+        ? `<span class="petit-detail">${d.lever ? `↑ ${d.lever}` : ""}${d.meridien ? `  ▲ ${d.meridien}` : ""}${d.coucher ? `  ↓ ${d.coucher}` : ""}</span>` : "";
       return `<div class="ligne"><div class="corps">
         <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}</div>
         <div class="meta"><span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>${heures}</div>
