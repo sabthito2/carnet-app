@@ -302,6 +302,14 @@
     padding:6px 12px;color:var(--encre);font-size:13px;white-space:nowrap;display:inline-block}
   .lien-mois b{color:var(--accent);font-weight:600}
   .lien-mois:hover{border-color:var(--accent)}
+  .astro-pill{display:inline-flex;align-items:center;gap:9px;font-size:14px;color:var(--encre-2);
+    background:var(--fiche);border-radius:20px;padding:7px 8px 7px 14px;margin:-4px 0 16px}
+  .astro-pill .sep{color:var(--filet-fort);font-size:12px}
+  .astro-pill.astro-attn{color:var(--encre-3);font-size:12.5px;font-style:italic;padding:7px 14px}
+  .astro-plus{width:24px;height:24px;border-radius:50%;border:1px solid var(--filet-fort);
+    background:var(--papier);color:var(--encre-2);font-size:15px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;flex:none}
+  .astro-plus:hover{border-color:var(--accent);color:var(--accent)}
   /* Détachée des rendez-vous : ce sont deux informations sans rapport,
      elles ne doivent pas se lire comme un même bloc. */
   .prive{display:inline-flex;align-items:baseline;gap:9px;border:1px solid var(--filet);background:transparent;
@@ -495,6 +503,11 @@
   .note-rdv{font-size:12.5px;color:var(--encre-2);line-height:1.45;margin-top:4px;white-space:pre-wrap}
   .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
   .rdv.tache:hover{opacity:.9}
+  /* Dans le Accueil (à l'intérieur d'une fiche liste), la tâche a besoin du
+     même padding que les rendez-vous à côté d'elle — sinon elle colle aux
+     bords du cadre. Dans l'Agenda, la cellule du jour a déjà son propre
+     padding, donc on ne touche à rien là-bas. */
+  .fiche.liste .rdv.tache{padding:10px 12px}
   .rdv.google{color:var(--encre-2);font-style:italic}
   .rdv.google b{color:var(--encre-2)}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
@@ -675,6 +688,62 @@ const Stockage = (() => {
   }
   return { init, lire, ecrire, persistant: () => dispo, ecrirePiece, lirePiece, supprimerPiece };
 })();
+
+/* =====================================================================
+   1 ter. ASTRONOMIE
+   Un fichier JSON externe (coucher du soleil, phase de lune, visibilité
+   des planètes), déposé sur le site public — pas de jeton nécessaire,
+   rien de personnel dedans. Récupéré une fois par jour maximum, mis en
+   cache en local (jamais dans le carnet synchronisé : c'est une donnée
+   externe, pas une donnée personnelle), avec un repli silencieux hors
+   connexion et une reprise automatique dès que le réseau revient.
+   ===================================================================== */
+const URL_ASTRO_JSON = "https://sabthito2.github.io/astro.json";
+const LUNE_ICONES = { nouvelle_lune:"🌑", premier_croissant:"🌒", premier_quartier:"🌓",
+  gibbeuse_croissante:"🌔", pleine_lune:"🌕", gibbeuse_decroissante:"🌖",
+  dernier_quartier:"🌗", dernier_croissant:"🌘" };
+const LUNE_NOMS = { nouvelle_lune:"Nouvelle lune", premier_croissant:"Premier croissant",
+  premier_quartier:"Premier quartier", gibbeuse_croissante:"Gibbeuse croissante",
+  pleine_lune:"Pleine lune", gibbeuse_decroissante:"Gibbeuse décroissante",
+  dernier_quartier:"Dernier quartier", dernier_croissant:"Dernier croissant" };
+/* Ordre fixe Mercure→Saturne, toujours le même partout dans l'appli. */
+const PLANETES_ASTRO = ["mercure","venus","mars","jupiter","saturne"];
+const PLANETE_ICONES = { mercure:"⚪", venus:"🟠", mars:"🔴", jupiter:"🟤", saturne:"🪐" };
+const PLANETE_NOMS = { mercure:"Mercure", venus:"Vénus", mars:"Mars", jupiter:"Jupiter", saturne:"Saturne" };
+
+let astroCache = null, astroErreur = false;
+
+async function initAstro(){
+  try{ astroCache = await Stockage.lire("astro"); }catch(e){}
+  await recupererAstro();
+  rendre();
+}
+
+async function recupererAstro(force = false){
+  const j = jourISO();
+  let dernierFetch = null;
+  try{ dernierFetch = await Stockage.lire("astro_dernier_fetch"); }catch(e){}
+  if(!force && dernierFetch === j) return;
+  try{
+    const res = await fetch(URL_ASTRO_JSON, { cache:"no-store" });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if(!data || !data.jours) throw new Error("format inattendu");
+    astroCache = data;
+    astroErreur = false;
+    await Stockage.ecrire(data, "astro");
+    await Stockage.ecrire(j, "astro_dernier_fetch");
+  }catch(e){
+    /* Hors connexion, ou fichier pas encore déposé : on garde le dernier
+       cache connu (s'il existe) et on retentera au prochain retour réseau
+       ou à la prochaine ouverture. Rien d'urgent, jamais bloquant. */
+    astroErreur = !astroCache;
+  }
+}
+
+function astroDuJour(){
+  return (astroCache && astroCache.jours && astroCache.jours[jourISO()]) || null;
+}
 
 /* =====================================================================
    1 bis. SYNCHRONISATION GITHUB
@@ -960,7 +1029,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 122;
+const VERSION_APP = 124;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1035,6 +1104,50 @@ async function memoriserPieceJointe(file){
    affiche donc l'aperçu directement dans l'appli, jamais dans un nouvel
    onglet, et dans une fenêtre séparée de la fiche pour ne pas perdre ce
    qui était en train d'être modifié dessous. */
+/* Petite puce compacte pour l'Accueil : coucher du soleil, phase de lune,
+   et un pictogramme par planète actuellement visible (jamais une planète
+   qu'on ne repérerait pas vraiment dans le ciel — le filtre est déjà fait
+   côté données). Le « + » ouvre le détail complet de la nuit. */
+function ligneAstro(){
+  const a = astroDuJour();
+  if(!a){
+    if(astroErreur) return `<div class="astro-pill astro-attn">Astronomie indisponible hors connexion</div>`;
+    return "";
+  }
+  const iconeLune = LUNE_ICONES[a.lune.phase] || "🌙";
+  const pictos = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible).map(p => PLANETE_ICONES[p]).join(" ");
+  return `<div class="astro-pill">
+    <span>☀️ ${a.soleil.coucher || "—"}</span>
+    <span class="sep">·</span>
+    <span>${iconeLune}</span>
+    ${pictos ? `<span class="sep">·</span><span>${pictos}</span>` : ""}
+    <button type="button" class="astro-plus" data-act="voirAstroJour" title="Détails de la nuit" aria-label="Détails de la nuit">+</button>
+  </div>`;
+}
+
+function ouvrirDetailAstro(){
+  const a = astroDuJour();
+  if(!a) return;
+  dlg.innerHTML = `<div class="dlg-t">Astronomie — nuit du ${dateCourte(jourISO())}</div>
+    <div class="dlg-c">
+      <p style="margin:0 0 6px">☀️ Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
+      <p style="margin:0 0 14px">${LUNE_ICONES[a.lune.phase] || "🌙"} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}</p>
+      <div class="fiche liste">${PLANETES_ASTRO.map(p => {
+        const d = a.planetes[p] || {};
+        return `<div class="ligne"><div class="corps">
+          <div class="intitule">${PLANETE_ICONES[p]} ${PLANETE_NOMS[p]}</div>
+          <div class="meta">
+            <span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>
+            ${d.lever ? `<span class="puce">lever ${d.lever}</span>` : ""}
+            ${d.coucher ? `<span class="puce">coucher ${d.coucher}</span>` : ""}
+          </div></div></div>`;
+      }).join("")}</div>
+    </div>
+    <div class="dlg-p"><button type="button" class="btn mini" id="astroFermer">Fermer</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  dlg.querySelector("#astroFermer").onclick = () => dlg.close();
+}
+
 async function ouvrirPieceJointe(resume){
   if(!resume || !resume.id) return;
   const piece = await Stockage.lirePiece(resume.id);
@@ -1074,7 +1187,7 @@ async function telechargerPieceJointe(resume){
 function blocPieceJointe(genre, refId, resume){
   if(resume) return `<div class="piece-jointe">
     <button type="button" class="pj-nom" data-act="voirPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Ouvrir">
-      ${resume.type === "application/pdf" ? "Document" : "Photo"} : ${ech(resume.nom)}
+      📎 ${resume.type === "application/pdf" ? "Document" : "Photo"} : ${ech(resume.nom)}
       <span class="petit-detail">(${formatTaille(resume.taille)})</span>
     </button>
     <button type="button" class="ico" data-act="telechargerPJ" data-pjgenre="${genre}" data-pjid="${refId}" title="Télécharger vers l'appareil">⇩</button>
@@ -2182,7 +2295,7 @@ const ONGLETS = [
 /* Le rouge et le vert sont réservés aux alertes et aux tâches réglées :
    les teintes proposées s'en tiennent donc à distance. */
 const TEINTES = [
-  { cle:"petrole", nom:"Bleu pétrole", val:"#1E5A6E", pale:"#DCE8EC", paleSombre:"#1F3A42" },
+  { cle:"petrole", nom:"Bleu pétrole", val:"#1E5A6E", valSombre:"#3DCFC0", pale:"#DCE8EC", paleSombre:"#1F3A42" },
   { cle:"nuit",    nom:"Bleu nuit",    val:"#2B3E6B", pale:"#DEE3F0", paleSombre:"#26304A" },
   { cle:"prune",   nom:"Prune",        val:"#6B3FA0", pale:"#EBE3F7", paleSombre:"#3A2E4A" },
   { cle:"brique",  nom:"Terre cuite",  val:"#9A4A2F", pale:"#F2E1D9", paleSombre:"#4A3226" },
@@ -2205,7 +2318,10 @@ function appliquerTeinte(){
   const t = TEINTES.find(x => x.cle === (db.reglages.accent || "petrole")) || TEINTES[0];
   const r = document.documentElement;
   if(r && r.style){
-    r.style.setProperty("--accent", t.val);
+    /* En mode nuit, un ton plus clair et plus vif se lit mieux quand la
+       luminosité de l'écran est baissée le soir — sinon on garde la même
+       teinte que sur fond clair. */
+    r.style.setProperty("--accent", (db.reglages.sombre && t.valSombre) ? t.valSombre : t.val);
     /* --accent-pale sert de fond à des badges/bandeaux où le texte est
        --encre : en mode nuit --encre devient clair, donc le même pâle très
        clair rendrait ce texte invisible (texte clair sur fond clair). On
@@ -2431,7 +2547,8 @@ function ouvrirDepenseRapide(){
       <div class="filtres" id="catsEclair" style="margin-bottom:2px">${chips()}</div>
       <div class="filtres moyens" id="moyensEclair">${moyens()}</div>
     </div>
-    <div class="dlg-p"><button type="button" class="btn mini creux" id="depNon">Annuler</button>
+    <div class="dlg-p"><button type="button" class="btn mini creux esp" id="depNon">Annuler</button>
+      <button type="button" class="btn mini creux" id="depPlus">Toutes les options</button>
       <button type="button" class="btn mini" id="depOui">Ajouter</button></div>`;
   dlg.showModal();
   const im = document.getElementById("dep-eclair-montant");
@@ -2451,6 +2568,22 @@ function ouvrirDepenseRapide(){
   };
   dlg.querySelector("#depOui").onclick = valider;
   dlg.querySelector("#depNon").onclick = () => dlg.close();
+  /* Pour tout renseigner d'un coup, sans repasser par la ligne une fois
+     créée : la dépense se crée avec ce qui est déjà tapé, puis sa fiche
+     complète s'ouvre directement (catégorie, moyen, remboursement, note,
+     pièce jointe). */
+  dlg.querySelector("#depPlus").onclick = () => {
+    const m = lireMontant(im.value);
+    const x = touche({ id:uid(), date:jourISO(), montant: m === null ? 0 : Math.abs(m),
+      categorie_id:vue.catDep || null, libelle:(il.value || "").trim(), dossier_id:null,
+      moyen: vue.moyen || MOYEN_DEFAUT });
+    db.depenses.push(x);
+    vue.decalage = 0;
+    vue.surligne = x.id;
+    dlg.close();
+    if(vue.onglet !== "budget") vue.onglet = "budget";
+    editerDepense(x);
+  };
   [im, il].forEach(ch => ch.onkeydown = ev => { if(ev.key === "Enter"){ ev.preventDefault(); valider(); } });
   dlg.__chips = chips;
   dlg.__moyens = moyens;
@@ -2643,6 +2776,8 @@ function vueAccueil(){
       : `${ech(cr.r.intitule)} — il y a ${-cr.n} j`;
     h.push(`<p style="margin:-6px 0 16px;font-size:12.5px;color:var(--encre-3)">${txt}</p>`);
   }
+
+  h.push(ligneAstro());
 
   /* Sommeil : deux carrés-icônes discrets (mêmes gestes qu'ailleurs dans
      l'appli), un troisième pour le bilan chiffré. Volontairement pas de
@@ -3748,7 +3883,7 @@ function vueDossier(){
   h.push(`<div class="oeil">Notes</div>`);
   h.push(`<div class="mur-notes">${d.mur.map(n => `
     <button class="carte-note" data-act="ouvrirNoteGrand" data-genre="dossier" data-parent="${d.id}" data-note="${n.id}">
-      ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
+      ${n.titre ? `<b>${n.piece_jointe ? "📎 " : ""}${ech(n.titre)}</b>` : (n.piece_jointe ? `<b>📎</b>` : "")}<p>${ech(n.texte)}</p>
     </button>`).join("")}
     <button class="carte-note carte-note-plus" data-act="ouvrirNoteGrand" data-genre="dossier" data-parent="${d.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
   </div>`);
@@ -3979,7 +4114,7 @@ function vueProjetOuvert(){
   h.push(`<div class="oeil">Notes</div>`);
   h.push(`<div class="mur-notes">${p.mur.map(n => `
     <button class="carte-note" data-act="ouvrirNoteGrand" data-genre="projet" data-parent="${p.id}" data-note="${n.id}">
-      ${n.titre ? `<b>${ech(n.titre)}</b>` : ""}<p>${ech(n.texte)}</p>
+      ${n.titre ? `<b>${n.piece_jointe ? "📎 " : ""}${ech(n.titre)}</b>` : (n.piece_jointe ? `<b>📎</b>` : "")}<p>${ech(n.texte)}</p>
     </button>`).join("")}
     <button class="carte-note carte-note-plus" data-act="ouvrirNoteGrand" data-genre="projet" data-parent="${p.id}" title="Nouvelle note" aria-label="Nouvelle note">+</button>
   </div>`);
@@ -4049,7 +4184,7 @@ function vueGarantiesPage(){
       <div class="corps"><div class="intitule">${ech(g.nom)}</div>
         <div class="meta">
           <span class="puce ${expiree?"chaud":bientot?"ctx":""}">${expiree ? "expirée le " : "jusqu'au "}${dateCourte(fin)}</span>
-          ${g.piece_jointe ? `<span class="puce">${g.piece_jointe.type === "application/pdf" ? "document" : "photo"} jointe</span>` : ""}
+          ${g.piece_jointe ? `<span class="puce">📎 ${g.piece_jointe.type === "application/pdf" ? "document" : "photo"} jointe</span>` : ""}
         </div></div>
       <div class="outils"><button class="ico" data-act="editerGarantie" title="Modifier">✎</button>
         <button class="ico sup" data-act="jeterGarantie" title="Supprimer">✕</button></div>
@@ -5607,6 +5742,7 @@ document.addEventListener("click", ev => {
     return maj();
   }
   if(act === "voirPJ"){ return ouvrirPieceJointe(lireResumePJ(b.dataset.pjgenre, b.dataset.pjid)); }
+  if(act === "voirAstroJour"){ return ouvrirDetailAstro(); }
   if(act === "telechargerPJ"){ return telechargerPieceJointe(lireResumePJ(b.dataset.pjgenre, b.dataset.pjid)); }
   if(act === "retirerPJ"){
     if(!confirm("Retirer cette pièce jointe ? Elle reste stockée sur l'appareil jusqu'à ce que vous la retiriez ici.")) return;
@@ -6042,6 +6178,20 @@ document.addEventListener("input", ev => {
       ev.target.dataset.note = n.id;
       const autreChamp = document.getElementById(ev.target.id === "noteTitreGrand" ? "noteTexteGrand" : "noteTitreGrand");
       if(autreChamp) autreChamp.dataset.note = n.id;
+      /* La note vient d'exister : la zone « pièce jointe » et le bouton
+         Supprimer n'ont encore jamais été dessinés (ils ne s'affichaient
+         pas pour une note qui n'existait pas encore). On les ajoute
+         directement, sans attendre un re-rendu complet qui couperait la
+         frappe en cours. */
+      const genreDoc = genre === "projet" ? "noteProjet" : "noteDossier";
+      const refIdDoc = `${parentId}::${n.id}`;
+      const texteEl = document.getElementById("noteTexteGrand");
+      if(texteEl && !document.querySelector(".pj-ajouter, .piece-jointe")){
+        const bloc = document.createElement("div");
+        bloc.innerHTML = blocPieceJointe(genreDoc, refIdDoc, null) +
+          `<div style="margin-top:14px"><button type="button" class="btn mini danger" data-act="supprimerNoteGrand">Supprimer cette note</button></div>`;
+        while(bloc.firstChild) texteEl.insertAdjacentElement("afterend", bloc.lastChild);
+      }
     }else{
       n.titre = titre; n.texte = texte;
     }
@@ -6523,7 +6673,7 @@ function verifierJour(){
   if(avant !== db.reglages.dernier_bascule) maj();
 }
 document.addEventListener("visibilitychange", () => { if(!document.hidden){ verifierJour(); Sync.auRetour(); } });
-window.addEventListener("online", () => Sync.auRetour());
+window.addEventListener("online", () => { Sync.auRetour(); recupererAstro(true).then(rendre); });
 setInterval(verifierJour, 60000);
 
 /* =====================================================================
@@ -6577,6 +6727,7 @@ setInterval(verifierJour, 60000);
   if(dedoublonner()) sauver();   /* une réparation compte comme une modification */
   else sauver(false);
   rendre();
+  initAstro();
   await Sync.charger();
   rendre();
   Sync.synchroniser(false);
