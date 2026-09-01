@@ -699,17 +699,46 @@ const Stockage = (() => {
    connexion et une reprise automatique dès que le réseau revient.
    ===================================================================== */
 const URL_ASTRO_JSON = "https://sabthito2.github.io/carnet-app/astro.json";
-const LUNE_ICONES = { nouvelle_lune:"🌑", premier_croissant:"🌒", premier_quartier:"🌓",
-  gibbeuse_croissante:"🌔", pleine_lune:"🌕", gibbeuse_decroissante:"🌖",
-  dernier_quartier:"🌗", dernier_croissant:"🌘" };
+/* Soleil, phases de Lune, Jupiter et Saturne : dessinés sur mesure (gris
+   pour la Lune, orange à bandes pour Jupiter, anneau fin pour Saturne,
+   traits fins pour le Soleil) plutôt que les emoji, dont le rendu et les
+   couleurs échappent à tout contrôle d'un appareil à l'autre. Mercure,
+   Vénus et Mars restent de simples puces de couleur — déjà sobres. */
+const SVG_SOLEIL = `<svg viewBox="0 0 24 24" width="15" height="15" style="vertical-align:-3px"><circle cx="12" cy="12" r="5" fill="none" stroke="#E0A548" stroke-width="1.4"/><g stroke="#E0A548" stroke-width="1.4" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.5" y1="4.5" x2="6.2" y2="6.2"/><line x1="17.8" y1="17.8" x2="19.5" y2="19.5"/><line x1="19.5" y1="4.5" x2="17.8" y2="6.2"/><line x1="6.2" y1="17.8" x2="4.5" y2="19.5"/></g></svg>`;
+function svgJupiter(taille){
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><defs><clipPath id="cj-${taille}"><circle cx="12" cy="12" r="10"/></clipPath></defs><circle cx="12" cy="12" r="10" fill="#D68A3C"/><g clip-path="url(#cj-${taille})" stroke="#B96F28" stroke-width="1.1" opacity="0.75"><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="11" x2="22" y2="11"/><line x1="2" y1="14.5" x2="22" y2="14.5"/><line x1="2" y1="17" x2="22" y2="17"/></g></svg>`;
+}
+function svgSaturne(taille){
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><ellipse cx="12" cy="12.5" rx="10.5" ry="3" fill="none" stroke="#C9B685" stroke-width="0.9" transform="rotate(-16 12 12.5)"/><circle cx="12" cy="12" r="6" fill="#E8D9AE"/></svg>`;
+}
+/* Croissant/gibbeuse en gris, dessiné géométriquement (limbe + terminateur
+   elliptique) — la même méthode que les widgets de phase lunaire usuels. */
+function svgLune(phase, taille){
+  const K = { nouvelle_lune:[0,1], premier_croissant:[0.25,1], premier_quartier:[0.5,1],
+    gibbeuse_croissante:[0.75,1], pleine_lune:[1,1], gibbeuse_decroissante:[0.75,0],
+    dernier_quartier:[0.5,0], dernier_croissant:[0.25,0] };
+  const [k, croissante] = K[phase] || [0.5,1];
+  const r = 10, rx = r * Math.abs(1 - 2*k);
+  const sweepLimbe = croissante ? 1 : 0;
+  const sweepTerm = k < 0.5 ? (croissante ? 0 : 1) : (croissante ? 1 : 0);
+  const d = `M 12,2 A ${r},${r} 0 0 ${sweepLimbe} 12,22 A ${rx.toFixed(1)},${r} 0 0 ${sweepTerm} 12,2 Z`;
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><circle cx="12" cy="12" r="10" fill="#3A3D42"/><path d="${d}" fill="#B8BCC4"/></svg>`;
+}
 const LUNE_NOMS = { nouvelle_lune:"Nouvelle lune", premier_croissant:"Premier croissant",
   premier_quartier:"Premier quartier", gibbeuse_croissante:"Gibbeuse croissante",
   pleine_lune:"Pleine lune", gibbeuse_decroissante:"Gibbeuse décroissante",
   dernier_quartier:"Dernier quartier", dernier_croissant:"Dernier croissant" };
-/* Ordre fixe Mercure→Saturne, toujours le même partout dans l'appli. */
+/* Ordre fixe Mercure→Saturne, toujours le même partout dans l'appli.
+   Mercure/Vénus/Mars restent de simples puces de couleur (déjà sobres) ;
+   Jupiter/Saturne utilisent les SVG dessinés ci-dessus. */
 const PLANETES_ASTRO = ["mercure","venus","mars","jupiter","saturne"];
-const PLANETE_ICONES = { mercure:"⚪", venus:"🟠", mars:"🔴", jupiter:"🟤", saturne:"🪐" };
 const PLANETE_NOMS = { mercure:"Mercure", venus:"Vénus", mars:"Mars", jupiter:"Jupiter", saturne:"Saturne" };
+const PLANETE_PUCE_COULEUR = { mercure:"⚪", venus:"🟠", mars:"🔴" };
+function iconePlanete(cle, taille){
+  if(cle === "jupiter") return svgJupiter(taille);
+  if(cle === "saturne") return svgSaturne(taille);
+  return PLANETE_PUCE_COULEUR[cle] || "";
+}
 
 let astroCache = null, astroErreur = false;
 
@@ -1029,7 +1058,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 125;
+const VERSION_APP = 126;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1114,10 +1143,10 @@ function ligneAstro(){
     if(astroErreur) return `<div class="astro-pill astro-attn">Astronomie indisponible hors connexion</div>`;
     return "";
   }
-  const iconeLune = LUNE_ICONES[a.lune.phase] || "🌙";
-  const pictos = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible).map(p => PLANETE_ICONES[p]).join(" ");
+  const iconeLune = svgLune(a.lune.phase, 15);
+  const pictos = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible).map(p => iconePlanete(p, 15)).join(" ");
   return `<div class="astro-pill">
-    <span>☀️ ${a.soleil.coucher || "—"}</span>
+    <span>${SVG_SOLEIL} ${a.soleil.coucher || "—"}</span>
     <span class="sep">·</span>
     <span>${iconeLune}</span>
     ${pictos ? `<span class="sep">·</span><span>${pictos}</span>` : ""}
@@ -1130,12 +1159,13 @@ function ouvrirDetailAstro(){
   if(!a) return;
   dlg.innerHTML = `<div class="dlg-t">Astronomie — nuit du ${dateCourte(jourISO())}</div>
     <div class="dlg-c">
-      <p style="margin:0 0 6px">☀️ Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
-      <p style="margin:0 0 14px">${LUNE_ICONES[a.lune.phase] || "🌙"} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}</p>
+      <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
+      <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
+        ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
       <div class="fiche liste">${PLANETES_ASTRO.map(p => {
         const d = a.planetes[p] || {};
         return `<div class="ligne"><div class="corps">
-          <div class="intitule">${PLANETE_ICONES[p]} ${PLANETE_NOMS[p]}</div>
+          <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}</div>
           <div class="meta">
             <span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>
             ${d.lever ? `<span class="puce">lever ${d.lever}</span>` : ""}
