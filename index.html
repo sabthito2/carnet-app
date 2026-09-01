@@ -709,8 +709,9 @@ function svgJupiter(taille){
   return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><defs><clipPath id="cj-${taille}"><circle cx="12" cy="12" r="10"/></clipPath></defs><circle cx="12" cy="12" r="10" fill="#D68A3C"/><g clip-path="url(#cj-${taille})" stroke="#B96F28" stroke-width="1.1" opacity="0.75"><line x1="2" y1="8" x2="22" y2="8"/><line x1="2" y1="11" x2="22" y2="11"/><line x1="2" y1="14.5" x2="22" y2="14.5"/><line x1="2" y1="17" x2="22" y2="17"/></g></svg>`;
 }
 function svgSaturne(taille){
-  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><ellipse cx="12" cy="12.5" rx="10.5" ry="3" fill="none" stroke="#C9B685" stroke-width="0.9" transform="rotate(-16 12 12.5)"/><circle cx="12" cy="12" r="6" fill="#E8D9AE"/></svg>`;
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><circle cx="12" cy="12" r="6.3" fill="#E8D9AE" stroke="#A8895A" stroke-width="1"/><line x1="1" y1="16.8" x2="23" y2="7.2" stroke="#A8895A" stroke-width="2" stroke-linecap="round"/></svg>`;
 }
+const SVG_PLUS = `<svg viewBox="0 0 24 24" width="12" height="12"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`;
 /* Croissant/gibbeuse en gris, dessiné géométriquement (limbe + terminateur
    elliptique) — la même méthode que les widgets de phase lunaire usuels. */
 function svgLune(phase, taille){
@@ -1058,7 +1059,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 126;
+const VERSION_APP = 127;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1150,7 +1151,7 @@ function ligneAstro(){
     <span class="sep">·</span>
     <span>${iconeLune}</span>
     ${pictos ? `<span class="sep">·</span><span>${pictos}</span>` : ""}
-    <button type="button" class="astro-plus" data-act="voirAstroJour" title="Détails de la nuit" aria-label="Détails de la nuit">+</button>
+    <button type="button" class="astro-plus" data-act="voirAstroJour" title="Détails de la nuit" aria-label="Détails de la nuit">${SVG_PLUS}</button>
   </div>`;
 }
 
