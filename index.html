@@ -1073,7 +1073,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 131;
+const VERSION_APP = 133;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4018,7 +4018,10 @@ function vueListeOuverte(){
           style="font-weight:650;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:${actif?"var(--accent)":"inherit"}">
           ${ech(it.texte)}${actif ? " · ajout ici" : ""}</button>
       </div>
-      <div class="outils"><button class="ico sup" data-act="supprimerItem" title="Supprimer le titre">✕</button></div>
+      <div class="outils">
+        <button class="ico" data-act="editerItem" title="Renommer">✎</button>
+        <button class="ico sup" data-act="supprimerItem" title="Supprimer le titre">✕</button>
+      </div>
     </div>`;
     }
     return `<div class="ligne ${it.coche?"faite":""}" data-item="${it.id}" data-liste="${l.id}">
@@ -4028,7 +4031,10 @@ function vueListeOuverte(){
         <button class="case fleche" data-act="remonterItem" title="Faire remonter dans « À faire »" aria-label="Faire remonter dans À faire">↑</button>
       </div>
       <div class="corps"><div class="intitule">${ech(it.texte)}</div></div>
-      <div class="outils"><button class="ico sup" data-act="supprimerItem" title="Supprimer">✕</button></div>
+      <div class="outils">
+        <button class="ico" data-act="editerItem" title="Renommer">✎</button>
+        <button class="ico sup" data-act="supprimerItem" title="Supprimer">✕</button>
+      </div>
     </div>`;
   }).join("")}</div>`);
 
@@ -4141,7 +4147,10 @@ function vueProjetOuvert(){
             style="font-weight:650;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:${actif?"var(--accent)":"inherit"}">
             ${ech(x.texte)}${actif ? " · ajout ici" : ""}</button>
         </div>
-        <div class="outils"><button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer le titre">✕</button></div>
+        <div class="outils">
+          <button class="ico" data-act="editerTacheProjet" title="Renommer">✎</button>
+          <button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer le titre">✕</button>
+        </div>
       </div>`;
       }
       return `<div class="ligne ${x.coche?"faite":""}" data-tacheprojet="${x.id}" data-projet="${p.id}">
@@ -4151,7 +4160,10 @@ function vueProjetOuvert(){
           <button class="case fleche" data-act="remonterTacheProjet" title="Faire remonter dans « À faire »" aria-label="Faire remonter dans À faire">↑</button>
         </div>
         <div class="corps"><div class="intitule">${ech(x.texte)}</div></div>
-        <div class="outils"><button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer">✕</button></div>
+        <div class="outils">
+          <button class="ico" data-act="editerTacheProjet" title="Renommer">✎</button>
+          <button class="ico sup" data-act="supprimerTacheProjet" title="Supprimer">✕</button>
+        </div>
       </div>`;
     }).join("")}</div>`);
   }
@@ -5204,6 +5216,18 @@ const DUREES_GARANTIE = [
   { v:6, n:"6 mois" }, { v:12, n:"1 an" }, { v:24, n:"2 ans" },
   { v:36, n:"3 ans" }, { v:60, n:"5 ans" }, { v:120, n:"10 ans" },
 ];
+/* Petite fiche à un seul champ, pour renommer un élément de liste (Listes,
+   « À faire » d'un Projet) sans avoir à le supprimer puis le retaper. */
+function formulaireRenommer(titreDialogue, valeurActuelle, onSauver){
+  formulaire(titreDialogue, [
+    { cle:"texte", nom:"Texte" },
+  ], { texte: valeurActuelle }, f => {
+    if(!f.texte || !f.texte.trim()) return;
+    onSauver(f.texte.trim());
+    maj();
+  });
+}
+
 function formulaireGarantie(g){
   const neuf = !g;
   const x = g || { id:uid(), nom:"", date_achat:jourISO(), duree_mois:24, notes:"" };
@@ -6175,13 +6199,16 @@ document.addEventListener("click", ev => {
   }
 
   const ltp = trouver(c, "tacheprojet");
-  if(ltp && (act === "basculerTacheProjet" || act === "remonterTacheProjet" || act === "supprimerTacheProjet" || act === "choisirSectionProjet")){
+  if(ltp && (act === "basculerTacheProjet" || act === "remonterTacheProjet" || act === "supprimerTacheProjet" || act === "choisirSectionProjet" || act === "editerTacheProjet")){
     const p = (db.projets||[]).find(x => x.id === ltp.elt.dataset.projet);
     const x = p && (p.taches||[]).find(y => y.id === ltp.id);
     if(!p || !x) return;
     if(act === "choisirSectionProjet"){
       vue.sectionActiveProjet = vue.sectionActiveProjet === x.id ? null : x.id;
       return rendre();
+    }
+    if(act === "editerTacheProjet"){
+      return formulaireRenommer(x.titre ? "Renommer le titre" : "Renommer", x.texte, v => { x.texte = v; touche(p); });
     }
     if(act === "basculerTacheProjet"){ x.coche = !x.coche; touche(p); return maj(); }
     if(act === "remonterTacheProjet"){
@@ -6220,13 +6247,16 @@ document.addEventListener("click", ev => {
   }
 
   const lit = trouver(c, "item");
-  if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem" || act === "choisirSectionListe")){
+  if(lit && (act === "basculerItem" || act === "remonterItem" || act === "supprimerItem" || act === "choisirSectionListe" || act === "editerItem")){
     const ll = (db.listes||[]).find(x => x.id === lit.elt.dataset.liste);
     const it = ll && (ll.items||[]).find(y => y.id === lit.id);
     if(!ll || !it) return;
     if(act === "choisirSectionListe"){
       vue.sectionActive = vue.sectionActive === it.id ? null : it.id;
       return rendre();
+    }
+    if(act === "editerItem"){
+      return formulaireRenommer(it.titre ? "Renommer le titre" : "Renommer", it.texte, v => { it.texte = v; touche(ll); });
     }
     if(act === "basculerItem"){ it.coche = !it.coche; touche(ll); return maj(); }
     if(act === "remonterItem"){
