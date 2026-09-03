@@ -312,6 +312,15 @@
     background:var(--papier);color:var(--encre-2);font-size:15px;line-height:1;
     display:inline-flex;align-items:center;justify-content:center;flex:none}
   .astro-plus:hover{border-color:var(--accent);color:var(--accent)}
+  /* Trait discret sous une planète qui se lève tôt (voir rendreAstroPeriode).
+     Hauteur de référence FIXE (15px, la plus grande icône) sur l'enveloppe :
+     le trait part donc toujours du même niveau, quelle que soit la taille
+     réelle de la planète dessinée à l'intérieur — sinon telluriques et
+     géantes, dessinées à des tailles différentes, désalignent le trait. */
+  .astro-env{position:relative;display:inline-flex;align-items:center;justify-content:center;
+    height:15px;line-height:0}
+  .astro-trait{position:absolute;bottom:-11px;left:50%;transform:translateX(-50%);
+    width:8px;height:1.8px;background:var(--filet-fort);border-radius:2px}
   .coeur-svg{width:18px;height:18px}
   .sep-decalage{width:12px;flex:none}
 
@@ -1104,7 +1113,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 137;
+const VERSION_APP = 138;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4477,17 +4486,18 @@ function rendreAstroPeriode(debut, fin){
     const visibles = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible);
     return `<div class="ligne" data-act="astroVoirJourDepuisPeriode" data-jour="${d}">
       <div class="corps"><div class="intitule">${dateCourte(d)}</div></div>
-      <div class="outils" style="display:flex;align-items:center;gap:6px">
+      <div class="outils" style="display:flex;align-items:center;gap:6px;padding-bottom:11px">
         ${svgLune(a.lune.phase, 15)}
         ${visibles.length ? visibles.map(p => {
           const souligne = levePremierePartieNuit(a.planetes[p].lever);
           return souligne
-            ? `<span style="border-bottom:1px solid var(--filet-fort);line-height:1;display:inline-block" title="Se lève avant 23h30">${iconePlanete(p, 15)}</span>`
-            : iconePlanete(p, 15);
+            ? `<span class="astro-env" title="Se lève avant 23h30">${iconePlanete(p, 15)}<span class="astro-trait"></span></span>`
+            : `<span class="astro-env">${iconePlanete(p, 15)}</span>`;
         }).join("") : `<span class="petit-detail">rien de notable</span>`}
       </div>
     </div>`;
-  }).join("")}</div>`;
+  }).join("")}</div>
+  <p class="petit-detail" style="margin:10px 2px 0">Un petit trait sous une planète signifie qu'elle se lève avant 23h30 — une observation plus réaliste que d'attendre tard dans la nuit.</p>`;
 }
 
 /* ---- Note (grande fenêtre) ---- */
