@@ -1993,7 +1993,7 @@ const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5
 /* Un seul endroit pour traduire le symbole choisi : gâteau par défaut,
    cœur pour un anniversaire de couple, étoile pour un « grand jour »
    (habillage festif ce jour-là en Accueil, voir plus bas). */
-const iconeAnniv = a => a.icone === "coeur" ? ❤️" : a.icone === "etoile" ? "⭐" : "🎂";
+const iconeAnniv = a => a.icone === "coeur" ? "❤️" : a.icone === "etoile" ? "⭐" : "🎂";
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
 
 const prochaineDe = id => { const l = duDossier(id).filter(t => t.date_due).map(t => t.date_due).sort(); return l[0] || null; };
