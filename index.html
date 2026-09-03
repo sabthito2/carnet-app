@@ -1113,7 +1113,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 138;
+const VERSION_APP = 139;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1286,7 +1286,7 @@ function vueSeanceCoherence(){
 function vueCoherencePage(){
   const h = [`<button class="retour" data-act="fermerCoherence">← Suivi</button>`,
     `<div class="entete-d"><h1 class="titre">Cohérence cardiaque</h1></div>`,
-    `<p class="petit-detail" style="margin:0 0 16px">Méthode 365 — 6 respirations par minute pendant 5 minutes. Idéalement 3 fois par jour.</p>`,
+    `<p class="petit-detail" style="margin:0 0 16px">Méthode 365 — 6 respirations par minute pendant 5 minutes, idéalement 3 fois par jour. Inspirez par le nez, expirez par la bouche.</p>`,
     `<button class="btn" style="width:100%;margin-bottom:20px" data-act="demarrerCoherence">Commencer une séance</button>`];
   const seances = [...(db.coherence||[])].sort((a,b) => (b.date||"").localeCompare(a.date||"") || (b.maj_le||"").localeCompare(a.maj_le||""));
   if(!seances.length){
@@ -1296,9 +1296,10 @@ function vueCoherencePage(){
   h.push(`<div class="oeil">Historique</div>`);
   h.push(`<div class="fiche liste">${seances.slice(0,60).map(s => {
     const m = Math.floor(s.duree_secondes/60), sec = s.duree_secondes%60;
-    return `<div class="ligne"><div class="corps">
+    return `<div class="ligne" data-coherence="${s.id}"><div class="corps">
       <div class="intitule">${dateLongue(s.date)}</div></div>
-      <div class="outils"><span class="puce">${m}:${String(sec).padStart(2,"0")}</span></div>
+      <div class="outils"><span class="puce">${m}:${String(sec).padStart(2,"0")}</span>
+        <button class="ico sup" data-act="jeterCoherence" title="Supprimer">✕</button></div>
     </div>`;
   }).join("")}</div>`);
   return h.join("");
@@ -1992,7 +1993,7 @@ const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5
 /* Un seul endroit pour traduire le symbole choisi : gâteau par défaut,
    cœur pour un anniversaire de couple, étoile pour un « grand jour »
    (habillage festif ce jour-là en Accueil, voir plus bas). */
-const iconeAnniv = a => a.icone === "coeur" ? "❤️" : a.icone === "etoile" ? "⭐" : "🎂";
+const iconeAnniv = a => a.icone === "coeur" ? ❤️" : a.icone === "etoile" ? "⭐" : "🎂";
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
 
 const prochaineDe = id => { const l = duDossier(id).filter(t => t.date_due).map(t => t.date_due).sort(); return l[0] || null; };
@@ -6077,6 +6078,16 @@ document.addEventListener("click", ev => {
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
   if(act === "demarrerCoherence") return demarrerCoherence();
   if(act === "allerVersCoherence"){ vue.onglet = "suivi"; vue.dossier = null; vue.pageCoherence = true; return rendre(); }
+  if(act === "jeterCoherence"){
+    const lc = trouver(c, "coherence");
+    if(!lc) return;
+    const s = (db.coherence||[]).find(x => x.id === lc.id);
+    if(!s) return;
+    if(!confirm(`Supprimer cette séance du ${dateLongue(s.date)} ?`)) return;
+    jeter("coherence", s);
+    db.coherence = db.coherence.filter(x => x.id !== s.id);
+    return maj();
+  }
   if(act === "arreterCoherence") return terminerCoherence(false);
   if(act === "astroMode"){ vue.astroMode = b.dataset.mode; vue.astroAffiche = false; return rendre(); }
   if(act === "astroVoirCiel"){
@@ -6485,7 +6496,7 @@ document.addEventListener("click", ev => {
                       "cdepense":"categories_depense", "dépense":"depenses", "revenu":"revenus",
                       "rendez-vous":"rendez_vous", "anniversaire":"anniversaires", "vacances":"vacances",
                       "rentrée":"rentrees", "habitude":"habitudes", "semaine type":"emplois",
-                      "liste":"listes", "projet":"projets", "commande":"commandes", "moyen":"moyens", "garantie":"garanties" }[x.genre];
+                      "liste":"listes", "projet":"projets", "commande":"commandes", "moyen":"moyens", "garantie":"garanties", "coherence":"coherence" }[x.genre];
       if(cible) db[cible].push(x.obj);
     }
     retrouver(x.obj && x.obj.id);
