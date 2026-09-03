@@ -6,7 +6,7 @@
    CACHE_NAME : à changer uniquement si CE fichier lui-même change — pas à
    chaque nouvelle version de l'appli, qui se détecte différemment (en
    comparant le contenu réel de la page, plus bas). */
-const CACHE_NAME = "carnet-cache-v1";
+const CACHE_NAME = "carnet-cache-v2";
 const FICHIERS_ESSENTIELS = ["./", "./index.html"];
 
 self.addEventListener("install", (event) => {
@@ -40,9 +40,15 @@ self.addEventListener("fetch", (event) => {
       // Vérifie en tâche de fond si le contenu a changé, sans jamais
       // faire attendre l'affichage — et ne prévient que si ça a vraiment
       // changé, pour ne pas déclencher un message à chaque ouverture.
+      // Un paramètre unique force le réseau de diffusion de GitHub Pages
+      // (qui garde ses propres copies, séparément du téléphone) à traiter
+      // la demande comme neuve plutôt que de renvoyer une ancienne copie
+      // malgré "no-store" — {cache:"no-store"} ne joue que sur le
+      // téléphone, pas sur cet intermédiaire.
       const verifierMiseAJour = async () => {
         try {
-          const reponseReseau = await fetch(req, { cache: "no-store" });
+          const urlSansCache = req.url + (req.url.includes("?") ? "&" : "?") + "_verif=" + Date.now();
+          const reponseReseau = await fetch(urlSansCache, { cache: "no-store" });
           if (!reponseReseau || !reponseReseau.ok) return;
           const texteReseau = await reponseReseau.clone().text();
           const texteCache = dansLeCache ? await dansLeCache.clone().text() : null;
