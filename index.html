@@ -1113,7 +1113,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 139;
+const VERSION_APP = 140;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4569,7 +4569,7 @@ function vueReglages(){
           <label class="champ"><span>Branche</span><input id="gh-branche" value="main" autocomplete="off"></label>
         </div>
         <label class="champ"><span>Autorisation</span>
-          <input id="gh-jeton" type="password" autocomplete="off"></label>
+          <input id="gh-jeton" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <button class="btn" data-act="syncConnecter">Connecter</button>
         <p style="margin:12px 0 0;font-size:12.5px;color:var(--encre-3)">
           L'autorisation reste dans ce navigateur, n'apparaît jamais dans l'export, et se ressaisit sur chaque appareil.
