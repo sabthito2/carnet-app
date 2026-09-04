@@ -1109,7 +1109,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 142;
+const VERSION_APP = 143;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -7052,9 +7052,18 @@ setInterval(verifierJour, 60000);
 
 /* Garde toujours une copie de secours de l'appli pour le hors-ligne, et
    prévient discrètement (bandeau en bas, jamais bloquant) si une version
-   plus récente a été détectée en tâche de fond — voir sw.js. */
+   plus récente a été détectée en tâche de fond — voir sw.js.
+   Safari vérifie beaucoup moins souvent que Chrome si un nouveau sw.js
+   existe, livré à son propre rythme interne — on force donc la
+   vérification nous-mêmes (registration.update()), à chaque ouverture et
+   chaque retour au premier plan, plutôt que de compter dessus. */
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  navigator.serviceWorker.register("./sw.js").then(reg => {
+    reg.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => {
+      if(!document.hidden) reg.update().catch(() => {});
+    });
+  }).catch(() => {});
   navigator.serviceWorker.addEventListener("message", ev => {
     if(ev.data && ev.data.type === "nouvelle_version") afficherBandeauMaj();
   });
@@ -7068,6 +7077,24 @@ function afficherBandeauMaj(){
     <button type="button" id="bandeauMajBtn">Mettre à jour</button>`;
   document.getElementById("bandeauMajBtn").onclick = () => location.reload();
 }
+
+/* Second filet de sécurité, totalement indépendant du service worker : va
+   chercher directement le numéro de version déployé (avec un paramètre
+   anti-cache), et compare au numéro de cette page actuellement ouverte.
+   Utile si le mécanisme du service worker a le moindre souci propre à un
+   navigateur donné — celui-ci ne dépend de rien d'autre que d'une requête
+   toute simple. */
+async function verifierVersionDirecte(){
+  try{
+    const res = await fetch(`./?_verif=${Date.now()}`, { cache:"no-store" });
+    if(!res.ok) return;
+    const texte = await res.text();
+    const m = texte.match(/const VERSION_APP = (\d+);/);
+    if(m && Number(m[1]) > VERSION_APP) afficherBandeauMaj();
+  }catch(e){ /* hors ligne : rien à signaler */ }
+}
+verifierVersionDirecte();
+document.addEventListener("visibilitychange", () => { if(!document.hidden) verifierVersionDirecte(); });
 
 /* =====================================================================
    10. DÉMARRAGE
