@@ -312,15 +312,11 @@
     background:var(--papier);color:var(--encre-2);font-size:15px;line-height:1;
     display:inline-flex;align-items:center;justify-content:center;flex:none}
   .astro-plus:hover{border-color:var(--accent);color:var(--accent)}
-  /* Trait discret sous une planète qui se lève tôt (voir rendreAstroPeriode).
-     Hauteur de référence FIXE (15px, la plus grande icône) sur l'enveloppe :
-     le trait part donc toujours du même niveau, quelle que soit la taille
-     réelle de la planète dessinée à l'intérieur — sinon telluriques et
-     géantes, dessinées à des tailles différentes, désalignent le trait. */
-  .astro-env{position:relative;display:inline-flex;align-items:center;justify-content:center;
-    height:15px;line-height:0}
-  .astro-trait{position:absolute;bottom:-11px;left:50%;transform:translateX(-50%);
-    width:8px;height:1.8px;background:var(--filet-fort);border-radius:2px}
+  /* Heure de lever sous chaque planète, dans la vue période (Suivi ->
+     Astronomie) : très petit, mais bien décollé de l'icône — le pincement
+     iPhone reste possible pour zoomer si besoin. */
+  .astro-env{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .astro-heure{font-size:8.5px;color:var(--encre-3);font-family:var(--mono);white-space:nowrap}
   .coeur-svg{width:18px;height:18px}
   .sep-decalage{width:12px;flex:none}
 
@@ -1113,7 +1109,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 140;
+const VERSION_APP = 142;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2896,6 +2892,34 @@ const enFiche = l => `<div class="fiche liste">${l.join("")}</div>`;
    taper une heure. On associe chaque « coucher » au « lever » suivant pour
    calculer une durée, en ignorant les appuis en double (le plus récent
    coucher fait foi si on a tapé deux fois par erreur). */
+/* Saisie manuelle d'une nuit : pour rattraper un oubli, ou entrer des
+   nuits d'avant qu'on ait commencé à utiliser les boutons 🛏️/☀️. Crée les
+   deux événements (coucher + lever) d'un coup, exactement comme si les
+   deux boutons avaient été tapés à ces heures-là. */
+function formulaireSommeilManuel(){
+  const maintenant = new Date();
+  const hier = new Date(maintenant.getTime() - 86400000);
+  const versLocal = d => {
+    const p = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const coucherDefaut = new Date(hier); coucherDefaut.setHours(22,30,0,0);
+  const leverDefaut = new Date(maintenant); leverDefaut.setHours(7,0,0,0);
+  formulaire("Ajouter une nuit à la main", [
+    { cle:"coucher", nom:"Coucher", type:"datetime-local", duo:true },
+    { cle:"lever", nom:"Lever", type:"datetime-local" },
+  ], { coucher:versLocal(coucherDefaut), lever:versLocal(leverDefaut) }, f => {
+    if(!f.coucher || !f.lever) return;
+    const dCoucher = new Date(f.coucher), dLever = new Date(f.lever);
+    if(isNaN(dCoucher) || isNaN(dLever)){ alert("Dates invalides."); return; }
+    if(dLever <= dCoucher){ alert("Le lever doit être après le coucher."); return; }
+    db.sommeil = db.sommeil || [];
+    db.sommeil.push(touche({ id:uid(), type:"coucher", quand:dCoucher.toISOString() }));
+    db.sommeil.push(touche({ id:uid(), type:"lever", quand:dLever.toISOString() }));
+    maj();
+  });
+}
+
 function nuitsRecentes(n = 7){
   const evts = [...(db.sommeil||[])].sort((a,b) => (a.quand||"").localeCompare(b.quand||""));
   const nuits = [];
@@ -3123,9 +3147,12 @@ function vuePageSommeil(){
   const nuits = nuitsRecentes(3650);
   const h = [`<button class="retour" data-act="fermerSommeil">← Accueil</button>`,
     `<div class="entete-d"><h1 class="titre">Bilan sommeil</h1></div>`];
-  if(!nuits.length)
-    return h.join("") + vide("Aucune nuit enregistrée", "Utilisez 🛏️ et ☀️ en Accueil pour commencer.");
+  if(!nuits.length){
+    h.push(`<div style="margin:0 0 16px"><button class="btn mini creux" data-act="ajouterNuitManuelle">Ajouter à la main</button></div>`);
+    return h.join("") + vide("Aucune nuit enregistrée", "Utilisez 🛏️ et ☀️ en Accueil, ou ajoutez une nuit à la main.");
+  }
   h.push(`<div style="margin:0 0 16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn mini creux" data-act="ajouterNuitManuelle">Ajouter à la main</button>
     <button class="btn mini creux" data-act="exporterCSVSommeil">Export CSV</button>
     <button class="btn mini creux" data-act="viderSommeil">Vider l'historique</button>
   </div>`);
@@ -4464,16 +4491,6 @@ function rendreAstroJour(dateISO){
 }
 
 function rendreAstroPeriode(debut, fin){
-  /* Un trait très discret sous une planète qui se lève en première partie
-     de soirée (jusqu'à 23h30) — une planète qui se lève à 3h du matin est
-     « visible », mais l'observer suppose de rester debout très tard, ce
-     qui n'est pas très réaliste. Uniquement ici, dans la vue période :
-     ni en Accueil, ni dans le détail d'un seul jour. */
-  function levePremierePartieNuit(heureLever){
-    if(!heureLever) return false;
-    const [h, m] = heureLever.split(":").map(Number);
-    return h >= 12 && (h < 23 || (h === 23 && m <= 30));
-  }
   if(debut > fin) [debut, fin] = [fin, debut];
   const jours = [];
   let curseur = debut, garde = 0;
@@ -4487,18 +4504,16 @@ function rendreAstroPeriode(debut, fin){
     const visibles = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible);
     return `<div class="ligne" data-act="astroVoirJourDepuisPeriode" data-jour="${d}">
       <div class="corps"><div class="intitule">${dateCourte(d)}</div></div>
-      <div class="outils" style="display:flex;align-items:center;gap:6px;padding-bottom:11px">
-        ${svgLune(a.lune.phase, 15)}
+      <div class="outils" style="display:flex;align-items:flex-start;gap:6px">
+        <span class="astro-env">${svgLune(a.lune.phase, 15)}</span>
         ${visibles.length ? visibles.map(p => {
-          const souligne = levePremierePartieNuit(a.planetes[p].lever);
-          return souligne
-            ? `<span class="astro-env" title="Se lève avant 23h30">${iconePlanete(p, 15)}<span class="astro-trait"></span></span>`
-            : `<span class="astro-env">${iconePlanete(p, 15)}</span>`;
+          const lever = a.planetes[p].lever;
+          return `<span class="astro-env">${iconePlanete(p, 15)}${lever ? `<span class="astro-heure">${lever}</span>` : ""}</span>`;
         }).join("") : `<span class="petit-detail">rien de notable</span>`}
       </div>
     </div>`;
   }).join("")}</div>
-  <p class="petit-detail" style="margin:10px 2px 0">Un petit trait sous une planète signifie qu'elle se lève avant 23h30 — une observation plus réaliste que d'attendre tard dans la nuit.</p>`;
+  <p class="petit-detail" style="margin:10px 2px 0">L'heure sous chaque planète est celle de son lever.</p>`;
 }
 
 /* ---- Note (grande fenêtre) ---- */
@@ -6133,6 +6148,7 @@ document.addEventListener("click", ev => {
   }
   if(act === "ouvrirSommeil"){ vue.pageSommeil = true; return rendre(); }
   if(act === "fermerSommeil"){ vue.pageSommeil = false; return rendre(); }
+  if(act === "ajouterNuitManuelle") return formulaireSommeilManuel();
   if(act === "exporterCSVSommeil") return exporterCSVSommeil();
   if(act === "exporterCSVCharges") return exporterCSVCharges();
   if(act === "viderSommeil"){
