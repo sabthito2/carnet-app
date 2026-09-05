@@ -1178,7 +1178,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 149;
+const VERSION_APP = 150;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3274,6 +3274,7 @@ function vueAccueil(){
   h.push(`<div class="pied">
     <button data-onglet="reglages">⚙ Réglages</button>
     <span class="pied-version" title="Si ce numéro diffère d'un appareil à l'autre, l'un des deux n'a pas la dernière version">version ${VERSION_APP}</span>
+    <span class="pied-version">Données météo Open-Meteo.com</span>
   </div>`);
   h.push(`<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`);
   return h.join("");
