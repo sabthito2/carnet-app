@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 153;
+const VERSION_APP = 155;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1962,7 +1962,7 @@ function nomAppareil(){
 let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
-              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false, recapOuvert:false,
+              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false, recapOuvert:false, depensesCategorieOuvert:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
               filtreEtiquette:null, sectionActiveProjet:null,
@@ -3990,6 +3990,24 @@ function vueBudget(){
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
         <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
+
+    /* Un seul accordéon, comme le "Récap" plus haut : un clic déplie
+       toutes les catégories d'un coup (pas un accordéon par catégorie). */
+    h.push(`<button class="oeil" data-act="basculerDepensesCategorie"
+      style="width:100%;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin-top:18px">
+      Dépenses par catégorie ${vue.depensesCategorieOuvert ? "▾" : "▸"}</button>`);
+    if(vue.depensesCategorieOuvert){
+      h.push(lignes.map(([id,v]) => {
+        const depensesCat = b.dep.filter(x => (x.categorie_id || "?") === id)
+          .sort((a,c) => c.date.localeCompare(a.date));
+        return `<div class="oeil" style="margin-top:12px;font-size:12.5px">${ech(cdepDe(id)?.nom || "Sans catégorie")}<span class="a-droite">${euro(v,0)}</span></div>
+        <div class="fiche liste">${depensesCat.map(x => `<div class="ligne">
+          <div class="corps"><div class="intitule">${ech(x.libelle) || (cdepDe(x.categorie_id)?.nom) || "Dépense"}</div>
+            <div class="meta"><span class="puce date">${dateCourte(x.date)}</span></div></div>
+          <div class="somme">${euro(x.montant,2)}</div>
+        </div>`).join("")}</div>`;
+      }).join(""));
+    }
   }
 
   const rentrees = [...(db.rentrees||[])].sort((a,c) =>
@@ -4602,7 +4620,10 @@ function vueGarantiesPage(){
 function vueAstronomiePage(){
   const mode = vue.astroMode || "jour";
   const h = [`<button class="retour" data-act="fermerAstronomie">← Suivi</button>`,
-    `<h1 class="titre" style="margin-bottom:16px">Astronomie</h1>`,
+    `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+       <h1 class="titre" style="margin:0">Astronomie</h1>
+       <button class="btn mini creux" data-act="rafraichirAstro" title="Recharger les données maintenant, sans attendre demain">↻ Recharger</button>
+     </div>`,
     `<div class="segment">
       <button class="${mode==="jour"?"actif":""}" data-act="astroMode" data-mode="jour">Un jour</button>
       <button class="${mode==="periode"?"actif":""}" data-act="astroMode" data-mode="periode">Une période</button>
@@ -6291,6 +6312,11 @@ document.addEventListener("click", ev => {
   if(act === "ouvrirGaranties"){ vue.dossier = null; vue.pageGaranties = true; return rendre(); }
   if(act === "fermerGaranties"){ vue.pageGaranties = false; return rendre(); }
   if(act === "ouvrirAstronomie"){ vue.dossier = null; vue.pageAstronomie = true; return rendre(); }
+  if(act === "rafraichirAstro"){
+    b.textContent = "…"; b.disabled = true;
+    recupererAstro(true).then(() => { b.textContent = "↻ Recharger"; b.disabled = false; rendre(); });
+    return;
+  }
   if(act === "fermerAstronomie"){ vue.pageAstronomie = false; return rendre(); }
   if(act === "ouvrirCoherence"){ vue.dossier = null; vue.pageCoherence = true; return rendre(); }
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
@@ -6332,6 +6358,7 @@ document.addEventListener("click", ev => {
   if(act === "exporterCSVBudget") return exporterCSVBudget();
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
   if(act === "basculerRecap"){ vue.recapOuvert = !vue.recapOuvert; return rendre(); }
+  if(act === "basculerDepensesCategorie"){ vue.depensesCategorieOuvert = !vue.depensesCategorieOuvert; return rendre(); }
   if(act === "fermerBilanAnnuel"){ vue.pageBilanAnnuel = false; return rendre(); }
   if(act === "sommeilCoucher"){
     db.sommeil = db.sommeil || [];
