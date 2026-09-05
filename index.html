@@ -7255,20 +7255,29 @@ function afficherBandeauMaj(){
   b.innerHTML = `<span>Une nouvelle version du carnet est prête.</span>
     <button type="button" id="bandeauMajBtn">Mettre à jour</button>`;
   document.getElementById("bandeauMajBtn").onclick = async () => {
-    /* Un simple location.reload() peut, sur certains navigateurs, être
-       encore intercepté par l'ancien service worker avant qu'il n'ait
-       pleinement pris en compte le changement. On force les choses :
-       on le désinscrit complètement, puis on navigue vers une adresse
-       jamais vue (paramètre unique), qui ne peut passer que par une vraie
-       requête réseau. Le prochain chargement réinscrit un service worker
-       tout neuf automatiquement — rien à faire de plus. */
+    /* Trois filets de sécurité l'un après l'autre, pour ne plus jamais
+       dépendre d'un seul mécanisme qui pourrait avoir un comportement
+       différent d'un navigateur à l'autre :
+       1. Désinscrit le service worker (plus personne pour intercepter).
+       2. Supprime aussi le contenu déjà mis de côté (pas juste l'inscription
+          — sinon, si jamais l'ancien service worker agissait encore une
+          fois de plus avant de disparaître pour de bon, il n'aurait de
+          toute façon plus rien de périmé à resservir).
+       3. location.replace plutôt que reload : une vraie nouvelle visite,
+          pas un rechargement de la page déjà ouverte. */
     try{
       if("serviceWorker" in navigator){
         const regs = await navigator.serviceWorker.getRegistrations();
         for(const reg of regs) await reg.unregister();
       }
     }catch(e){}
-    location.href = location.pathname + "?_maj=" + Date.now();
+    try{
+      if("caches" in window){
+        const noms = await caches.keys();
+        for(const nom of noms) await caches.delete(nom);
+      }
+    }catch(e){}
+    location.replace(location.pathname + "?_maj=" + Date.now());
   };
 }
 
