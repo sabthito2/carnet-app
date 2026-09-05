@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 155;
+const VERSION_APP = 156;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4691,7 +4691,7 @@ function rendreAstroPeriode(debut, fin){
     const visibles = PLANETES_TOUTES.filter(p => a.planetes[p]?.visible || a.planetes[p]?.visible_optique);
     return `<div class="ligne" data-act="astroVoirJourDepuisPeriode" data-jour="${d}">
       <div class="corps"><div class="intitule">${dateCourte(d)}</div></div>
-      <div class="outils" style="display:flex;align-items:flex-start;gap:6px">
+      <div class="outils" style="display:flex;align-items:flex-start;gap:6px;opacity:1">
         <span class="astro-env">${svgLune(a.lune.phase, 15)}</span>
         ${visibles.length ? visibles.map(p => {
           const lever = a.planetes[p].lever;
