@@ -1178,7 +1178,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 150;
+const VERSION_APP = 151;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -7254,7 +7254,22 @@ function afficherBandeauMaj(){
   b.style.display = "flex";
   b.innerHTML = `<span>Une nouvelle version du carnet est prête.</span>
     <button type="button" id="bandeauMajBtn">Mettre à jour</button>`;
-  document.getElementById("bandeauMajBtn").onclick = () => location.reload();
+  document.getElementById("bandeauMajBtn").onclick = async () => {
+    /* Un simple location.reload() peut, sur certains navigateurs, être
+       encore intercepté par l'ancien service worker avant qu'il n'ait
+       pleinement pris en compte le changement. On force les choses :
+       on le désinscrit complètement, puis on navigue vers une adresse
+       jamais vue (paramètre unique), qui ne peut passer que par une vraie
+       requête réseau. Le prochain chargement réinscrit un service worker
+       tout neuf automatiquement — rien à faire de plus. */
+    try{
+      if("serviceWorker" in navigator){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for(const reg of regs) await reg.unregister();
+      }
+    }catch(e){}
+    location.href = location.pathname + "?_maj=" + Date.now();
+  };
 }
 
 /* Second filet de sécurité, totalement indépendant du service worker : va
