@@ -782,12 +782,29 @@ const LUNE_NOMS = { nouvelle_lune:"Nouvelle lune", premier_croissant:"Premier cr
   dernier_quartier:"Dernier quartier", dernier_croissant:"Dernier croissant" };
 /* Ordre fixe Mercure→Saturne, toujours le même partout dans l'appli.
    Mercure/Vénus/Mars restent de simples puces de couleur (déjà sobres) ;
-   Jupiter/Saturne utilisent les SVG dessinés ci-dessus. */
+   Jupiter/Saturne utilisent les SVG dessinés ci-dessus.
+   PLANETES_ASTRO : les 5 visibles à l'œil nu, seules affichées en Accueil
+   (la puce y est trop étroite pour en accueillir davantage sans risquer
+   de déborder sur les téléphones les plus étroits — vérifié).
+   PLANETES_TOUTES : les 7, utilisées partout ailleurs (le "+" d'Accueil,
+   et Suivi → Astronomie), où la place ne manque pas. */
 const PLANETES_ASTRO = ["mercure","venus","mars","jupiter","saturne"];
-const PLANETE_NOMS = { mercure:"Mercure", venus:"Vénus", mars:"Mars", jupiter:"Jupiter", saturne:"Saturne" };
+const PLANETES_TELESCOPE = ["uranus","neptune"];
+const PLANETES_TOUTES = [...PLANETES_ASTRO, ...PLANETES_TELESCOPE];
+const PLANETE_NOMS = { mercure:"Mercure", venus:"Vénus", mars:"Mars", jupiter:"Jupiter", saturne:"Saturne",
+  uranus:"Uranus", neptune:"Neptune" };
+function svgUranus(taille){
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><circle cx="12" cy="12" r="10" fill="none" stroke="#9BB8C4" stroke-width="1.6"/></svg>`;
+}
+function svgNeptune(taille){
+  return `<svg viewBox="0 0 24 24" width="${taille}" height="${taille}" style="vertical-align:-3px"><circle cx="12" cy="12" r="10" fill="#3D5F8A"/></svg>`;
+}
+const SVG_TELESCOPE = `<svg viewBox="0 0 24 24" width="13" height="13" style="vertical-align:-2px" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="10.5" width="13" height="3.5" rx="1.5" transform="rotate(-18 3 10.5)"/><circle cx="18.5" cy="7.5" r="2.6"/><line x1="7" y1="16" x2="5" y2="20"/><line x1="4" y1="20" x2="8" y2="20"/></svg>`;
 function iconePlanete(cle, taille){
   if(cle === "jupiter") return svgJupiter(taille);
   if(cle === "saturne") return svgSaturne(taille);
+  if(cle === "uranus") return svgUranus(taille);
+  if(cle === "neptune") return svgNeptune(taille);
   return svgTellurique(cle, taille);
 }
 
@@ -1178,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 151;
+const VERSION_APP = 153;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1435,15 +1452,18 @@ function ouvrirDetailAstro(){
       <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
       <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
         ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
-      <div class="fiche liste">${PLANETES_ASTRO.map(p => {
+      <div class="fiche liste">${PLANETES_TOUTES.map(p => {
         const d = a.planetes[p] || {};
+        const estTelescope = PLANETES_TELESCOPE.includes(p) || d.visible_optique;
+        const etat = d.visible ? "Visible cette nuit" : d.visible_optique ? "Aux jumelles/télescope seulement" : "Non visible";
         return `<div class="ligne"><div class="corps">
-          <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}</div>
+          <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}${estTelescope ? ` ${SVG_TELESCOPE}` : ""}</div>
           <div class="meta">
-            <span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>
+            <span class="puce ${(d.visible || d.visible_optique) ? "ctx" : ""}">${etat}</span>
             ${d.lever ? `<span class="puce">lever ${d.lever}</span>` : ""}
             ${d.meridien ? `<span class="puce">point haut ${d.meridien}</span>` : ""}
             ${d.coucher ? `<span class="puce">coucher ${d.coucher}</span>` : ""}
+            ${d.hauteur_max ? `<span class="puce">∠ ${d.hauteur_max}</span>` : ""}
           </div></div></div>`;
       }).join("")}</div>
     </div>
@@ -4608,7 +4628,9 @@ function vueAstronomiePage(){
   }
   h.push(piedAide([
     "Les horaires sont calculés pour Paris. Ailleurs en France, l'écart maximum reste modeste : jusqu'à environ 35 minutes pour le Soleil (cas extrême : Nice, en été), et jusqu'à environ 45 minutes plus tôt, ou une quinzaine de minutes plus tard, pour les planètes, selon les jours.",
-    "Éphémérides : Observatoire de Paris et NASA, jusqu'en septembre 2029. Météo : Open-Meteo.com.",
+    "Éphémérides : Observatoire de Paris et NASA. Météo : Open-Meteo.com.",
+    `${SVG_TELESCOPE} Uranus et Neptune ne se voient pas à l'œil nu (contrairement aux 5 autres) — "visible" signifie ici observable aux jumelles ou à un petit télescope (magnitude ≤ 8,5, contre ≤ 3 pour les autres).`,
+    `Mercure a aussi, rarement, ce même repère ${SVG_TELESCOPE} : quelques jours où elle est bien placée dans le ciel mais trop peu lumineuse pour l'œil nu, observable aux jumelles/télescope seulement.`,
   ]));
   return h.join("");
 }
@@ -4621,13 +4643,15 @@ function rendreAstroJour(dateISO){
     <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
     <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
       ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
-    <div class="fiche liste">${PLANETES_ASTRO.map(p => {
+    <div class="fiche liste">${PLANETES_TOUTES.map(p => {
       const d = a.planetes[p] || {};
+      const estTelescope = PLANETES_TELESCOPE.includes(p) || d.visible_optique;
+      const etat = d.visible ? "Visible cette nuit" : d.visible_optique ? "Aux jumelles/télescope seulement" : "Non visible";
       const heures = (d.lever || d.coucher || d.meridien)
-        ? `<span class="petit-detail">${d.lever ? `↑ ${d.lever}` : ""}${d.meridien ? `  ▲ ${d.meridien}` : ""}${d.coucher ? `  ↓ ${d.coucher}` : ""}</span>` : "";
+        ? `<span class="petit-detail">${d.lever ? `↑ ${d.lever}` : ""}${d.meridien ? `  ▲ ${d.meridien}` : ""}${d.coucher ? `  ↓ ${d.coucher}` : ""}${d.hauteur_max ? `  ∠ ${d.hauteur_max}` : ""}</span>` : "";
       return `<div class="ligne"><div class="corps">
-        <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}</div>
-        <div class="meta"><span class="puce ${d.visible ? "ctx" : ""}">${d.visible ? "Visible cette nuit" : "Non visible"}</span>${heures}</div>
+        <div class="intitule">${iconePlanete(p, 16)} ${PLANETE_NOMS[p]}${estTelescope ? ` ${SVG_TELESCOPE}` : ""}</div>
+        <div class="meta"><span class="puce ${(d.visible || d.visible_optique) ? "ctx" : ""}">${etat}</span>${heures}</div>
       </div></div>`;
     }).join("")}</div>`;
 }
@@ -4643,7 +4667,7 @@ function rendreAstroPeriode(debut, fin){
     const a = astroCache.jours[d];
     if(!a) return `<div class="ligne"><div class="corps"><div class="intitule">${dateCourte(d)}</div>
       <div class="petit-detail">Pas de données</div></div></div>`;
-    const visibles = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible);
+    const visibles = PLANETES_TOUTES.filter(p => a.planetes[p]?.visible || a.planetes[p]?.visible_optique);
     return `<div class="ligne" data-act="astroVoirJourDepuisPeriode" data-jour="${d}">
       <div class="corps"><div class="intitule">${dateCourte(d)}</div></div>
       <div class="outils" style="display:flex;align-items:flex-start;gap:6px">
