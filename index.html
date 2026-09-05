@@ -312,6 +312,7 @@
     background:var(--papier);color:var(--encre-2);font-size:15px;line-height:1;
     display:inline-flex;align-items:center;justify-content:center;flex:none}
   .astro-plus:hover{border-color:var(--accent);color:var(--accent)}
+  .ic-meteo{width:15px;height:15px;vertical-align:-3px}
   /* Heure de lever sous chaque planète, dans la vue période (Suivi ->
      Astronomie) : très petit, mais bien décollé de l'icône — le pincement
      iPhone reste possible pour zoomer si besoin. */
@@ -791,6 +792,9 @@ function iconePlanete(cle, taille){
 }
 
 let astroCache = null, astroErreur = false;
+/* Position GPS : jamais synchronisée (propre à l'appareil, pas au carnet),
+   simplement gardée en mémoire pour la durée de la session. */
+let positionActuelle = null;
 
 async function initAstro(){
   try{ astroCache = await Stockage.lire("astro"); }catch(e){}
@@ -822,6 +826,71 @@ async function recupererAstro(force = false){
 
 function astroDuJour(){
   return (astroCache && astroCache.jours && astroCache.jours[jourISO()]) || null;
+}
+
+/* =====================================================================
+   MÉTÉO — Open-Meteo (aucune clé nécessaire). Suit la même position que
+   le Soleil : GPS réel si activé et connu, sinon Paris par défaut.
+   Rafraîchi toutes les 30 minutes environ, jamais bloquant. */
+let meteoCache = null, meteoErreur = false;
+
+async function initMeteo(){
+  try{ meteoCache = await Stockage.lire("meteo"); }catch(e){}
+  await recupererMeteo();
+  rendre();
+}
+
+function positionPourMeteo(){
+  if(db.reglages.utiliser_position && positionActuelle) return positionActuelle;
+  return { lat: 48.8566, lng: 2.3522 }; // Paris, par défaut
+}
+
+async function recupererMeteo(force = false){
+  let dernierFetch = null;
+  try{ dernierFetch = await Stockage.lire("meteo_dernier_fetch"); }catch(e){}
+  const maintenant = Date.now();
+  if(!force && dernierFetch && (maintenant - dernierFetch) < 30*60*1000) return;
+  const pos = positionPourMeteo();
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lng}&current=temperature_2m,weather_code`;
+    const res = await fetch(url, { cache:"no-store", referrerPolicy:"no-referrer" });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if(!data || !data.current) throw new Error("format inattendu");
+    meteoCache = { temperature: Math.round(data.current.temperature_2m), code: data.current.weather_code };
+    meteoErreur = false;
+    await Stockage.ecrire(meteoCache, "meteo");
+    await Stockage.ecrire(maintenant, "meteo_dernier_fetch");
+  }catch(e){
+    meteoErreur = !meteoCache;
+  }
+}
+
+/* Regroupe les 28 codes météo (WMO) en quelques familles simples,
+   chacune avec sa propre icône dessinée. */
+function categorieMeteo(code){
+  if(code === 0) return "clair";
+  if(code === 1 || code === 2) return "peu_nuageux";
+  if(code === 3) return "couvert";
+  if(code === 45 || code === 48) return "brouillard";
+  if([51,53,55,56,57,61,63,65,66,67,80,81,82].includes(code)) return "pluie";
+  if([71,73,75,77,85,86].includes(code)) return "neige";
+  if([95,96,99].includes(code)) return "orage";
+  return "couvert";
+}
+const SVG_METEO = {
+  clair: `<svg class="ic-meteo" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="none" stroke="#E0A548" stroke-width="1.4"/><g stroke="#E0A548" stroke-width="1.4" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.5" y1="4.5" x2="6.2" y2="6.2"/><line x1="17.8" y1="17.8" x2="19.5" y2="19.5"/><line x1="19.5" y1="4.5" x2="17.8" y2="6.2"/><line x1="6.2" y1="17.8" x2="4.5" y2="19.5"/></g></svg>`,
+  peu_nuageux: `<svg class="ic-meteo" viewBox="0 0 24 24"><g stroke="#E0A548" stroke-width="1.3" stroke-linecap="round"><circle cx="16" cy="7" r="3.3" fill="none"/><line x1="16" y1="1.7" x2="16" y2="0.3"/><line x1="21.3" y1="7" x2="22.7" y2="7"/><line x1="19.7" y1="3.3" x2="20.7" y2="2.3"/></g><path d="M4 17 h11.5 a3.6 3.6 0 0 0 0-7.2 a5.1 5.1 0 0 0-9.7-1.5 a3.9 3.9 0 0 0-2.8 6.6" fill="var(--fiche)" stroke="#8C93A0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  couvert: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 17 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  brouillard: `<svg class="ic-meteo" viewBox="0 0 24 24"><g stroke="#AEB2A4" stroke-width="1.3" stroke-linecap="round"><line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="16" x2="21" y2="16"/></g></svg>`,
+  pluie: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 12 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><g stroke="#5B8FB0" stroke-width="1.4" stroke-linecap="round"><line x1="8" y1="17" x2="7" y2="20"/><line x1="12" y1="17" x2="11" y2="20"/><line x1="16" y1="17" x2="15" y2="20"/></g></svg>`,
+  neige: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 12 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><g stroke="#A9BFC7" stroke-width="1.4" stroke-linecap="round"><line x1="8" y1="17" x2="7.3" y2="19.5"/><line x1="8" y1="19.5" x2="7.3" y2="17"/><line x1="12.5" y1="17" x2="11.8" y2="19.5"/><line x1="12.5" y1="19.5" x2="11.8" y2="17"/><line x1="17" y1="17" x2="16.3" y2="19.5"/><line x1="17" y1="19.5" x2="16.3" y2="17"/></g></svg>`,
+  orage: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 11 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15 l-3 5 h3.5 l-2 4" fill="none" stroke="#D68A3C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
+function ligneMeteo(){
+  if(!meteoCache) return "";
+  const cat = categorieMeteo(meteoCache.code);
+  return `<span>${SVG_METEO[cat] || SVG_METEO.couvert} ${meteoCache.temperature}°</span>`;
 }
 
 /* =====================================================================
@@ -1109,7 +1178,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 143;
+const VERSION_APP = 149;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1188,16 +1257,73 @@ async function memoriserPieceJointe(file){
    et un pictogramme par planète actuellement visible (jamais une planète
    qu'on ne repérerait pas vraiment dans le ciel — le filtre est déjà fait
    côté données). Le « + » ouvre le détail complet de la nuit. */
+/* Calcul du coucher du soleil pour une position donnée — repris et adapté
+   de SunCalc (Vladimir Agafonkin, licence BSD, https://github.com/mourner/suncalc),
+   qui applique les formules de Jean Meeus (Astronomical Algorithms).
+   Uniquement la partie Soleil ici : la Lune et les planètes restent
+   calculées pour Paris (voir astro.json), un calcul bien plus complexe à
+   reproduire dans le navigateur. */
+const RAD = Math.PI / 180;
+const J1970_ = 2440588, J2000_ = 2451545, J0_ = 0.0009;
+const OBLIQUITE_TERRE = RAD * 23.4397;
+function versJulien_(date){ return date.valueOf() / 86400000 - 0.5 + J1970_; }
+function depuisJulien_(j){ return new Date((j + 0.5 - J1970_) * 86400000); }
+function versJours_(date){ return versJulien_(date) - J2000_; }
+function ascensionDroite_(l, b){ return Math.atan2(Math.sin(l)*Math.cos(OBLIQUITE_TERRE) - Math.tan(b)*Math.sin(OBLIQUITE_TERRE), Math.cos(l)); }
+function declinaison_(l, b){ return Math.asin(Math.sin(b)*Math.cos(OBLIQUITE_TERRE) + Math.cos(b)*Math.sin(OBLIQUITE_TERRE)*Math.sin(l)); }
+function anomalieMoyenneSoleil_(d){ return RAD * (357.5291 + 0.98560028 * d); }
+function longitudeEcliptique_(M){
+  const C = RAD * (1.9148*Math.sin(M) + 0.02*Math.sin(2*M) + 0.0003*Math.sin(3*M));
+  return M + C + RAD*102.9372 + Math.PI;
+}
+function cycleJulien_(d, lw){ return Math.round(d - J0_ - lw/(2*Math.PI)); }
+function transitApprox_(Ht, lw, n){ return J0_ + (Ht+lw)/(2*Math.PI) + n; }
+function transitSolaireJ_(ds, M, L){ return J2000_ + ds + 0.0053*Math.sin(M) - 0.0069*Math.sin(2*L); }
+function angleHoraire_(h, phi, d){ return Math.acos((Math.sin(h) - Math.sin(phi)*Math.sin(d)) / (Math.cos(phi)*Math.cos(d))); }
+
+/* Renvoie {lever, coucher} (objets Date, instants UTC absolus) pour la
+   position donnée à la date donnée, ou null si le calcul échoue (ex. très
+   haute latitude polaire — hors sujet en France, simple filet de sécurité). */
+function soleilPourPosition(date, lat, lng){
+  const lw = RAD * -lng, phi = RAD * lat;
+  const d = versJours_(date);
+  const n = cycleJulien_(d, lw);
+  const ds = transitApprox_(0, lw, n);
+  const M = anomalieMoyenneSoleil_(ds), L = longitudeEcliptique_(M);
+  const dec = declinaison_(L, 0);
+  const Jnoon = transitSolaireJ_(ds, M, L);
+  const h0 = -0.833 * RAD;
+  const w = angleHoraire_(h0, phi, dec);
+  if(Number.isNaN(w)) return null;
+  const a = transitApprox_(w, lw, n);
+  const Jset = transitSolaireJ_(a, M, L);
+  const Jrise = Jnoon - (Jset - Jnoon);
+  return { lever: depuisJulien_(Jrise), coucher: depuisJulien_(Jset) };
+}
+function formatHeureLocale_(date){
+  return `${String(date.getHours()).padStart(2,"0")}:${String(date.getMinutes()).padStart(2,"0")}`;
+}
+
 function ligneAstro(){
   const a = astroDuJour();
+  const meteo = ligneMeteo();
   if(!a){
-    if(astroErreur) return `<div class="astro-pill astro-attn">Astronomie indisponible hors connexion</div>`;
-    return "";
+    if(!meteo){
+      if(astroErreur) return `<div class="astro-pill astro-attn">Astronomie indisponible hors connexion</div>`;
+      return "";
+    }
+    return `<div class="astro-pill">${meteo}</div>`;
   }
   const iconeLune = svgLune(a.lune.phase, 15);
   const pictos = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible).map(p => iconePlanete(p, 15)).join(" ");
+  let coucherAffiche = a.soleil.coucher || "—";
+  if(db.reglages.utiliser_position && positionActuelle){
+    const s = soleilPourPosition(new Date(), positionActuelle.lat, positionActuelle.lng);
+    if(s) coucherAffiche = formatHeureLocale_(s.coucher);
+  }
   return `<div class="astro-pill">
-    <span>${SVG_SOLEIL} ${a.soleil.coucher || "—"}</span>
+    ${meteo}${meteo ? `<span class="sep">·</span>` : ""}
+    <span>${SVG_SOLEIL} ${coucherAffiche}</span>
     <span class="sep">·</span>
     <span>${iconeLune}</span>
     ${pictos ? `<span class="sep">·</span><span>${pictos}</span>` : ""}
@@ -1609,7 +1735,7 @@ function etatNeuf(){
     supprimes: [],
     corbeille: [],
     reglages: { dernier_bascule:null, dernier_export:null, preavis_defaut:30, exemples:false,
-                jour_debut_mois:1, sphere:"perso" },
+                jour_debut_mois:1, sphere:"perso", utiliser_position:false },
   };
 }
 
@@ -1717,6 +1843,17 @@ function fusionner(a, b) {
   const aPlusRecent = (a.modifie_le || "") >= (b.modifie_le || "");
   const fort = aPlusRecent ? a : b, faible = aPlusRecent ? b : a;
   const out = Object.assign({}, faible, fort);
+
+  /* Contrairement à une tâche ou une dépense, le bloc-notes n'a pas sa
+     propre date : il suit la règle générale ci-dessus, qui compare le
+     carnet dans son ensemble. Un appareil tout juste réinitialisé peut
+     ainsi sembler « plus récent » globalement sans que son bloc-notes,
+     vide, n'ait de quoi le justifier — et effacerait le vrai contenu de
+     l'autre côté. On protège ce cas précisément : un texte réel ne
+     s'efface jamais au profit d'un champ vide. */
+  if(!(fort.bloc_notes || "").trim() && (faible.bloc_notes || "").trim()){
+    out.bloc_notes = faible.bloc_notes;
+  }
 
   /* Un même élément peut avoir été supprimé ici et restauré là : c'est la
      date la plus récente qui tranche, dans un sens comme dans l'autre. */
@@ -4468,6 +4605,10 @@ function vueAstronomiePage(){
     else
       h.push(rendreAstroPeriode(vue.astroDateDebut || jourISO(), vue.astroDateFin || jourISO()));
   }
+  h.push(piedAide([
+    "Les horaires sont calculés pour Paris. Ailleurs en France, l'écart maximum reste modeste : jusqu'à environ 35 minutes pour le Soleil (cas extrême : Nice, en été), et jusqu'à environ 45 minutes plus tôt, ou une quinzaine de minutes plus tard, pour les planètes, selon les jours.",
+    "Éphémérides : Observatoire de Paris et NASA. Météo : Open-Meteo.com.",
+  ]));
   return h.join("");
 }
 
@@ -4595,6 +4736,17 @@ function vueReglages(){
   return `<div class="entete-mob"><h1 class="titre">Réglages</h1><div class="jour">${dateCourte(j)}</div></div>
 
   ${blocSync}
+
+  <div class="bloc"><div class="oeil">Position
+      <span class="a-droite">${db.reglages.utiliser_position ? "activée" : "désactivée"}</span></div>
+    <div class="fiche" style="padding:14px">
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
+        ${db.reglages.utiliser_position
+          ? "Le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris."
+          : "Active pour que le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris par défaut. Votre téléphone demandera l'autorisation."}</p>
+      <button class="btn ${db.reglages.utiliser_position ? "danger" : ""}" data-act="basculerPosition">
+        ${db.reglages.utiliser_position ? "Désactiver" : "Activer"}</button>
+    </div></div>
 
   <div class="bloc"><div class="oeil">Sauvegarde</div>
     <div class="fiche" style="padding:14px">
@@ -6025,6 +6177,32 @@ document.addEventListener("click", ev => {
     appliquerTeinte();
     return maj();
   }
+  if(act === "basculerPosition"){
+    if(db.reglages.utiliser_position){
+      db.reglages.utiliser_position = false;
+      positionActuelle = null;
+      sauver();
+      recupererMeteo(true).then(rendre);
+      return maj();
+    }
+    if(!("geolocation" in navigator)){
+      alert("La géolocalisation n'est pas disponible sur cet appareil.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        positionActuelle = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        db.reglages.utiliser_position = true;
+        sauver();
+        recupererMeteo(true).then(rendre);
+        maj();
+      },
+      () => {
+        alert("Impossible d'obtenir la position — vérifiez que la localisation est autorisée pour ce site dans les réglages de votre téléphone.");
+      }
+    );
+    return;
+  }
   if(act === "ajoutRapide") return ouvrirAjoutRapide();
   if(act === "depenseRapide") return ouvrirDepenseRapide();
   if(act === "blocNotes") return ouvrirBlocNotes();
@@ -7149,6 +7327,7 @@ document.addEventListener("visibilitychange", () => { if(!document.hidden) verif
   else sauver(false);
   rendre();
   initAstro();
+  initMeteo();
   await Sync.charger();
   rendre();
   Sync.synchroniser(false);
