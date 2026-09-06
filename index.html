@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 158;
+const VERSION_APP = 159;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3294,7 +3294,7 @@ function vueAccueil(){
   h.push(`<div class="pied">
     <button data-onglet="reglages">⚙ Réglages</button>
     <span class="pied-version" title="Si ce numéro diffère d'un appareil à l'autre, l'un des deux n'a pas la dernière version">version ${VERSION_APP}</span>
-    <span class="pied-version">Données météo Open-Meteo.com</span>
+    <span class="pied-version"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Données météo par Open-Meteo.com</a></span>
   </div>`);
   h.push(`<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`);
   return h.join("");
@@ -4654,7 +4654,7 @@ function vueAstronomiePage(){
   }
   h.push(piedAide([
     "Les horaires sont calculés pour Paris. Ailleurs en France, l'écart maximum reste modeste : jusqu'à environ 35 minutes pour le Soleil (cas extrême : Nice, en été), et jusqu'à environ 45 minutes plus tôt, ou une quinzaine de minutes plus tard, pour les planètes, selon les jours.",
-    "Éphémérides : Observatoire de Paris et NASA. Météo : Open-Meteo.com.",
+    "Éphémérides : Observatoire de Paris et NASA. Météo : <a href=\"https://open-meteo.com/\" target=\"_blank\" rel=\"noopener\">Open-Meteo.com</a>.",
     `${SVG_TELESCOPE} Uranus et Neptune ne se voient pas à l'œil nu (contrairement aux 5 autres) — "visible" signifie ici observable aux jumelles ou à un petit télescope (magnitude ≤ 8,5, contre ≤ 3 pour les autres).`,
     `Mercure a aussi, rarement, ce même repère ${SVG_TELESCOPE} : quelques jours où elle est bien placée dans le ciel mais trop peu lumineuse pour l'œil nu, observable aux jumelles/télescope seulement.`,
   ]));
