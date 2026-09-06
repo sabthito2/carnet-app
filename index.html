@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 161;
+const VERSION_APP = 163;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2091,12 +2091,41 @@ const finRdv = r => ajouterPeriode(r.date, Math.max(1, r.duree || 1) - 1, "jour"
    garde une seule fiche et on calcule les occurrences ; une date écartée
    entre dans la liste des exceptions, ce qui permet d'annuler un seul
    mercredi sans toucher aux autres. */
+/* Le réglage de répétition a longtemps été un simple mot ("semaine" ou
+   "quinzaine") ; c'est maintenant {unite, intervalle} pour pouvoir dire
+   "tous les 3 jours" ou "chaque année" — cette fonction comprend encore
+   les anciennes fiches enregistrées avec l'ancien format. */
+function normaliserRepete(repete){
+  if(!repete) return null;
+  if(typeof repete === "string")
+    return repete === "quinzaine" ? { unite:"semaine", intervalle:2 } : { unite:"semaine", intervalle:1 };
+  return repete;
+}
 function debutOccurrence(r, iso){
   const duree = Math.max(1, r.duree || 1);
-  const pas = r.repete === "quinzaine" ? 14 : 7;
   if(!r.repete) return (iso >= r.date && iso <= finRdv(r)) ? r.date : null;
   if(iso < r.date) return null;
   const fin = r.repete_fin || ajouterPeriode(r.date, 2, "mois");
+  const rep = normaliserRepete(r.repete);
+  const intervalle = Math.max(1, rep.intervalle || 1);
+
+  if(rep.unite === "annee"){
+    /* Les années n'ont pas toutes le même nombre de jours (bissextiles) :
+       on compare mois/jour directement, plutôt que de décaler par un
+       nombre fixe de jours comme pour jour/semaine. */
+    const [an0, mo0, jo0] = r.date.split("-").map(Number);
+    const anIso = +iso.slice(0,4);
+    const diffAnnees = anIso - an0;
+    if(diffAnnees < 0 || diffAnnees % intervalle !== 0) return null;
+    const debut = `${anIso}-${String(mo0).padStart(2,"0")}-${String(jo0).padStart(2,"0")}`;
+    const ecartDepuisDebut = ecartJours(debut, iso);
+    if(ecartDepuisDebut < 0 || ecartDepuisDebut >= duree) return null;
+    if(debut > fin) return null;
+    if((r.exceptions || []).includes(debut)) return null;
+    return debut;
+  }
+
+  const pas = (rep.unite === "jour" ? 1 : 7) * intervalle;
   const ecart = ecartJours(r.date, iso);
   const reste = ecart % pas;
   if(reste >= duree) return null;
@@ -2108,6 +2137,19 @@ function debutOccurrence(r, iso){
 /* Le suivi d'habitudes. L'identifiant d'une case cochée est déduit de
    l'habitude et du jour : deux appareils qui cochent le même jour créent
    donc le même élément, et la fusion n'en garde qu'un. */
+function texteRepete(r){
+  const rep = normaliserRepete(r.repete);
+  if(!rep) return "";
+  const intervalle = Math.max(1, rep.intervalle || 1);
+  const jourSemaine = JOURS[versDate(r.date).getDay()];
+  if(rep.unite === "jour")
+    return intervalle === 1 ? "chaque jour" : `tous les ${intervalle} jours`;
+  if(rep.unite === "annee")
+    return intervalle === 1 ? `chaque année (${dateCourte(r.date)})` : `tous les ${intervalle} ans (${dateCourte(r.date)})`;
+  if(intervalle === 1) return `chaque ${jourSemaine}`;
+  if(intervalle === 2) return `un ${jourSemaine} sur deux`;
+  return `toutes les ${intervalle} semaines (${jourSemaine})`;
+}
 const cleCoche = (hid, iso) => `hf-${hid}-${iso}`;
 const habitudeFaite = (hid, iso) =>
   (db.habitudes_faites || []).some(x => x.id === cleCoche(hid, iso));
@@ -3222,7 +3264,7 @@ function vueAccueil(){
       <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
       <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
         <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
-          ${r.repete ? `<span class="puce">chaque ${r.repete === "quinzaine" ? "quinzaine" : JOURS[versDate(r.date).getDay()]}</span>` : ""}</div>
+          ${r.repete ? `<span class="puce">${texteRepete(r)}</span>` : ""}</div>
         ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div>
       <button class="ico" data-act="masquerRdvAccueil" title="Ne plus voir en Accueil" aria-label="Ne plus voir en Accueil">✕</button></div>`));
     p.anni.forEach(a => l.push(`<div class="ligne rdv-l">
@@ -5397,18 +5439,14 @@ function editerRdv(r, dateProposee){
   const base = dateProposee || jourISO();
   const x = r || { id:uid(), date:base, heure:"", intitule:"", cote:"perso", couleur:"", notes:"",
                    duree:1, repete:null, repete_fin:null, exceptions:[] };
-  const an = +x.date.slice(0,4), courant = new Date().getFullYear();
-  const annees = [];
-  for(let a = courant - 1; a <= courant + 3; a++) annees.push({ v:a, n:String(a) });
   const champs = [
     { cle:"intitule", nom:"Intitulé", ph:"Réunion, déjeuner, rendez-vous…" },
-    { cle:"jour", nom:"Jour", type:"text", mode:"numeric", duo:true },
-    { cle:"heure", nom:"Heure", type:"text", ph:"9h30" },
-    { cle:"mois", nom:"Mois", type:"select", options:MOIS.map((m,i) => ({ v:i+1, n:m })), duo:true },
-    { cle:"annee", nom:"Année", type:"select", options:annees },
-    { cle:"duree", nom:"Durée (jours)", type:"text", mode:"numeric", ph:"1", duo:true },
-    { cle:"repete", nom:"Répéter", type:"select", options:[
-        {v:"",n:"Non"},{v:"semaine",n:"Chaque semaine"},{v:"quinzaine",n:"Une semaine sur deux"}] },
+    { cle:"date", nom:"Date", type:"date", duo:true },
+    { cle:"heure", nom:"Heure", type:"text", ph:"9h30", duo:true },
+    { cle:"duree", nom:"Durée (jours)", type:"text", mode:"numeric", ph:"1" },
+    { cle:"repete_unite", nom:"Se répète", type:"select", duo:true, options:[
+        {v:"",n:"Non"},{v:"jour",n:"Tous les ... jours"},{v:"semaine",n:"Toutes les ... semaines"},{v:"annee",n:"Tous les ... ans"}] },
+    { cle:"repete_intervalle", nom:"Tous les combien", type:"text", mode:"numeric", ph:"1" },
     { cle:"repete_fin", nom:"Répéter jusqu'au", type:"date" },
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
     { cle:"couleur", nom:"Surligneur", type:"select", options:[
@@ -5423,22 +5461,25 @@ function editerRdv(r, dateProposee){
      n'utilise dans le cas normal. */
   if(x.masque_accueil) champs.push({ cle:"masque_accueil", nom:"Affichage en Accueil", type:"select",
     options:[{v:"1",n:"Masqué"},{v:"",n:"Afficher de nouveau"}] });
+  const repActuel = normaliserRepete(x.repete);
   formulaire(neuf ? "Nouveau rendez-vous" : "Modifier le rendez-vous", champs,
-    { ...x, jour:+x.date.slice(8,10), mois:+x.date.slice(5,7), annee:an, duree:x.duree || 1,
-       repete:x.repete || "", repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois"),
+    { ...x, duree:x.duree || 1,
+       repete_unite: repActuel ? repActuel.unite : "", repete_intervalle: repActuel ? repActuel.intervalle : 1,
+       repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois"),
        compte_a_rebours: x.compte_a_rebours ? "1" : "", masque_accueil: x.masque_accueil ? "1" : "" }, d => {
-    const jj = parseInt(d.jour,10), mm = +d.mois, aa = +d.annee;
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
-    const dim = new Date(aa, mm, 0).getDate();
-    if(!(jj >= 1 && jj <= dim)){ alert(`Jour invalide : ${MOIS[mm-1]} ${aa} compte ${dim} jours.`); return; }
+    if(!d.date){ alert("Il faut une date."); return; }
     const H = lireHeure(d.heure);
     if(H === null){ alert("Heure incomprise. Écrivez par exemple 9h30, 9:30 ou 930."); return; }
+    const repete = d.repete_unite
+      ? { unite: d.repete_unite, intervalle: Math.max(1, parseInt(d.repete_intervalle, 10) || 1) }
+      : null;
     Object.assign(x, {
-      date: `${aa}-${String(mm).padStart(2,"0")}-${String(jj).padStart(2,"0")}`,
+      date: d.date,
       heure: H, intitule: d.intitule, cote: d.cote, couleur: d.couleur || "", notes: d.notes,
       duree: Math.min(60, Math.max(1, parseInt(d.duree, 10) || 1)),
-      repete: d.repete || null,
-      repete_fin: d.repete ? (d.repete_fin || ajouterPeriode(x.date, 2, "mois")) : null,
+      repete,
+      repete_fin: repete ? (d.repete_fin || ajouterPeriode(x.date, 2, "mois")) : null,
       exceptions: x.exceptions || [],
       compte_a_rebours: d.compte_a_rebours === "1",
     });
