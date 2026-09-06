@@ -288,7 +288,7 @@
   .rond.futur{opacity:.3;border-style:dashed}
   @media(max-width:820px){
     .hab-entete,.hab-ligne{grid-template-columns:1fr repeat(7, 32px)}
-    .rond{width:27px;height:27px}
+    .rond{width:25px;height:25px}
   }
   .pied{margin:34px 0 0;padding-top:16px;border-top:1px solid var(--filet);display:flex;justify-content:center}
   .pied{gap:14px;align-items:baseline}
@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 156;
+const VERSION_APP = 158;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1962,7 +1962,7 @@ function nomAppareil(){
 let db = null;
 /* voirArgent et voirRevenus ne sont jamais enregistrés : à chaque ouverture, les montants sont masqués. */
 const vue = { onglet:"accueil", filtreCtx:null, filtreDoss:null, dossier:null, voirFaites:false,
-              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false, recapOuvert:false, depensesCategorieOuvert:false,
+              catDep:null, decalage:0, voirArgent:false, voirRevenus:false, toutReglees:false, recapOuvert:false, depensesCategorieOuvert:false, aVenirOuvert:false,
               moisAgenda:null, surligne:null, filtreCtxDoss:null, edt:null, rangement:false,
               filtreUrgent:false, moyen:null, semestre:null, pageListes:false, liste:null, sectionActive:null,
               filtreEtiquette:null, sectionActiveProjet:null,
@@ -3973,12 +3973,17 @@ function vueBudget(){
       <div class="outils"><button class="ico" data-act="marquerRemb" title="Retirer de l'attente">⟲</button></div></div>`; })));
   }
 
-  if(jours.length && aVenirMois.length)
-    h.push(`<div class="petit-detail" style="margin:12px 0 0">À venir sur d'autres mois :</div>
-      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:6px">${
-      aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
-        title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
-      ).join("")}</div>`);
+  if(jours.length && aVenirMois.length){
+    h.push(`<button class="oeil" data-act="basculerAVenir"
+      style="width:100%;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin-top:18px">
+      À venir sur d'autres mois ${vue.aVenirOuvert ? "▾" : "▸"}</button>`);
+    if(vue.aVenirOuvert){
+      h.push(`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">${
+        aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
+          title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
+        ).join("")}</div>`);
+    }
+  }
 
   if(b.dep.length){
     const tot = {};
@@ -6359,6 +6364,7 @@ document.addEventListener("click", ev => {
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
   if(act === "basculerRecap"){ vue.recapOuvert = !vue.recapOuvert; return rendre(); }
   if(act === "basculerDepensesCategorie"){ vue.depensesCategorieOuvert = !vue.depensesCategorieOuvert; return rendre(); }
+  if(act === "basculerAVenir"){ vue.aVenirOuvert = !vue.aVenirOuvert; return rendre(); }
   if(act === "fermerBilanAnnuel"){ vue.pageBilanAnnuel = false; return rendre(); }
   if(act === "sommeilCoucher"){
     db.sommeil = db.sommeil || [];
