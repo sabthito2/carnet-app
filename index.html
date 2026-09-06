@@ -1195,7 +1195,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 159;
+const VERSION_APP = 161;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1315,10 +1315,34 @@ function soleilPourPosition(date, lat, lng){
   const a = transitApprox_(w, lw, n);
   const Jset = transitSolaireJ_(a, M, L);
   const Jrise = Jnoon - (Jset - Jnoon);
-  return { lever: depuisJulien_(Jrise), coucher: depuisJulien_(Jset) };
+  /* Hauteur au passage au méridien : formule standard (90° moins l'écart
+     entre latitude et déclinaison du Soleil ce jour-là) — la même idée
+     que "midi solaire", utile en été pour savoir quand le soleil tape le
+     plus fort. */
+  const hauteurDeg = 90 - Math.abs(lat - dec/RAD);
+  const degres = Math.floor(hauteurDeg);
+  const minutes = Math.round((hauteurDeg - degres) * 60);
+  return { lever: depuisJulien_(Jrise), coucher: depuisJulien_(Jset), meridien: depuisJulien_(Jnoon),
+    hauteur_max: `${degres}°${String(minutes).padStart(2,"0")}′` };
 }
 function formatHeureLocale_(date){
   return `${String(date.getHours()).padStart(2,"0")}:${String(date.getMinutes()).padStart(2,"0")}`;
+}
+/* Le Soleil affiché (lever/méridien/coucher/hauteur) selon la position
+   réelle si le réglage est activé et connu, sinon les données de Paris —
+   centralisé ici pour ne pas dupliquer cette bascule à chaque endroit où
+   le Soleil est montré. */
+function soleilEffectif(donneesJour, date){
+  if(db.reglages.utiliser_position && positionActuelle){
+    const s = soleilPourPosition(date || new Date(), positionActuelle.lat, positionActuelle.lng);
+    if(s) return {
+      lever: formatHeureLocale_(s.lever),
+      meridien: formatHeureLocale_(s.meridien),
+      coucher: formatHeureLocale_(s.coucher),
+      hauteur_max: s.hauteur_max,
+    };
+  }
+  return donneesJour.soleil;
 }
 
 function ligneAstro(){
@@ -1333,11 +1357,7 @@ function ligneAstro(){
   }
   const iconeLune = svgLune(a.lune.phase, 15);
   const pictos = PLANETES_ASTRO.filter(p => a.planetes[p]?.visible).map(p => iconePlanete(p, 15)).join(" ");
-  let coucherAffiche = a.soleil.coucher || "—";
-  if(db.reglages.utiliser_position && positionActuelle){
-    const s = soleilPourPosition(new Date(), positionActuelle.lat, positionActuelle.lng);
-    if(s) coucherAffiche = formatHeureLocale_(s.coucher);
-  }
+  const coucherAffiche = soleilEffectif(a).coucher || "—";
   return `<div class="astro-pill">
     ${meteo}${meteo ? `<span class="sep">·</span>` : ""}
     <span>${SVG_SOLEIL} ${coucherAffiche}</span>
@@ -1447,11 +1467,13 @@ function vueCoherencePage(){
 function ouvrirDetailAstro(){
   const a = astroDuJour();
   if(!a) return;
+  const soleil = soleilEffectif(a);
   dlg.innerHTML = `<div class="dlg-t">Astronomie — nuit du ${dateCourte(jourISO())}</div>
     <div class="dlg-c">
-      <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
+      <p style="margin:0 0 14px">${SVG_SOLEIL} Soleil
+        <span class="petit-detail">${soleil.lever ? `↑ ${soleil.lever}` : ""}${soleil.meridien ? `  ▲ ${soleil.meridien}` : ""}${soleil.coucher ? `  ↓ ${soleil.coucher}` : ""}${soleil.hauteur_max ? `  ∠ ${soleil.hauteur_max}` : ""}</span></p>
       <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
-        ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
+        <span class="petit-detail">${a.lune.lever ? `↑ ${a.lune.lever}` : ""}${a.lune.meridien ? `  ▲ ${a.lune.meridien}` : ""}${a.lune.coucher ? `  ↓ ${a.lune.coucher}` : ""}${a.lune.hauteur_max ? `  ∠ ${a.lune.hauteur_max}` : ""}</span></p>
       <div class="fiche liste">${PLANETES_TOUTES.map(p => {
         const d = a.planetes[p] || {};
         const estTelescope = PLANETES_TELESCOPE.includes(p) || d.visible_optique;
@@ -4665,10 +4687,12 @@ function rendreAstroJour(dateISO){
   const a = astroCache.jours[dateISO];
   if(!a) return `<p class="petit-detail">Pas de données pour ce jour (hors de la période couverte par le fichier).</p>`;
   const lendemain = ajouterPeriode(dateISO, 1, "jour");
+  const soleil = soleilEffectif(a, new Date(dateISO + "T12:00:00"));
   return `<p style="font-size:13.5px;color:var(--encre-2);margin:0 0 10px">Nuit du ${dateCourte(dateISO)} au ${dateCourte(lendemain)}</p>
-    <p style="margin:0 0 6px">${SVG_SOLEIL} Soleil — lever ${a.soleil.lever || "—"}, coucher ${a.soleil.coucher || "—"}</p>
+    <p style="margin:0 0 14px">${SVG_SOLEIL} Soleil
+      <span class="petit-detail">${soleil.lever ? `↑ ${soleil.lever}` : ""}${soleil.meridien ? `  ▲ ${soleil.meridien}` : ""}${soleil.coucher ? `  ↓ ${soleil.coucher}` : ""}${soleil.hauteur_max ? `  ∠ ${soleil.hauteur_max}` : ""}</span></p>
     <p style="margin:0 0 14px">${svgLune(a.lune.phase, 15)} Lune — ${LUNE_NOMS[a.lune.phase] || "—"}
-      ${a.lune.lever ? ` · lever ${a.lune.lever}` : ""}${a.lune.coucher ? ` · coucher ${a.lune.coucher}` : ""}</p>
+      <span class="petit-detail">${a.lune.lever ? `↑ ${a.lune.lever}` : ""}${a.lune.meridien ? `  ▲ ${a.lune.meridien}` : ""}${a.lune.coucher ? `  ↓ ${a.lune.coucher}` : ""}${a.lune.hauteur_max ? `  ∠ ${a.lune.hauteur_max}` : ""}</span></p>
     <div class="fiche liste">${PLANETES_TOUTES.map(p => {
       const d = a.planetes[p] || {};
       const estTelescope = PLANETES_TELESCOPE.includes(p) || d.visible_optique;
