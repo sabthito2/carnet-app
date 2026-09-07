@@ -1196,7 +1196,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 166;
+const VERSION_APP = 167;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3935,7 +3935,10 @@ function vueBudget(){
     <button class="btn mini creux" data-periode="1">→</button>
     ${vue.decalage !== 0 ? `<button class="btn mini creux" data-periode="0">Revenir au mois en cours</button>` : ""}
   </div>`);
-  h.push(`<div style="margin:-8px 0 16px"><button class="btn mini creux" data-act="ouvrirBilanAnnuel">📅 Bilan annuel</button></div>`);
+  h.push(`<div style="margin:-8px 0 16px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn mini creux" data-act="ouvrirBilanAnnuel">📅 Bilan annuel</button>
+    <button class="btn mini creux" data-act="exporterCSVMoisComplet">Export CSV — ${ech(nomPeriode)}</button>
+  </div>`);
 
   /* ---------- 2. Ce qu'il reste ---------- */
   if(!b.revenus && !b.charges && !db.depenses.length){
@@ -4137,11 +4140,7 @@ function vueBudget(){
   const totalReel = factures.reduce((s,x) => s + x.reel, 0);
 
   const encoreDu = resteAPrelever(b.deb, b.fin);
-  if(jours.length) h.push(`<div style="margin:4px 0 -10px">
-    <button class="btn mini creux" data-act="exporterCSVBudget">Export CSV — ${ech(nomPeriode)}</button></div>`);
   h.push(`<div class="oeil">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
-  if(toutesLignes().length) h.push(`<div style="margin:-8px 0 12px">
-    <button class="btn mini creux" data-act="exporterCSVCharges">Export CSV — Charges</button></div>`);
   if(b.courante)
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${
       encoreDu > 0
@@ -6046,28 +6045,42 @@ function exporter(){
 
 /* Point-virgule et virgule décimale : c'est ce qu'Excel en français attend
    par défaut à l'ouverture directe, sans quoi les montants et les colonnes
-   s'entassent dans une seule case. Le BOM en tête évite les accents cassés. */
-function exporterCSVBudget(){
+   s'entassent dans une seule case. Le BOM en tête évite les accents cassés.
+   Un seul fichier pour tout le mois — dépenses, rentrées ponctuelles,
+   remboursements et charges — distingués par une colonne "Type", plutôt
+   que plusieurs exports séparés : un simple tri/filtre dans le tableur
+   suffit ensuite à isoler ce qu'on veut regarder (ex. l'évolution des
+   charges au fil des exports gardés de côté). */
+function exporterCSVMoisComplet(){
   const b = bilan(vue.decalage);
   const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
-  const lignes = [["Date","Catégorie","Libellé","Montant (€)","Payé par","À rembourser"]];
+  const lignes = [["Type","Date","Catégorie / Dossier","Libellé","Montant (€)"]];
+
   [...b.dep].sort((x,y) => (x.date||"").localeCompare(y.date||"")).forEach(x => {
-    lignes.push([
-      x.date || "",
-      (cdepDe(x.categorie_id)||{}).nom || "",
-      x.libelle || "",
-      String(x.montant ?? 0).replace(".", ","),
-      nomMoyen(x.moyen),
-      x.rembourser ? "Oui" : "Non",
-    ]);
+    lignes.push(["Dépense", x.date || "", (cdepDe(x.categorie_id)||{}).nom || "",
+      x.libelle || "", String(x.montant ?? 0).replace(".", ",")]);
   });
+
+  (db.rentrees||[]).filter(r => r.recu && r.date && r.date >= b.deb && r.date <= b.fin)
+    .sort((x,y) => (x.date||"").localeCompare(y.date||""))
+    .forEach(r => {
+      lignes.push([r.depense_id ? "Remboursement" : "Rentrée", r.date || "", "",
+        r.libelle || "", String(r.montant ?? 0).replace(".", ",")]);
+    });
+
+  toutesLignes().forEach(({ l, d }) => {
+    datesPrelevement(l, b.deb, b.fin).forEach(date => {
+      lignes.push(["Charge", date, d.nom, l.libelle, String(Math.round(l.montant*100)/100).replace(".", ",")]);
+    });
+  });
+
   const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
   const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
   const nomFichier = nomDeLaPeriode(vue.decalage).toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `depenses-${nomFichier}.csv`;
+  a.download = `budget-${nomFichier}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
@@ -6090,30 +6103,6 @@ function exporterCSVSommeil(){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `sommeil-${jourISO()}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-}
-
-/* Uniquement les charges (jamais les dépenses ponctuelles) : un instantané
-   de « ce que ça coûte aujourd'hui », à lancer chaque fois qu'un montant
-   change, pour se constituer soi-même un historique de prix au fil des
-   exports gardés de côté. */
-function exporterCSVCharges(){
-  const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
-  const lignes = [["Dossier","Charge","Montant","Périodicité","Équivalent mensuel"]];
-  toutesLignes().forEach(({ l, d }) => {
-    lignes.push([
-      d.nom, l.libelle,
-      String(Math.round(l.montant * 100) / 100).replace(".", ","),
-      l.periodicite,
-      String(Math.round(parMois(l) * 100) / 100).replace(".", ","),
-    ]);
-  });
-  const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
-  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `charges-${jourISO()}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
@@ -6459,7 +6448,7 @@ document.addEventListener("click", ev => {
   if(act === "nouvelleCommande") return formulaireCommande(null);
   if(act === "actualiserGoogle") return actualiserGoogle();
   if(act === "actualiserGoogleSemaine") return actualiserGoogleSemaine();
-  if(act === "exporterCSVBudget") return exporterCSVBudget();
+  if(act === "exporterCSVMoisComplet") return exporterCSVMoisComplet();
   if(act === "ouvrirBilanAnnuel"){ vue.pageBilanAnnuel = true; return rendre(); }
   if(act === "basculerRecap"){ vue.recapOuvert = !vue.recapOuvert; return rendre(); }
   if(act === "basculerDepensesCategorie"){ vue.depensesCategorieOuvert = !vue.depensesCategorieOuvert; return rendre(); }
@@ -6485,7 +6474,6 @@ document.addEventListener("click", ev => {
   if(act === "fermerSommeil"){ vue.pageSommeil = false; return rendre(); }
   if(act === "ajouterNuitManuelle") return formulaireSommeilManuel();
   if(act === "exporterCSVSommeil") return exporterCSVSommeil();
-  if(act === "exporterCSVCharges") return exporterCSVCharges();
   if(act === "viderSommeil"){
     const n = (db.sommeil||[]).length;
     if(!confirm(`Effacer tout l'historique de sommeil (${n} entrée${n>1?"s":""}) ? Pensez à exporter avant si vous voulez garder une trace — c'est définitif.`)) return;
