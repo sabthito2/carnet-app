@@ -1196,7 +1196,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 165;
+const VERSION_APP = 166;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2386,10 +2386,10 @@ function resteAPrelever(deb, fin){
   const j = jourISO();
   return toutesLignes().reduce((s, { l, d }) => {
     const dates = datesPrelevement(l, deb, fin);
-    if(dates.length) return s + l.montant * dates.filter(x => x >= j).length;
+    if(dates.length) return s + l.montant * dates.filter(x => x >= j && !chargeConfirmee(l.id, x)).length;
     if(!l.mois && PERIODES[l.periodicite] > 1){
       const p = prochaineDe(d.id);
-      if(p && p >= j && p <= fin) return s + l.montant;
+      if(p && p >= j && p <= fin && !chargeConfirmee(l.id, p)) return s + l.montant;
     }
     return s;
   }, 0);
