@@ -1074,6 +1074,7 @@ const Sync = (() => {
     db.garanties = db.garanties || [];
     db.bilans_mensuels = db.bilans_mensuels || {};
     db.coherence = db.coherence || [];
+    db.charges_confirmees = db.charges_confirmees || [];
     db.taches = db.taches.map(t => tacheNeuve(t));
     delete db.vierge;
     appliquerTeinte(); appliquerTaille(); appliquerSombre();
@@ -1195,7 +1196,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 163;
+const VERSION_APP = 165;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1773,6 +1774,7 @@ function etatNeuf(){
     garanties: [],
     bilans_mensuels: {},
     coherence: [],
+    charges_confirmees: [],
     bloc_notes: "",
     supprimes: [],
     corbeille: [],
@@ -1876,7 +1878,7 @@ function migrer(d){
    ce qui permet de réunir deux versions au lieu d'en sacrifier une. */
 const COLLECTIONS = ["taches","dossiers","depenses","revenus","rendez_vous","rentrees",
                      "habitudes","habitudes_faites","emplois","listes","sommeil","projets","commandes",
-                     "anniversaires","vacances","contextes","categories","categories_depense","moyens","garanties","coherence"];
+                     "anniversaires","vacances","contextes","categories","categories_depense","moyens","garanties","coherence","charges_confirmees"];
 
 /* Réunit deux carnets. Les ajouts des deux côtés sont conservés ; pour un
    élément modifié des deux côtés, on retient celui du carnet le plus
@@ -2151,6 +2153,24 @@ function texteRepete(r){
   return `toutes les ${intervalle} semaines (${jourSemaine})`;
 }
 const cleCoche = (hid, iso) => `hf-${hid}-${iso}`;
+/* Confirmation manuelle d'un prélèvement — optionnelle : par défaut, le
+   statut "prélevé/à venir" reste calculé automatiquement par comparaison
+   de dates (voir vueBudget). Cocher ici sert seulement à corriger le cas
+   où la banque prélève un peu avant ou après la date prévue. Même
+   mécanique que les habitudes, une par ligne de charge et par échéance
+   précise (pas une case unique pour toute l'année). */
+const cleChargeConfirmee = (ligneId, quand) => `cc-${ligneId}-${quand}`;
+const chargeConfirmee = (ligneId, quand) =>
+  (db.charges_confirmees || []).some(x => x.id === cleChargeConfirmee(ligneId, quand));
+function basculerChargeConfirmee(ligneId, quand){
+  const cle = cleChargeConfirmee(ligneId, quand);
+  const i = (db.charges_confirmees || []).findIndex(x => x.id === cle);
+  if(i >= 0){ db.charges_confirmees.splice(i, 1); oublier(cle); }
+  else {
+    db.supprimes = (db.supprimes || []).filter(x => x.id !== cle);
+    (db.charges_confirmees = db.charges_confirmees || []).push({ id:cle, ligne_id:ligneId, quand });
+  }
+}
 const habitudeFaite = (hid, iso) =>
   (db.habitudes_faites || []).some(x => x.id === cleCoche(hid, iso));
 function basculerHabitude(hid, iso){
@@ -3417,15 +3437,18 @@ function vueGrilleHabitude(){
   const cellules = semaines.map(sem => sem.map(d => {
     if(d > j) return `<div style="width:12px;height:12px"></div>`;
     const fait = habitudeFaite(hab.id, d);
-    return `<div title="${ech(dateLongue(d))}${fait?" · fait":""}" style="width:12px;height:12px;border-radius:2px;
-      background:${fait?"var(--accent)":"var(--filet)"}"></div>`;
+    return `<button data-hab="${hab.id}" data-hjour="${d}"
+      title="${ech(dateLongue(d))}${fait?" · fait":""}" aria-label="${ech(hab.nom)} ${dateLongue(d)}"
+      style="width:12px;height:12px;border-radius:2px;padding:0;border:0;cursor:pointer;
+      background:${fait?"var(--accent)":"var(--filet)"}"></button>`;
   }).join("")).join("");
 
   h.push(`<div style="overflow-x:auto;padding-bottom:10px;-webkit-overflow-scrolling:touch">
     <div style="display:inline-grid;grid-template-columns:repeat(${semaines.length},12px);
       grid-template-rows:repeat(7,12px);gap:3px;grid-auto-flow:column">${cellules}</div>
   </div>`);
-  h.push(piedAide(["Chaque carré est un jour ; les plus récents sont à droite. Faites glisser pour remonter dans le temps."]));
+  h.push(piedAide(["Chaque carré est un jour ; les plus récents sont à droite. Faites glisser pour remonter dans le temps.",
+    "Un jour manqué ? Touchez directement la case pour le corriger, même longtemps après."]));
   return h.join("");
 }
 
@@ -4136,7 +4159,8 @@ function vueBudget(){
       "Ouvrez le dossier concerné dans Suivi et ajoutez la ligne dans « Charges »."));
   else{
     h.push(enFiche(factures.map(({ l, d, mensuelle, tombe, quand, reel, lisse }) => {
-      const passe = quand && quand < j;
+      const confirmee = quand && chargeConfirmee(l.id, quand);
+      const passe = confirmee || (quand && quand < j);
       const jourAffiche = quand ? String(versDate(quand).getDate()).padStart(2,"0")
                                 : (l.jour ? String(l.jour).padStart(2,"0") : "—");
       const meta = [`<span class="puce doss">${ech(d.nom)}</span>`,
@@ -4146,7 +4170,13 @@ function vueBudget(){
         else if(l.mois) meta.push(`<span class="puce">${euro(l.montant,0)} le ${l.jour} ${MOIS[l.mois-1]}</span>`);
         else meta.push(`<span class="puce chaud">mois à préciser</span>`);
       }
-      if(quand) meta.push(`<span class="puce">${passe ? "prélevé" : "à venir"}</span>`);
+      /* Le statut prélevé/à venir se devine par défaut selon la date —
+         mais reste touchable pour le confirmer soi-même (la banque ne
+         prélève pas toujours pile le jour prévu). */
+      if(quand) meta.push(`<button type="button" class="puce ${passe ? "ctx" : ""}"
+        data-act="basculerChargeConfirmee" data-ligne="${l.id}" data-quand="${quand}"
+        title="${confirmee ? "Confirmé manuellement — toucher pour annuler" : "Toucher pour confirmer que c'est déjà prélevé"}"
+        style="border:0;cursor:pointer">${passe ? "✓ prélevé" : "à venir"}</button>`);
       return `<div class="ligne" data-dossier="${d.id}">
         <div class="jour-prel ${passe || !quand ? "passe" : ""}">${jourAffiche}</div>
         <div class="corps">
@@ -6392,6 +6422,10 @@ document.addEventListener("click", ev => {
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
   if(act === "demarrerCoherence") return demarrerCoherence();
   if(act === "allerVersCoherence"){ vue.onglet = "suivi"; vue.dossier = null; vue.pageCoherence = true; return rendre(); }
+  if(act === "basculerChargeConfirmee"){
+    basculerChargeConfirmee(b.dataset.ligne, b.dataset.quand);
+    return maj();
+  }
   if(act === "jeterCoherence"){
     const lc = trouver(c, "coherence");
     if(!lc) return;
@@ -7458,6 +7492,7 @@ document.addEventListener("visibilitychange", () => { if(!document.hidden) verif
   db.garanties = db.garanties || [];
   db.bilans_mensuels = db.bilans_mensuels || {};
   db.coherence = db.coherence || [];
+  db.charges_confirmees = db.charges_confirmees || [];
   if(typeof db.bloc_notes !== "string") db.bloc_notes = "";
   db.dossiers.forEach(d => { d.lignes = d.lignes || [];
     if(typeof d.notes === "string"){ if(d.notes.trim()) (d.mur = d.mur || []).push({ id:uid(), titre:"", texte:d.notes }); delete d.notes; }
