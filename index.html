@@ -1196,7 +1196,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 167;
+const VERSION_APP = 168;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3548,13 +3548,13 @@ function vueTaches(){
 /* ---- Échéances ---- */
 function vueEcheances(){
   const j = jourISO(), l = datees().filter(passeSphere);
-  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 10 ? 1 : n <= 90 ? 2 : 3; };
-  const noms = ["En retard","10 jours","3 mois","Plus tard"];
+  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 15 ? 1 : n <= 90 ? 2 : n <= 365 ? 3 : 4; };
+  const noms = ["En retard","15 jours","3 mois","Moins d'un an","Plus d'un an"];
   const h = [`<div class="entete-mob"><h1 class="titre">Échéances</h1><div class="jour">${dateCourte(j)}</div></div>`,
     `<div style="margin-bottom:6px"><button class="btn" data-act="nouvelleEcheance">Nouvelle échéance</button></div>`];
   const FAB = `<button class="fab" data-act="ajoutRapide" title="Nouvelle tâche" aria-label="Nouvelle tâche">+</button>`;
   if(!l.length) return h.join("") + vide("Aucune échéance") + FAB;
-  for(let s = 0; s < 4; s++){
+  for(let s = 0; s < 5; s++){
     const g = l.filter(t => seau(t) === s);
     if(g.length) h.push(groupe(noms[s], g.length, enFiche(g.map(t => ligneTache(t, { veille:true })))));
   }
