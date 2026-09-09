@@ -869,12 +869,19 @@ async function recupererMeteo(force = false){
   if(!force && dernierFetch && (maintenant - dernierFetch) < 30*60*1000) return;
   const pos = positionPourMeteo();
   try{
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lng}&current=temperature_2m,weather_code`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.lat}&longitude=${pos.lng}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum&forecast_days=1&timezone=auto`;
     const res = await fetch(url, { cache:"no-store", referrerPolicy:"no-referrer" });
     if(!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     if(!data || !data.current) throw new Error("format inattendu");
-    meteoCache = { temperature: Math.round(data.current.temperature_2m), code: data.current.weather_code };
+    meteoCache = {
+      temperature: Math.round(data.current.temperature_2m),
+      code: data.current.weather_code,
+      temp_min: data.daily ? Math.round(data.daily.temperature_2m_min[0]) : null,
+      temp_max: data.daily ? Math.round(data.daily.temperature_2m_max[0]) : null,
+      pluie: data.daily ? (data.daily.precipitation_sum[0] || 0) > 0 && (data.daily.snowfall_sum[0] || 0) === 0 : false,
+      neige: data.daily ? (data.daily.snowfall_sum[0] || 0) > 0 : false,
+    };
     meteoErreur = false;
     await Stockage.ecrire(meteoCache, "meteo");
     await Stockage.ecrire(maintenant, "meteo_dernier_fetch");
@@ -904,10 +911,15 @@ const SVG_METEO = {
   neige: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 12 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><g stroke="#A9BFC7" stroke-width="1.4" stroke-linecap="round"><line x1="8" y1="17" x2="7.3" y2="19.5"/><line x1="8" y1="19.5" x2="7.3" y2="17"/><line x1="12.5" y1="17" x2="11.8" y2="19.5"/><line x1="12.5" y1="19.5" x2="11.8" y2="17"/><line x1="17" y1="17" x2="16.3" y2="19.5"/><line x1="17" y1="19.5" x2="16.3" y2="17"/></g></svg>`,
   orage: `<svg class="ic-meteo" viewBox="0 0 24 24"><path d="M4 11 h13 a3.7 3.7 0 0 0 0-7.4 a5.3 5.3 0 0 0-10.1-1.4 a4 4 0 0 0-2.9 6.8" fill="none" stroke="#8C93A0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15 l-3 5 h3.5 l-2 4" fill="none" stroke="#D68A3C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
+const SVG_GOUTTE_PLUIE = `<svg class="ic-meteo" viewBox="0 0 24 24" width="11" height="11" style="margin-left:3px" fill="none" stroke="#5B8FB0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 C12 3 6.5 10.5 6.5 14.5 a5.5 5.5 0 0 0 11 0 C17.5 10.5 12 3 12 3 Z"/></svg>`;
+const SVG_FLOCON_NEIGE = `<svg class="ic-meteo" viewBox="0 0 24 24" width="11" height="11" style="margin-left:3px" fill="none" stroke="#8FA9C4" stroke-width="1.5" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="4" y1="7" x2="20" y2="17"/><line x1="4" y1="17" x2="20" y2="7"/><line x1="12" y1="2" x2="9.5" y2="4.5"/><line x1="12" y1="2" x2="14.5" y2="4.5"/><line x1="12" y1="22" x2="9.5" y2="19.5"/><line x1="12" y1="22" x2="14.5" y2="19.5"/></svg>`;
 function ligneMeteo(){
   if(!meteoCache) return "";
   const cat = categorieMeteo(meteoCache.code);
-  return `<span>${SVG_METEO[cat] || SVG_METEO.couvert} ${meteoCache.temperature}°</span>`;
+  const minmax = (meteoCache.temp_min != null && meteoCache.temp_max != null)
+    ? `${meteoCache.temp_min}°/${meteoCache.temp_max}°` : `${meteoCache.temperature}°`;
+  const alerte = meteoCache.neige ? SVG_FLOCON_NEIGE : meteoCache.pluie ? SVG_GOUTTE_PLUIE : "";
+  return `<span>${SVG_METEO[cat] || SVG_METEO.couvert} ${minmax}${alerte}</span>`;
 }
 
 /* =====================================================================
@@ -1196,7 +1208,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 168;
+const VERSION_APP = 169;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
