@@ -547,6 +547,8 @@
   .fiche.liste .rdv.tache{padding:10px 12px}
   .rdv.google{color:var(--encre-2);font-style:italic}
   .rdv.google b{color:var(--encre-2)}
+  .rdv.google.secondaire{color:#7A5FA8}
+  .rdv.google.secondaire b{color:#7A5FA8}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
   .anniv,.ferie,.vac{font-size:11px;color:var(--encre-3);white-space:nowrap}
   .ferie{color:var(--rouge)}
@@ -1208,7 +1210,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 169;
+const VERSION_APP = 171;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3648,7 +3650,7 @@ function vueAgenda(){
       `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)}</div>`).join("") : "";
 
     const google = cote => (cote === "pro" && googleVisible) ? evenementsGoogleDu(iso).map(g =>
-      `<div class="rdv google" title="Google Agenda — lecture seule">
+      `<div class="rdv google ${g.secondaire ? "secondaire" : ""}" title="Google Agenda — lecture seule${g.secondaire ? " (second agenda)" : ""}">
          <span>${g.heure ? `<b>${ech(g.heure)}</b> ` : ""}${ech(g.resume)}</span></div>`).join("") : "";
 
     lignes.push(`<div class="jour-l ${we?"we":""} ${horsMois?"hors":""} ${auj?"auj":""} ${vac?"envac":""}"
@@ -4940,6 +4942,13 @@ function vueReglages(){
           <input type="text" placeholder="AIza…" autocomplete="off"
             value="${ech(db.reglages.google_api_key || "")}" data-act="googleApiKey"></label>
       </div>
+      <label class="champ"><span>Second agenda (optionnel)</span>
+        <input type="text" placeholder="xxxxx@group.calendar.google.com" autocomplete="off"
+          value="${ech(db.reglages.google_calendar_id_2 || "")}" data-act="googleCalendarId2"></label>
+      <p style="margin:0 0 10px;font-size:11.5px;color:var(--encre-3)">
+        Pour un second agenda (comme "Event Int/ext") en plus du principal : dans Google Agenda,
+        survolez son nom dans "Mes agendas" → les trois points → Paramètres et partage →
+        Intégrer l'agenda → copiez l'"ID de l'agenda" (ressemble à une adresse mail).</p>
       <p style="margin:0;font-size:12.5px;color:var(--encre-3)">
         Une fois les deux renseignés, un bouton <b>G</b> apparaît dans l'Agenda : il va chercher vos
         événements du mois affiché et les montre dans la colonne Pro — uniquement quand vous appuyez
@@ -6920,6 +6929,7 @@ document.addEventListener("change", ev => {
   if(a === "jourDebut"){ db.reglages.jour_debut_mois = Math.min(28, Math.max(1, Number(ev.target.value) || 1)); maj(); }
   if(a === "googleClientId"){ db.reglages.google_client_id = ev.target.value.trim(); maj(); }
   if(a === "googleApiKey"){ db.reglages.google_api_key = ev.target.value.trim(); maj(); }
+  if(a === "googleCalendarId2"){ db.reglages.google_calendar_id_2 = ev.target.value.trim(); maj(); }
 });
 
 /* =====================================================================
@@ -6975,24 +6985,36 @@ async function recupererEvenementsGoogleMois(moisRef){
   const [an, mo] = moisRef.split("-").map(Number);
   const debut = new Date(an, mo - 1, 1);
   const fin = new Date(an, mo, 1);
-  const reponse = await window.gapi.client.calendar.events.list({
-    calendarId: "primary",
-    timeMin: debut.toISOString(),
-    timeMax: fin.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 250,
-  });
   const parJour = {};
-  (reponse.result.items || []).forEach(ev => {
-    const dateHeure = ev.start && ev.start.dateTime;
-    const iso = ((dateHeure || (ev.start && ev.start.date)) || "").slice(0, 10);
-    if(!iso) return;
-    (parJour[iso] = parJour[iso] || []).push({
-      resume: ev.summary || "(sans titre)",
-      heure: dateHeure ? dateHeure.slice(11, 16) : null,
+  /* Un agenda secondaire optionnel (ex. "Event Int/ext"), en plus du
+     principal — les deux sont interrogés et fusionnés dans le même
+     affichage, sans distinction visuelle : ce sont toutes des lignes
+     Google, en lecture seule, au même titre. */
+  const agendas = ["primary"];
+  if(db.reglages.google_calendar_id_2) agendas.push(db.reglages.google_calendar_id_2);
+  for(const calendarId of agendas){
+    let reponse;
+    try{
+      reponse = await window.gapi.client.calendar.events.list({
+        calendarId,
+        timeMin: debut.toISOString(),
+        timeMax: fin.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 250,
+      });
+    }catch(e){ continue; } /* un agenda secondaire mal renseigné ne doit pas bloquer le principal */
+    (reponse.result.items || []).forEach(ev => {
+      const dateHeure = ev.start && ev.start.dateTime;
+      const iso = ((dateHeure || (ev.start && ev.start.date)) || "").slice(0, 10);
+      if(!iso) return;
+      (parJour[iso] = parJour[iso] || []).push({
+        resume: ev.summary || "(sans titre)",
+        heure: dateHeure ? dateHeure.slice(11, 16) : null,
+        secondaire: calendarId !== "primary",
+      });
     });
-  });
+  }
   googleCache[moisRef] = parJour;
 }
 
@@ -7032,7 +7054,14 @@ async function actualiserGoogle(){
   maj();
   try{
     await authentifierGoogle();
-    await recupererEvenementsGoogleMois(vue.moisAgenda || jourISO().slice(0, 7));
+    /* Le mois affiché, plus les trois suivants d'un coup : naviguer dans
+       l'Agenda ensuite retrouve directement ce qui est déjà en mémoire,
+       sans avoir à rappuyer sur G à chaque changement de mois. */
+    const moisDepart = vue.moisAgenda || jourISO().slice(0, 7);
+    for(let i = 0; i < 4; i++){
+      const mois = ajouterPeriode(moisDepart + "-01", i, "mois").slice(0, 7);
+      await recupererEvenementsGoogleMois(mois);
+    }
     googleEtat = "connecte";
     googleVisible = true;
   }catch(e){
