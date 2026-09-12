@@ -1210,7 +1210,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 171;
+const VERSION_APP = 173;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -5717,10 +5717,6 @@ function formulaireCommande(cmd){
   });
 }
 
-const DUREES_GARANTIE = [
-  { v:6, n:"6 mois" }, { v:12, n:"1 an" }, { v:24, n:"2 ans" },
-  { v:36, n:"3 ans" }, { v:60, n:"5 ans" }, { v:120, n:"10 ans" },
-];
 /* Petite fiche à un seul champ, pour renommer un élément de liste (Listes,
    « À faire » d'un Projet) sans avoir à le supprimer puis le retaper. */
 function formulaireRenommer(titreDialogue, valeurActuelle, onSauver){
@@ -5739,11 +5735,12 @@ function formulaireGarantie(g){
   formulaire(neuf ? "Nouvelle garantie" : "Modifier la garantie", [
     { cle:"nom", nom:"Objet", ph:"Lave-linge, ordinateur…" },
     { cle:"date_achat", nom:"Date d'achat", type:"date", duo:true },
-    { cle:"duree_mois", nom:"Durée de garantie", type:"select", options:DUREES_GARANTIE },
+    { cle:"duree_mois", nom:"Durée de garantie (en mois)", type:"text", mode:"numeric", ph:"24", duo:true },
     { cle:"notes", nom:"Notes (facultatif)", type:"textarea", ph:"N° de série, référence, magasin…" },
   ], { ...x }, f => {
     if(!f.nom || !f.date_achat) return;
-    Object.assign(x, { nom:f.nom, date_achat:f.date_achat, duree_mois:+f.duree_mois || 12, notes:f.notes||"" });
+    const mois = Math.max(1, parseInt(f.duree_mois, 10) || 12);
+    Object.assign(x, { nom:f.nom, date_achat:f.date_achat, duree_mois:mois, notes:f.notes||"" });
     touche(x);
     if(neuf){ db.garanties = db.garanties || []; db.garanties.push(x); }
     maj();
@@ -5948,6 +5945,7 @@ function editerDepense(x){
     if(!x.rembourser) x.rembourse = false;
     maj();
   }, () => {
+    if(!confirm(`Supprimer la dépense « ${x.libelle || euro(x.montant,2)} » ?`)) return;
     if(x.piece_jointe) Stockage.supprimerPiece(x.piece_jointe.id);
     jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); maj();
   }, blocPieceJointe("depense", x.id, x.piece_jointe));
