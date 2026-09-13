@@ -475,6 +475,11 @@
   body.sombre .sem-e.surl-vert{background:#2F4A32}
 
   /* ---------- Semaine type ---------- */
+  .hebdo-grille{display:grid;grid-template-columns:165px 165px;gap:8px}
+  .hebdo-jour{box-sizing:border-box;background:var(--fiche);border:1px solid var(--filet);border-radius:var(--r);padding:8px}
+  .hebdo-jour.auj{border-color:var(--accent);border-width:1.5px}
+  .hebdo-jour-titre{font-weight:600;font-size:13.5px;color:var(--encre)}
+  .hebdo-jour.auj .hebdo-jour-titre{color:var(--accent)}
   .edt-cadre{overflow-x:auto;border:1px solid var(--filet);border-radius:var(--r);background:var(--fiche);padding:6px}
   .edt-grille{display:grid;gap:1px;min-width:430px;position:relative;
     grid-template-columns:34px repeat(7, minmax(52px, 1fr))}
@@ -1210,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 173;
+const VERSION_APP = 177;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3762,10 +3767,14 @@ const enMinutes = h => { const [a,b] = String(h||"0:0").split(":").map(Number); 
    rendez-vous et échéances des sept jours, et le budget en une ligne. */
 function vueSemaineCondensee(){
   const j = jourISO();
-  const sem = semaineDe(j);
-  const semSuiv = semaineDe(jourISO(new Date(versDate(sem[6]).getTime() + 86400000)));
+  const decalage = vue.decalageSemaine || 0;
+  const semaineRef = decalage === 0 ? j : ajouterPeriode(j, decalage * 7, "jour");
+  const sem = semaineDe(semaineRef);
+  const titreSemaine = decalage === 0 ? "Cette semaine"
+    : `${dateCourte(sem[0])} → ${dateCourte(sem[6])}`;
+
   const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
-    `<div class="entete-d"><h1 class="titre">Cette semaine</h1>${
+    `<div class="entete-d"><h1 class="titre">${titreSemaine}</h1>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
              title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
@@ -3774,7 +3783,12 @@ function vueSemaineCondensee(){
   if(googleEtat === "erreur" && googleMessage)
     h.push(`<p style="margin:-4px 0 14px;font-size:12.5px;color:var(--rouge)">Google Agenda : ${ech(googleMessage)}</p>`);
 
-  const blocSemaine = jours => `<div class="fiche liste">${jours.map((iso,k) => {
+  /* Grille 2 colonnes, lundi→dimanche de gauche à droite puis ligne
+     suivante (comme un vrai agenda papier) plutôt qu'une longue colonne
+     unique. Chaque case grandit librement avec son contenu — pas de
+     hauteur figée, pas de mini-calendrier à caser : s'il y a beaucoup de
+     rendez-vous un jour donné, la case s'agrandit simplement. */
+  const cellule = (iso, k) => {
     const rdv = rdvDu(iso);
     const tas = datees().filter(t => passeSphere(t) && t.date_due === iso && t.statut !== "done");
     const goog = googleVisible ? evenementsGoogleDu(iso) : [];
@@ -3782,28 +3796,27 @@ function vueSemaineCondensee(){
     const morceaux = [
       ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
-      ...goog.map(g => `<span style="font-style:italic;color:var(--encre-3)">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
+      ...goog.map(g => `<span style="font-style:italic;color:${g.secondaire ? "#7A5FA8" : "var(--encre-3)"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
-    return `<div class="ligne">
-      <div class="corps">
-        <div class="intitule">${estAuj?"<b>":""}${JOURS_EDT[k]} ${versDate(iso).getDate()}${estAuj?"</b>":""}</div>
-        ${morceaux.length
-          ? morceaux.map(m => `<div style="font-size:13.5px;color:var(--encre-3);line-height:1.4;margin-top:3px">${m}</div>`).join("")
-          : `<div class="note-min">-</div>`}
-      </div>
+    return `<div class="hebdo-jour ${estAuj ? "auj" : ""}">
+      <div class="hebdo-jour-titre">${JOURS_EDT[k]} ${versDate(iso).getDate()}</div>
+      ${morceaux.length
+        ? morceaux.map(m => `<div style="font-size:12.5px;color:var(--encre-3);line-height:1.4;margin-top:3px">${m}</div>`).join("")
+        : `<div class="note-min">-</div>`}
     </div>`;
-  }).join("")}</div>`;
+  };
 
-  h.push(blocSemaine(sem));
-  h.push(`<div class="oeil" style="margin-top:18px">Semaine prochaine</div>`);
-  h.push(blocSemaine(semSuiv));
+  h.push(`<div class="hebdo-grille">${sem.map((iso,k) => cellule(iso,k)).join("")}</div>`);
 
   h.push(piedAide([
-    "Semaine du lundi au dimanche, celle en cours puis la suivante.",
+    "Semaine du lundi au dimanche. Balayez à gauche ou à droite pour changer de semaine.",
     (db.reglages.google_client_id && db.reglages.google_api_key)
-      ? "Le bouton <b>G</b> affiche vos événements Google (en italique) pour les deux semaines ; un second clic les masque sans rien redemander." : null,
+      ? "Le bouton <b>G</b> affiche vos événements Google (en italique, en violet pour le second agenda si réglé)." : null,
   ].filter(Boolean)));
   return h.join("");
+}
+function decalerSemaineCondensee(v){
+  vue.decalageSemaine = v === 0 ? 0 : (vue.decalageSemaine || 0) + v;
 }
 
 function vueEdt(){
@@ -6296,8 +6309,8 @@ document.addEventListener("click", ev => {
     return choisirEdt(l);
   }
   if(act === "fermerEdt"){ vue.edt = null; return rendre(); }
-  if(act === "ouvrirSemaineCondensee"){ vue.semaineCondensee = true; return rendre(); }
-  if(act === "fermerSemaineCondensee"){ vue.semaineCondensee = false; return rendre(); }
+  if(act === "ouvrirSemaineCondensee"){ vue.semaineCondensee = true; vue.decalageSemaine = 0; return rendre(); }
+  if(act === "fermerSemaineCondensee"){ vue.semaineCondensee = false; vue.decalageSemaine = 0; return rendre(); }
   if(act === "ouvrirSemestre"){ vue.semestre = (vue.moisAgenda || jourISO().slice(0,7)); return rendre(); }
   if(act === "fermerSemestre"){ vue.semestre = null; return rendre(); }
   if(act === "editerEdt"){
@@ -6662,6 +6675,7 @@ document.addEventListener("click", ev => {
     }
     if(act === "rembourser") return encaisserRemboursement(x);
     if(act === "jeter"){
+      if(!confirm(`Supprimer la dépense « ${x.libelle || euro(x.montant,2)} » ?`)) return;
       if(x.piece_jointe) Stockage.supprimerPiece(x.piece_jointe.id);
       jeter("dépense", x); db.depenses = db.depenses.filter(y => y.id !== x.id); return maj();
     }
@@ -7398,7 +7412,8 @@ document.addEventListener("touchend", ev => {
   const rapide = Date.now() - toucheDebut.quand < 700;
   toucheDebut = null;
   if(rapide && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8){
-    decalerMois(dx < 0 ? 1 : -1);
+    if(vue.semaineCondensee) decalerSemaineCondensee(dx < 0 ? 1 : -1);
+    else decalerMois(dx < 0 ? 1 : -1);
     rendre();
   }
 }, { passive:true });
