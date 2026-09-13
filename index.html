@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 178;
+const VERSION_APP = 180;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3603,24 +3603,36 @@ function grilleMois(annee, mois){
   return jours;
 }
 
+/* Barre commune aux quatre vues de l'Agenda (Semaines, Emploi du temps,
+   Mois, Semestre) : un clic va directement à la vue choisie, sans repasser
+   par « Agenda ». La vue courante reste visuellement marquée. */
+function barreVuesAgenda(actuelle){
+  return `<div class="segment" style="margin-bottom:12px">
+    <button class="${actuelle==="semaine"?"actif":""}" data-act="allerVueSemaine" title="Deux semaines à la suite">7</button>
+    <button class="${actuelle==="edt"?"actif":""}" data-act="ouvrirEdt" title="Emploi du temps">▦</button>
+    <button class="${actuelle==="mois"?"actif":""}" data-act="allerVueMois" title="Vue du mois">M</button>
+    <button class="${actuelle==="semestre"?"actif":""}" data-act="ouvrirSemestre" title="Vue sur six mois">A</button>
+  </div>`;
+}
 function vueAgenda(){
   if(vue.semestre) return vueSemestre();
   if(vue.edt) return vueEdt();
-  if(vue.semaineCondensee) return vueSemaineCondensee();
+  if(vue.vueMois) return vueAgendaMois();
+  vue.semaineCondensee = true;
+  return vueSemaineCondensee();
+}
+function vueAgendaMois(){
   const j = jourISO();
   if(!vue.moisAgenda) vue.moisAgenda = j.slice(0,7);
   const [an, mo] = vue.moisAgenda.split("-").map(Number);
   const jours = grilleMois(an, mo - 1);
-  const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1><div class="jour">${dateCourte(j)}</div></div>`];
+  const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1><div class="jour">${dateCourte(j)}</div></div>`,
+    barreVuesAgenda("mois")];
 
   const navMois = `<div class="nav-mois">
     <button class="btn mini creux" data-mois="-1">←</button>
     <button class="btn mini creux" data-mois="0">Today</button>
-    <button class="btn mini creux" data-mois="1">→</button>
-    <button class="btn mini" data-act="nouveauRdv">+ Rendez-vous</button>
-    <button class="btn mini creux" data-act="ouvrirEdt" title="Emploi du temps de la semaine">▦</button>
-    <button class="btn mini creux" data-act="ouvrirSemaineCondensee" title="Cette semaine, en un coup d'œil">7</button>
-    <button class="btn mini creux" data-act="ouvrirSemestre" title="Vue sur six mois">▤</button>${
+    <button class="btn mini creux" data-mois="1">→</button>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogle"
              title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
@@ -3683,6 +3695,7 @@ function vueAgenda(){
     (db.reglages.google_client_id && db.reglages.google_api_key)
       ? "Le bouton <b>G</b> bascule : un clic affiche/rafraîchit vos événements Google du mois (Pro, en italique) ; un second clic les masque sans rien redemander à Google." : null,
   ].filter(Boolean)));
+  h.push(`<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`);
   return h.join("");
 }
 
@@ -3703,6 +3716,7 @@ function vueSemestre(){
   const lettres = ["D","L","M","M","J","V","S"];
 
   const h = [`<button class="retour" data-act="fermerSemestre">← Agenda</button>`,
+    barreVuesAgenda("semestre"),
     `<div class="nav-mois">
       <button class="btn mini creux" data-sem="-6">←</button>
       <button class="btn mini creux" data-sem="0">Now</button>
@@ -3751,6 +3765,7 @@ function vueSemestre(){
     "Les jours fériés sont en rose, les vacances portent un liseré à gauche, les week-ends sont grisés.",
     "Les anniversaires et les échéances n'y figurent pas : cette vue sert aux dates qui structurent le semestre.",
   ]));
+  h.push(`<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`);
   return h.join("");
 }
 
@@ -3769,7 +3784,7 @@ function vueSemaineCondensee(){
   const j = jourISO();
   const decalage = vue.decalageSemaine || 0;
 
-  const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
+  const h = [barreVuesAgenda("semaine"),
     `<div class="entete-d"><h1 class="titre">Semaines</h1>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
@@ -3823,6 +3838,7 @@ function vueSemaineCondensee(){
     (db.reglages.google_client_id && db.reglages.google_api_key)
       ? "Le bouton <b>G</b> affiche vos événements Google (en italique, en violet pour le second agenda si réglé)." : null,
   ].filter(Boolean)));
+  h.push(`<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`);
   return h.join("");
 }
 function decalerSemaineCondensee(v){
@@ -3843,6 +3859,7 @@ function vueEdt(){
   const rang = m => Math.min(lignes + 2, Math.max(2, Math.round((m - hDebut) / 30) + 2));
 
   const h = [`<button class="retour" data-act="fermerEdt">← Agenda</button>`,
+    barreVuesAgenda("edt"),
     `<div class="entete-d"><h1 class="titre">${ech(edt.nom)}</h1></div>`,
     `<div class="meta" style="margin:0 0 16px">
       <span class="puce date">${ech(edt.debut_journee || "08:00")} → ${ech(edt.fin_journee || "20:00")}</span>
@@ -6313,15 +6330,30 @@ document.addEventListener("click", ev => {
   if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
   if(act === "nouvelEdt") return editerEdt(null);
   if(act === "ouvrirEdt"){
+    vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false;
     const l = db.emplois || [];
     if(!l.length) return editerEdt(null);
     if(l.length === 1){ vue.edt = l[0].id; return rendre(); }
     return choisirEdt(l);
   }
   if(act === "fermerEdt"){ vue.edt = null; return rendre(); }
+  if(act === "allerVueSemaine"){
+    vue.edt = null; vue.semestre = null; vue.vueMois = false;
+    vue.semaineCondensee = true; vue.decalageSemaine = 0;
+    return rendre();
+  }
+  if(act === "allerVueMois"){
+    vue.edt = null; vue.semestre = null; vue.semaineCondensee = false;
+    vue.vueMois = true;
+    return rendre();
+  }
   if(act === "ouvrirSemaineCondensee"){ vue.semaineCondensee = true; vue.decalageSemaine = 0; return rendre(); }
   if(act === "fermerSemaineCondensee"){ vue.semaineCondensee = false; vue.decalageSemaine = 0; return rendre(); }
-  if(act === "ouvrirSemestre"){ vue.semestre = (vue.moisAgenda || jourISO().slice(0,7)); return rendre(); }
+  if(act === "ouvrirSemestre"){
+    vue.edt = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.semestre = (vue.moisAgenda || jourISO().slice(0,7));
+    return rendre();
+  }
   if(act === "fermerSemestre"){ vue.semestre = null; return rendre(); }
   if(act === "editerEdt"){
     const x = (db.emplois||[]).find(y => y.id === b.dataset.edt);
