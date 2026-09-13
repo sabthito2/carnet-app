@@ -550,8 +550,8 @@
      bords du cadre. Dans l'Agenda, la cellule du jour a déjà son propre
      padding, donc on ne touche à rien là-bas. */
   .fiche.liste .rdv.tache{padding:10px 12px}
-  .rdv.google{color:var(--encre-2);font-style:italic}
-  .rdv.google b{color:var(--encre-2)}
+  .rdv.google{color:#C2703D}
+  .rdv.google b{color:#C2703D}
   .rdv.google.secondaire{color:#7A5FA8}
   .rdv.google.secondaire b{color:#7A5FA8}
   .marques{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:1px}
@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 184;
+const VERSION_APP = 185;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3693,7 +3693,7 @@ function vueAgendaMois(){
     "Un clic sur une journée y ajoute un rendez-vous. Le bouton <b>▦</b> ouvre l'emploi du temps de la semaine.",
     "Les échéances apparaissent en gris pâle, les vacances par un liseré à gauche.",
     (db.reglages.google_client_id && db.reglages.google_api_key)
-      ? "Le bouton <b>G</b> bascule : un clic affiche/rafraîchit vos événements Google du mois (Pro, en italique) ; un second clic les masque sans rien redemander à Google." : null,
+      ? "Le bouton <b>G</b> bascule : un clic affiche/rafraîchit vos événements Google du mois (Pro, en orange, en violet pour le second agenda si réglé) ; un second clic les masque sans rien redemander à Google." : null,
   ].filter(Boolean)));
   h.push(`<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`);
   return h.join("");
@@ -3809,7 +3809,7 @@ function vueSemaineCondensee(){
     const morceaux = [
       ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
-      ...goog.map(g => `<span style="font-style:italic;color:${g.secondaire ? "#7A5FA8" : "var(--encre-3)"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
+      ...goog.map(g => `<span style="color:${g.secondaire ? "#7A5FA8" : "#C2703D"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
     return `<div class="hebdo-jour ${estAuj ? "auj" : ""}">
       <div class="hebdo-jour-titre">${JOURS_EDT[k]} ${versDate(iso).getDate()}</div>
@@ -3838,7 +3838,7 @@ function vueSemaineCondensee(){
   h.push(piedAide([
     "Deux semaines à la suite, du lundi au dimanche. Balayez à gauche ou à droite pour avancer ou reculer d'une semaine.",
     (db.reglages.google_client_id && db.reglages.google_api_key)
-      ? "Le bouton <b>G</b> affiche vos événements Google (en italique, en violet pour le second agenda si réglé)." : null,
+      ? "Le bouton <b>G</b> affiche vos événements Google (en orange, en violet pour le second agenda si réglé)." : null,
   ].filter(Boolean)));
   h.push(`<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`);
   return h.join("");
