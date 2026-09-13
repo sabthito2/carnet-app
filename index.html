@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 180;
+const VERSION_APP = 182;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3626,7 +3626,7 @@ function vueAgendaMois(){
   if(!vue.moisAgenda) vue.moisAgenda = j.slice(0,7);
   const [an, mo] = vue.moisAgenda.split("-").map(Number);
   const jours = grilleMois(an, mo - 1);
-  const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1><div class="jour">${dateCourte(j)}</div></div>`,
+  const h = [`<div class="entete-mob"><h1 class="titre">${MOIS[mo-1]} ${an}</h1></div>`,
     barreVuesAgenda("mois")];
 
   const navMois = `<div class="nav-mois">
@@ -3784,12 +3784,12 @@ function vueSemaineCondensee(){
   const j = jourISO();
   const decalage = vue.decalageSemaine || 0;
 
-  const h = [barreVuesAgenda("semaine"),
-    `<div class="entete-d"><h1 class="titre">Semaines</h1>${
+  const h = [`<div class="entete-mob"><div class="jour">${dateCourte(j)}</div>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
              title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
              ${googleEtat === "chargement" ? "…" : "G"}</button>` : ""}</div>`,
+    barreVuesAgenda("semaine"),
     `<div style="height:8px"></div>`];
   if(googleEtat === "erreur" && googleMessage)
     h.push(`<p style="margin:-4px 0 14px;font-size:12.5px;color:var(--rouge)">Google Agenda : ${ech(googleMessage)}</p>`);
@@ -6223,7 +6223,12 @@ document.addEventListener("click", ev => {
   const bArch = c.closest("[data-archiver]");
   if(bArch) return archiver(bArch.dataset.archiver);
   const bEdt = c.closest("[data-ouvriredt]");
-  if(bEdt){ if(dlg.open) dlg.close(); vue.onglet = "agenda"; vue.edt = bEdt.dataset.ouvriredt; return rendre(); }
+  if(bEdt){
+    if(dlg.open) dlg.close();
+    vue.onglet = "agenda"; vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.edt = bEdt.dataset.ouvriredt;
+    return rendre();
+  }
   const bFD = c.closest("[data-fctxdoss]");
   if(bFD){ vue.filtreCtxDoss = bFD.dataset.fctxdoss || null; return rendre(); }
   const bU = c.closest("[data-furgent]");
