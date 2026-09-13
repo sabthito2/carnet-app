@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 182;
+const VERSION_APP = 183;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3784,13 +3784,15 @@ function vueSemaineCondensee(){
   const j = jourISO();
   const decalage = vue.decalageSemaine || 0;
 
-  const h = [`<div class="entete-mob"><div class="jour">${dateCourte(j)}</div>${
-      (db.reglages.google_client_id && db.reglages.google_api_key)
-        ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
-             title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
-             ${googleEtat === "chargement" ? "…" : "G"}</button>` : ""}</div>`,
-    barreVuesAgenda("semaine"),
-    `<div style="height:8px"></div>`];
+  const h = [`<div class="entete-mob"><div class="jour">${dateCourte(j)}</div></div>`,
+    barreVuesAgenda("semaine")];
+  if(db.reglages.google_client_id && db.reglages.google_api_key)
+    h.push(`<div style="margin:-4px 0 10px">
+      <button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
+        title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
+        ${googleEtat === "chargement" ? "…" : "G"}</button></div>`);
+  else
+    h.push(`<div style="height:8px"></div>`);
   if(googleEtat === "erreur" && googleMessage)
     h.push(`<p style="margin:-4px 0 14px;font-size:12.5px;color:var(--rouge)">Google Agenda : ${ech(googleMessage)}</p>`);
 
