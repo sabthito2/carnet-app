@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 177;
+const VERSION_APP = 178;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3768,13 +3768,9 @@ const enMinutes = h => { const [a,b] = String(h||"0:0").split(":").map(Number); 
 function vueSemaineCondensee(){
   const j = jourISO();
   const decalage = vue.decalageSemaine || 0;
-  const semaineRef = decalage === 0 ? j : ajouterPeriode(j, decalage * 7, "jour");
-  const sem = semaineDe(semaineRef);
-  const titreSemaine = decalage === 0 ? "Cette semaine"
-    : `${dateCourte(sem[0])} → ${dateCourte(sem[6])}`;
 
   const h = [`<button class="retour" data-act="fermerSemaineCondensee">← Agenda</button>`,
-    `<div class="entete-d"><h1 class="titre">${titreSemaine}</h1>${
+    `<div class="entete-d"><h1 class="titre">Semaines</h1>${
       (db.reglages.google_client_id && db.reglages.google_api_key)
         ? `<button class="btn mini ${googleVisible ? "" : "creux"}" data-act="actualiserGoogleSemaine"
              title="${googleVisible ? "Masquer mes événements Google (sans redemander à Google)" : "Afficher / rafraîchir mes événements Google (Pro)"}">
@@ -3806,10 +3802,24 @@ function vueSemaineCondensee(){
     </div>`;
   };
 
-  h.push(`<div class="hebdo-grille">${sem.map((iso,k) => cellule(iso,k)).join("")}</div>`);
+  /* Deux semaines à la suite (A puis B), séparées d'un simple filet —
+     balayer avance les deux d'un cran : B devient la première affichée,
+     C apparaît en dessous. Un vrai fil continu plutôt que deux blocs
+     figés « cette semaine / semaine prochaine ». */
+  const blocSemaine = dec => {
+    const ref = dec === 0 ? j : ajouterPeriode(j, dec * 7, "jour");
+    const sem = semaineDe(ref);
+    const titre = dec === 0 ? "Cette semaine" : `${dateCourte(sem[0])} → ${dateCourte(sem[6])}`;
+    return `<div class="oeil" style="margin-bottom:8px">${titre}</div>
+      <div class="hebdo-grille">${sem.map((iso,k) => cellule(iso,k)).join("")}</div>`;
+  };
+
+  h.push(blocSemaine(decalage));
+  h.push(`<hr style="border:0;border-top:1px solid var(--filet);margin:20px 0">`);
+  h.push(blocSemaine(decalage + 1));
 
   h.push(piedAide([
-    "Semaine du lundi au dimanche. Balayez à gauche ou à droite pour changer de semaine.",
+    "Deux semaines à la suite, du lundi au dimanche. Balayez à gauche ou à droite pour avancer ou reculer d'une semaine.",
     (db.reglages.google_client_id && db.reglages.google_api_key)
       ? "Le bouton <b>G</b> affiche vos événements Google (en italique, en violet pour le second agenda si réglé)." : null,
   ].filter(Boolean)));
