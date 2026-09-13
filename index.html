@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 183;
+const VERSION_APP = 184;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -7093,10 +7093,21 @@ async function authentifierGoogle(){
     });
     googleTokenClient.__clientId = db.reglages.google_client_id;
   }
-  await new Promise((res, rej) => {
+  /* On tente toujours en silence d'abord : Google se souvient, de son
+     côté, d'une autorisation déjà accordée — indépendamment du jeton en
+     mémoire dans CETTE session précise, qui lui repart toujours à zéro à
+     chaque ouverture de l'appli. L'écran de consentement complet ne
+     devrait alors réapparaître qu'à la toute première fois, ou si l'accès
+     a été révoqué depuis. */
+  const essayer = prompt => new Promise((res, rej) => {
     googleTokenClient.callback = (resp) => resp && resp.error ? rej(resp) : res();
-    googleTokenClient.requestAccessToken({ prompt: window.gapi.client.getToken() ? "" : "consent" });
+    googleTokenClient.requestAccessToken({ prompt });
   });
+  try{
+    await essayer("");
+  }catch(e){
+    await essayer("consent");
+  }
 }
 
 async function actualiserGoogle(){
