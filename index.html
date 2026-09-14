@@ -1215,7 +1215,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 185;
+const VERSION_APP = 186;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2146,6 +2146,29 @@ function debutOccurrence(r, iso){
     return debut;
   }
 
+  if(rep.unite === "mois"){
+    /* « Tous les 27 du mois » : le jour reste fixe, le mois avance par
+       paliers de l'intervalle. Les mois n'ont pas tous le même nombre de
+       jours (31 n'existe pas partout) : on se replie alors sur le dernier
+       jour du mois visé plutôt que de sauter le mois entièrement. */
+    const [an0, mo0, jo0] = r.date.split("-").map(Number);
+    const [anIso, moIso] = iso.split("-").map(Number);
+    const total0 = an0 * 12 + (mo0 - 1);
+    const totalIso = anIso * 12 + (moIso - 1);
+    const diffMois = totalIso - total0;
+    if(diffMois < 0 || diffMois % intervalle !== 0) return null;
+    const totalCible = total0 + diffMois;
+    const anCible = Math.floor(totalCible / 12), moCible = (totalCible % 12) + 1;
+    const dernierJour = new Date(anCible, moCible, 0).getDate();
+    const jourCible = Math.min(jo0, dernierJour);
+    const debut = `${anCible}-${String(moCible).padStart(2,"0")}-${String(jourCible).padStart(2,"0")}`;
+    const ecartDepuisDebut = ecartJours(debut, iso);
+    if(ecartDepuisDebut < 0 || ecartDepuisDebut >= duree) return null;
+    if(debut > fin) return null;
+    if((r.exceptions || []).includes(debut)) return null;
+    return debut;
+  }
+
   const pas = (rep.unite === "jour" ? 1 : 7) * intervalle;
   const ecart = ecartJours(r.date, iso);
   const reste = ecart % pas;
@@ -2167,6 +2190,10 @@ function texteRepete(r){
     return intervalle === 1 ? "chaque jour" : `tous les ${intervalle} jours`;
   if(rep.unite === "annee")
     return intervalle === 1 ? `chaque année (${dateCourte(r.date)})` : `tous les ${intervalle} ans (${dateCourte(r.date)})`;
+  if(rep.unite === "mois"){
+    const jourDuMois = +r.date.slice(8,10);
+    return intervalle === 1 ? `chaque mois (le ${jourDuMois})` : `tous les ${intervalle} mois (le ${jourDuMois})`;
+  }
   if(intervalle === 1) return `chaque ${jourSemaine}`;
   if(intervalle === 2) return `un ${jourSemaine} sur deux`;
   return `toutes les ${intervalle} semaines (${jourSemaine})`;
@@ -3803,10 +3830,12 @@ function vueSemaineCondensee(){
      rendez-vous un jour donné, la case s'agrandit simplement. */
   const cellule = (iso, k) => {
     const rdv = rdvDu(iso);
+    const anni = anniDu(iso);
     const tas = datees().filter(t => passeSphere(t) && t.date_due === iso && t.statut !== "done");
     const goog = googleVisible ? evenementsGoogleDu(iso) : [];
     const estAuj = iso === j;
     const morceaux = [
+      ...anni.map(a => `${iconeAnniv(a)} ${ech(a.nom)}`),
       ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
       ...goog.map(g => `<span style="color:${g.secondaire ? "#7A5FA8" : "#C2703D"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
@@ -5537,7 +5566,8 @@ function editerRdv(r, dateProposee){
     { cle:"heure", nom:"Heure", type:"text", ph:"9h30", duo:true },
     { cle:"duree", nom:"Durée (jours)", type:"text", mode:"numeric", ph:"1" },
     { cle:"repete_unite", nom:"Se répète", type:"select", duo:true, options:[
-        {v:"",n:"Non"},{v:"jour",n:"Tous les ... jours"},{v:"semaine",n:"Toutes les ... semaines"},{v:"annee",n:"Tous les ... ans"}] },
+        {v:"",n:"Non"},{v:"jour",n:"Tous les ... jours"},{v:"semaine",n:"Toutes les ... semaines"},
+        {v:"mois",n:"Tous les ... mois"},{v:"annee",n:"Tous les ... ans"}] },
     { cle:"repete_intervalle", nom:"Tous les combien", type:"text", mode:"numeric", ph:"1" },
     { cle:"repete_fin", nom:"Répéter jusqu'au", type:"date" },
     { cle:"cote", nom:"Côté", type:"select", options:[{v:"perso",n:"Perso"},{v:"pro",n:"Pro"}], duo:true },
