@@ -1216,7 +1216,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 189;
+const VERSION_APP = 190;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3837,7 +3837,7 @@ function vueSemaineCondensee(){
     const estAuj = iso === j;
     const morceaux = [
       ...anni.map(a => `${iconeAnniv(a)} ${ech(a.nom)}`),
-      ...rdv.map(r => `${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}`),
+      ...rdv.map(r => `<span data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier" style="cursor:pointer">${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}</span>`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
       ...goog.map(g => `<span style="color:${g.secondaire ? "#7A5FA8" : "#C2703D"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
