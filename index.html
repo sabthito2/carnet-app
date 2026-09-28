@@ -1220,7 +1220,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 192;
+const VERSION_APP = 193;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4214,7 +4214,12 @@ function vueBudget(){
     }
   }
 
-  const rentrees = [...(db.rentrees||[])].sort((a,c) =>
+  /* Une rentrée déjà encaissée n'appartient qu'au mois où elle l'a été : on ne
+     la voit plus dans les mois suivants. Celles encore « à venir » restent
+     visibles quel que soit le mois affiché — elles n'ont pas de mois tant
+     qu'elles ne sont pas arrivées. */
+  const dansPeriode = r => !r.recu || !r.date || (r.date >= b.deb && r.date <= b.fin);
+  const rentrees = (db.rentrees||[]).filter(dansPeriode).sort((a,c) =>
     (a.recu?1:0) - (c.recu?1:0) || (a.date||"9").localeCompare(c.date||"9"));
   h.push(`<div class="oeil">Rentrées ponctuelles${b.attendues ? `<span class="a-droite">${euro(b.attendues,0)} à venir</span>` : ""}</div>`);
   h.push(rentrees.length ? enFiche(rentrees.map(r => {
@@ -4234,7 +4239,7 @@ function vueBudget(){
       <div class="outils"><button class="ico" data-act="editer">✎</button>
         <button class="ico sup" data-act="jeter">✕</button></div></div>`;
   }))
-    : vide("Aucune rentrée"));
+    : vide("Aucune rentrée ce mois-ci"));
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
   /* ---------- 6. Factures et abonnements : une seule liste ---------- */
