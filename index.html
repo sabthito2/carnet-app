@@ -244,6 +244,7 @@
   .barre-cat .tige{flex:1;height:9px;background:var(--fiche-2);border-radius:2px;overflow:hidden}
   .barre-cat .tige i{display:block;height:100%;background:var(--accent);opacity:.75}
   .barre-cat .v{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;flex:none;color:var(--encre-2)}
+  .mention-remb{font-size:11px;color:var(--encre-3);padding:0 12px 5px;margin-top:-4px}
   .sync{cursor:pointer;font-size:15px;vertical-align:-1px;letter-spacing:0;padding:0 2px}
   .sync .heure{font-size:12px;letter-spacing:.02em;margin-left:2px}
   .sync.ok{color:var(--vert)}
@@ -453,10 +454,13 @@
   .sem-case{display:flex;gap:5px;align-items:flex-start;min-height:19px;padding:1px 4px;
     border-top:1px solid var(--fiche-2);cursor:pointer}
   .sem-case.hors{background:var(--papier);border-top-color:var(--papier);cursor:default}
+  .barre-fait,.barre-fait *{text-decoration:line-through;opacity:.6}
   .sem-case.we{background:var(--fiche-2)}
+  .sem-case.lundi{border-top:2px solid var(--encre-2)}
   .sem-case.ferie{background:#F7E2E9}
   body.sombre .sem-case.ferie{background:#4A2530}
-  .sem-case.vac{box-shadow:inset 3px 0 0 var(--accent)}
+  .sem-case.vac .sem-jour{background:#F7C6D6;border-radius:3px;color:var(--encre)}
+  body.sombre .sem-case.vac .sem-jour{background:#7A3550;color:#fff}
   .sem-case.auj{background:var(--accent-pale)}
   .sem-case.auj .sem-jour{color:var(--accent);font-weight:700}
   .sem-jour{font-family:var(--mono);font-size:9.5px;color:var(--encre-3);width:20px;flex:none;
@@ -1216,7 +1220,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 190;
+const VERSION_APP = 192;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2449,6 +2453,15 @@ const depensesDe = (deb, fin) => db.depenses.filter(x => x.date >= deb && x.date
 const enAttenteRemb = () => db.depenses.filter(x => x.rembourser && !x.rembourse)
                               .sort((a,b) => a.date.localeCompare(b.date));
 const sommeDep = l => l.reduce((s,x) => s + (x.montant || 0), 0);
+/* Ce qui est déjà revenu d'une dépense : les remboursements ENCAISSÉS qui lui
+   sont rattachés. Tant qu'un remboursement est « à venir », la dépense garde
+   son montant plein (mieux vaut une bonne surprise qu'un chiffre trop
+   optimiste). Le net sert à lire où part vraiment l'argent, par catégorie ;
+   le solde, lui, n'en dépend pas : il compte déjà la dépense pleine et le
+   remboursement à part, ce qui donne le même résultat. */
+const rembourseDe = x => Math.min(x.montant || 0,
+  (db.rentrees || []).filter(r => r.depense_id === x.id && r.recu).reduce((s,r) => s + (r.montant || 0), 0));
+const montantNet = x => (x.montant || 0) - rembourseDe(x);
 
 function bilan(decalage = 0){
   const deb = debutPeriode(decalage), fin = finPeriode(deb), j = jourISO();
@@ -3329,7 +3342,7 @@ function vueAccueil(){
         <div class="meta"><span class="puce chaud">jour férié</span></div></div></div>`);
     p.rdv.forEach(r => l.push(`<div class="ligne rdv-l" data-rdv="${r.id}" data-rdvjour="${p.iso}" data-act="editerRdv">
       <div class="heure-c">${r.heure ? ech(r.heure) : ((r.duree||1) > 1 ? rangRdv(r, p.iso) + "/" + r.duree : "—")}</div>
-      <div class="corps"><div class="intitule"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
+      <div class="corps"><div class="intitule ${r.barre ? "barre-fait" : ""}"><span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${ech(r.intitule)}</span></div>
         <div class="meta"><span class="puce ${(r.cote||"perso")==="pro"?"":"ctx"}">${(r.cote||"perso")==="pro"?"Pro":"Perso"}</span>
           ${r.repete ? `<span class="puce">${texteRepete(r)}</span>` : ""}</div>
         ${r.notes ? `<div class="note-rdv">${ech(r.notes)}</div>` : ""}</div>
@@ -3684,7 +3697,7 @@ function vueAgendaMois(){
     if(ferie) marques.push(`<span class="ferie">${ech(ferie)}</span>`);
 
     const bloc = cote => rdvDu(iso).filter(r => (r.cote || "perso") === cote).map(r =>
-      `<div class="rdv" data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier">
+      `<div class="rdv ${r.barre ? "barre-fait" : ""}" data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier">
          <span class="${r.couleur ? "surl surl-" + r.couleur : ""}">${
            (r.duree || 1) > 1 ? `<i class="jalon">${rangRdv(r, iso)}/${r.duree}</i> ` : ""
          }${r.heure && rangRdv(r, iso) === 1 ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}${
@@ -3764,6 +3777,7 @@ function vueSemestre(){
       const rdv = rdvDu(iso);
       const classes = ["sem-case"];
       if(we) classes.push("we");
+      if(dow === 1) classes.push("lundi");
       if(ferie) classes.push("ferie");
       if(vac) classes.push("vac");
       if(iso === j) classes.push("auj");
@@ -3777,7 +3791,7 @@ function vueSemestre(){
              rend la lecture d'ensemble plus difficile. Seul l'italique
              « carnet de bord » n'est pas une couleur : il reste appliqué. */
           const classeCouleur = r.couleur && (!estPro || r.couleur === "carnet") ? "surl-" + r.couleur : "";
-          return `<b class="sem-e ${estPro ? "pro" : "perso"} ${classeCouleur}"
+          return `<b class="sem-e ${estPro ? "pro" : "perso"} ${classeCouleur} ${r.barre ? "barre-fait" : ""}"
              data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv">${ech(r.intitule)}</b>`;
         }).join("")}</span>
       </div>`);
@@ -3837,7 +3851,7 @@ function vueSemaineCondensee(){
     const estAuj = iso === j;
     const morceaux = [
       ...anni.map(a => `${iconeAnniv(a)} ${ech(a.nom)}`),
-      ...rdv.map(r => `<span data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier" style="cursor:pointer">${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}</span>`),
+      ...rdv.map(r => `<span class="${r.barre ? "barre-fait" : ""}" data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier" style="cursor:pointer">${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}</span>`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
       ...goog.map(g => `<span style="color:${g.secondaire ? "#7A5FA8" : "#C2703D"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
@@ -4162,15 +4176,23 @@ function vueBudget(){
   }
 
   if(b.dep.length){
-    const tot = {};
-    b.dep.forEach(x => tot[x.categorie_id || "?"] = (tot[x.categorie_id || "?"] || 0) + x.montant);
+    /* Net des remboursements encaissés : « Santé 5 € » plutôt que 40 € avancés
+       dont 35 € déjà revenus. La part remboursée reste mentionnée en petit. */
+    const tot = {}, remb = {};
+    b.dep.forEach(x => {
+      const c = x.categorie_id || "?";
+      tot[c] = (tot[c] || 0) + montantNet(x);
+      remb[c] = (remb[c] || 0) + rembourseDe(x);
+    });
     const lignes = Object.entries(tot).sort((a,c) => c[1] - a[1]);
-    const max = lignes[0][1];
+    const max = lignes[0][1] || 1;
+    const mentionRemb = id => remb[id] > 0
+      ? `<div class="mention-remb">dont ${euro(remb[id],2)} remboursés</div>` : "";
     h.push(`<div class="oeil">Répartition</div><div class="fiche" style="padding:6px 0">
       ${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
-        <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
+        <span class="v">${euro(v,0)}</span></div>${mentionRemb(id)}`).join("")}</div>`);
 
     /* Un seul accordéon, comme le "Récap" plus haut : un clic déplie
        toutes les catégories d'un coup (pas un accordéon par catégorie). */
@@ -4184,8 +4206,9 @@ function vueBudget(){
         return `<div class="oeil" style="margin-top:12px;font-size:12.5px">${ech(cdepDe(id)?.nom || "Sans catégorie")}<span class="a-droite">${euro(v,0)}</span></div>
         <div class="fiche liste">${depensesCat.map(x => `<div class="ligne">
           <div class="corps"><div class="intitule">${ech(x.libelle) || (cdepDe(x.categorie_id)?.nom) || "Dépense"}</div>
-            <div class="meta"><span class="puce date">${dateCourte(x.date)}</span></div></div>
-          <div class="somme">${euro(x.montant,2)}</div>
+            <div class="meta"><span class="puce date">${dateCourte(x.date)}</span>${
+              rembourseDe(x) > 0 ? `<span class="puce">avancé ${euro(x.montant,2)} · remboursé ${euro(rembourseDe(x),2)}</span>` : ""}</div></div>
+          <div class="somme">${euro(montantNet(x),2)}</div>
         </div>`).join("")}</div>`;
       }).join(""));
     }
@@ -4194,16 +4217,23 @@ function vueBudget(){
   const rentrees = [...(db.rentrees||[])].sort((a,c) =>
     (a.recu?1:0) - (c.recu?1:0) || (a.date||"9").localeCompare(c.date||"9"));
   h.push(`<div class="oeil">Rentrées ponctuelles${b.attendues ? `<span class="a-droite">${euro(b.attendues,0)} à venir</span>` : ""}</div>`);
-  h.push(rentrees.length ? enFiche(rentrees.map(r => `<div class="ligne" data-rentree="${r.id}">
+  h.push(rentrees.length ? enFiche(rentrees.map(r => {
+    /* Un remboursement rappelle la dépense d'origine (montant avancé), pour
+       voir d'un coup d'œil ce qui a été avancé et ce qui est revenu — si la
+       dépense n'existe plus (supprimée depuis), on n'affiche simplement rien. */
+    const depInit = r.depense_id ? (db.depenses || []).find(d => d.id === r.depense_id) : null;
+    return `<div class="ligne" data-rentree="${r.id}">
       <div class="cases"><button class="case carre ${r.recu?"coche":""}" data-act="encaisser"
         title="${r.recu?"Encaissé":"Marquer comme encaissé"}" aria-label="Encaisser">${CHECK}</button></div>
       <div class="corps"><div class="intitule">${ech(r.libelle)}</div>
         <div class="meta">${r.recu
           ? `<span class="puce date">encaissé le ${dateCourte(r.date)}</span>`
-          : `<span class="puce ctx">${r.date ? "prévu le " + dateCourte(r.date) : "à venir"}</span>`}</div></div>
+          : `<span class="puce ctx">${r.date ? "prévu le " + dateCourte(r.date) : "à venir"}</span>`}${
+          depInit ? `<span class="puce">dépense initiale : ${euro(depInit.montant,2)}</span>` : ""}</div></div>
       <div class="somme">${r.montant == null ? "?" : euro(r.montant,2)}</div>
       <div class="outils"><button class="ico" data-act="editer">✎</button>
-        <button class="ico sup" data-act="jeter">✕</button></div></div>`))
+        <button class="ico sup" data-act="jeter">✕</button></div></div>`;
+  }))
     : vide("Aucune rentrée"));
   h.push(`<div style="margin:9px 0 14px"><button class="btn mini creux" data-act="nouvelleRentree">Ajouter une rentrée</button></div>`);
 
@@ -4286,6 +4316,7 @@ function vueBudget(){
     "Une facture annuelle est étalée sur douze mois ; le mois où elle tombe, elle est aussi retirée en entier — comptée deux fois par sécurité, modifiable dans Réglages.",
     "Une dépense en <b>espèces</b> n'est pas recomptée : elle a déjà été décomptée au retrait. Elle sert à savoir où l'argent est parti.",
     "Une dépense <b>à rembourser</b> est bien retirée du solde, comme n'importe quelle dépense — le montant « avancé » affiché est juste un repère, pas un ajout au solde. Le solde remonte seulement une fois le remboursement encaissé.",
+    "<b>Répartition</b> et <b>Dépenses par catégorie</b> montrent le coût réel : le montant avancé moins ce qui a été remboursé et encaissé, avec la part remboursée en petit. Un remboursement encore « à venir » n'est pas déduit.",
   ]));
   h.push(`<button class="fab" data-act="depenseRapide" title="Nouvelle dépense" aria-label="Nouvelle dépense">+</button>`);
   return h.join("");
@@ -5577,6 +5608,8 @@ function editerRdv(r, dateProposee){
         {v:"carnet",n:"Carnet de bord (italique)"}] },
     { cle:"compte_a_rebours", nom:"Compte à rebours en Accueil", type:"select",
       options:[{v:"",n:"Non"},{v:"1",n:"Oui"}] },
+    { cle:"barre", nom:"Statut", type:"select",
+      options:[{v:"",n:"Prévu"},{v:"1",n:"Barré (prévu, mais pas fait)"}] },
     { cle:"notes", nom:"Notes", type:"textarea" },
   ];
   /* Ce champ ne s'affiche que si l'événement est déjà masqué en Accueil —
@@ -5589,7 +5622,7 @@ function editerRdv(r, dateProposee){
     { ...x, duree:x.duree || 1,
        repete_unite: repActuel ? repActuel.unite : "", repete_intervalle: repActuel ? repActuel.intervalle : 1,
        repete_fin:x.repete_fin || ajouterPeriode(x.date, 2, "mois"),
-       compte_a_rebours: x.compte_a_rebours ? "1" : "", masque_accueil: x.masque_accueil ? "1" : "" }, d => {
+       compte_a_rebours: x.compte_a_rebours ? "1" : "", barre: x.barre ? "1" : "", masque_accueil: x.masque_accueil ? "1" : "" }, d => {
     if(!d.intitule){ alert("Il faut un intitulé."); return; }
     if(!d.date){ alert("Il faut une date."); return; }
     const H = lireHeure(d.heure);
@@ -5605,6 +5638,7 @@ function editerRdv(r, dateProposee){
       repete_fin: repete ? (d.repete_fin || ajouterPeriode(x.date, 2, "mois")) : null,
       exceptions: x.exceptions || [],
       compte_a_rebours: d.compte_a_rebours === "1",
+      barre: d.barre === "1",
     });
     if("masque_accueil" in d) x.masque_accueil = d.masque_accueil === "1";
     touche(x);
