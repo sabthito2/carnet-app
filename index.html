@@ -1220,7 +1220,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 193;
+const VERSION_APP = 194;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4065,7 +4065,8 @@ function vueBudget(){
       <div class="cpt-filet"></div>
       ${ligne("Dépenses du mois", euro(b.depense,0), b.especes > 0 ? `+ ${euro(b.especes,0)} en espèces, déjà décomptés` : "")}
       <div class="cpt-filet"></div>
-      ${ligne("Budget initial", euro(b.disponible,0))}
+      ${ligne("Budget initial", euro(b.disponible,0),
+              b.encaissees > 0 ? `dont ${euro(b.encaissees,0)} de rentrées ponctuelles` : "")}
       ${ligne("Charges retirées", euro(b.charges,0))}
     </div>`);
   }
