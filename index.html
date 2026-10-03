@@ -245,6 +245,11 @@
   .barre-cat .tige i{display:block;height:100%;background:var(--accent);opacity:.75}
   .barre-cat .v{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;flex:none;color:var(--encre-2)}
   .mention-remb{font-size:11px;color:var(--encre-3);padding:0 12px 5px;margin-top:-4px}
+  .sous-cats{padding:0 12px 6px;margin-top:-3px}
+  .sous-cats .sc{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:1px 0 1px 10px;font-size:12px;color:var(--encre-2)}
+  .sous-cats .sc-d{display:inline-block;width:2.9em;color:var(--encre-3)}
+  .sous-cats .sc-v{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--encre-2)}
+  .sous-filtres{flex-basis:100%;display:flex;flex-wrap:wrap;gap:2px 16px;padding:6px 0 2px 10px;border-left:2px solid var(--filet)}
   .sync{cursor:pointer;font-size:15px;vertical-align:-1px;letter-spacing:0;padding:0 2px}
   .sync .heure{font-size:12px;letter-spacing:.02em;margin-left:2px}
   .sync.ok{color:var(--vert)}
@@ -1220,7 +1225,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 194;
+const VERSION_APP = 195;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2060,6 +2065,37 @@ const ctxDe  = id => db.contextes.find(c => c.id === id) || null;
 const dossDe = id => db.dossiers.find(d => d.id === id) || null;
 const catDe  = id => db.categories.find(c => c.id === id) || null;
 const cdepDe = id => db.categories_depense.find(c => c.id === id) || null;
+/* Sous-catégories de dépense : une catégorie peut avoir un « parent »
+   (Courses › Boulangerie). Un seul niveau — une sous-catégorie n'a pas
+   d'enfants. Si le parent a disparu, la sous-catégorie redevient simplement
+   une catégorie principale, rien ne se perd. */
+const parentCdep = c => (c && c.parent_id && c.parent_id !== c.id) ? cdepDe(c.parent_id) : null;
+const racineCdep = id => { const p = parentCdep(cdepDe(id)); return p ? p.id : id; };
+const enfantsCdep = id => db.categories_depense.filter(c => c.parent_id === id && c.id !== id);
+const nomCdep = id => { const c = cdepDe(id); if(!c) return null; const p = parentCdep(c); return p ? `${p.nom} › ${c.nom}` : c.nom; };
+const cdepOrdonnees = () => db.categories_depense.filter(c => !parentCdep(c))
+  .flatMap(p => [p, ...enfantsCdep(p.id)]);
+/* Regroupe des dépenses par catégorie principale, avec le détail par
+   sous-catégorie pour les lignes « dont … ». Ce qui est rangé directement
+   dans la catégorie principale (sans sous-catégorie) devient « autres ». */
+function repartitionCdep(deps, montant){
+  const tot = {}, sous = {};
+  deps.forEach(x => {
+    const id = x.categorie_id || "?", r = racineCdep(id), v = montant(x);
+    tot[r] = (tot[r] || 0) + v;
+    const cle = r === id ? "_autres" : id;
+    (sous[r] = sous[r] || {})[cle] = (sous[r][cle] || 0) + v;
+  });
+  return { lignes: Object.entries(tot).sort((a,b) => b[1] - a[1]), sous };
+}
+function htmlSousCdep(sousRacine){
+  const entrees = Object.entries(sousRacine || {}).filter(([,v]) => v > 0);
+  if(!entrees.some(([k]) => k !== "_autres")) return "";   /* aucune sous-catégorie utilisée : rien à détailler */
+  entrees.sort((a,b) => (a[0] === "_autres") - (b[0] === "_autres") || b[1] - a[1]);
+  return `<div class="sous-cats">${entrees.map(([k,v],i) => `<div class="sc">
+    <span class="sc-n"><span class="sc-d">${i === 0 ? "dont " : ""}</span>${k === "_autres" ? "autres" : ech(cdepDe(k)?.nom || "?")}</span>
+    <span class="sc-v">${euro(v,0)}</span></div>`).join("")}</div>`;
+}
 
 /* ---- Règles d'affichage des tâches ---- */
 const mure = (t, j = jourISO()) => !t.date_due || ecartJours(j, t.date_due) <= (t.preavis || 0);
@@ -2516,8 +2552,9 @@ function calculerBilanAnnuel(anBase){
   const { deb, fin } = periodeBilanAnnuel(anBase);
   const dep = (db.depenses||[]).filter(x => x.date >= deb && x.date <= fin);
   const total = dep.reduce((s,x) => s + (x.montant||0), 0);
-  const parCategorie = {};
-  dep.forEach(x => parCategorie[x.categorie_id || "?"] = (parCategorie[x.categorie_id || "?"] || 0) + x.montant);
+  /* Par catégorie principale, avec le détail par sous-catégorie. */
+  const repCat = repartitionCdep(dep, x => x.montant || 0);
+  const parCategorie = Object.fromEntries(repCat.lignes), sousCategories = repCat.sous;
   const parMois = {};
   dep.forEach(x => parMois[x.date.slice(0,7)] = (parMois[x.date.slice(0,7)] || 0) + x.montant);
   const moisTries = Object.entries(parMois).sort((a,b) => b[1] - a[1]);
@@ -2544,7 +2581,7 @@ function calculerBilanAnnuel(anBase){
       mo++; if(mo > 12){ mo = 1; an++; }
     }
   }
-  return { deb, fin, dep, total, parCategorie, moisTries, rentrees, totalRentrees, tachesFaites, parMoisFige };
+  return { deb, fin, dep, total, parCategorie, sousCategories, moisTries, rentrees, totalRentrees, tachesFaites, parMoisFige };
 }
 
 /* =====================================================================
@@ -2612,7 +2649,14 @@ function dedoublonner(){
   const aCat = passe("categories", nom);
   db.dossiers.forEach(d => { if(aCat[d.categorie_id]) d.categorie_id = aCat[d.categorie_id]; });
 
-  const aCdep = passe("categories_depense", nom);
+  /* Deux sous-catégories de même nom sous des parents différents (« Divers »
+     dans Courses et dans Transport) ne sont pas des doublons : la clé inclut
+     le nom du parent. */
+  const aCdep = passe("categories_depense", x => {
+    const p = x.parent_id ? (db.categories_depense || []).find(c => c.id === x.parent_id) : null;
+    return (p ? nom(p) + "›" : "") + nom(x);
+  });
+  db.categories_depense.forEach(c => { if(c.parent_id && aCdep[c.parent_id]) c.parent_id = aCdep[c.parent_id]; });
   db.depenses.forEach(x => { if(aCdep[x.categorie_id]) x.categorie_id = aCdep[x.categorie_id]; });
 
   return touche;
@@ -3022,11 +3066,20 @@ function ouvrirDepenseRapide(){
   /* Catégorie « Courses » et carte par défaut : ce sont les deux réponses
      les plus fréquentes, autant les proposer déjà cochées. */
   if(!vue.catDep){
-    const courses = db.categories_depense.find(c => sansAccents(c.nom).startsWith("course"));
+    const courses = db.categories_depense.find(c => !parentCdep(c) && sansAccents(c.nom).startsWith("course"));
     if(courses) vue.catDep = courses.id;
   }
-  const chips = () => db.categories_depense.map(c =>
-    `<button class="filtre ${vue.catDep===c.id?"on":""}" data-catdep="${c.id}">${ech(c.nom)}</button>`).join("");
+  /* Les catégories principales d'abord ; dès qu'on en touche une qui a des
+     sous-catégories, elles apparaissent sur une seconde ligne. Rester sur la
+     principale seule reste possible (rangé alors dans « autres »). */
+  const chips = () => {
+    const actif = vue.catDep ? racineCdep(vue.catDep) : null;
+    const principales = db.categories_depense.filter(c => !parentCdep(c)).map(c =>
+      `<button class="filtre ${actif===c.id?"on":""}" data-catdep="${c.id}">${ech(c.nom)}</button>`).join("");
+    const enfants = actif ? enfantsCdep(actif) : [];
+    return principales + (enfants.length ? `<div class="sous-filtres">${enfants.map(c =>
+      `<button class="filtre ${vue.catDep===c.id?"on":""}" data-catdep="${c.id}">${ech(c.nom)}</button>`).join("")}</div>` : "");
+  };
   const moyens = () => (db.moyens||[]).map(m =>
     `<button class="filtre ${(vue.moyen||MOYEN_DEFAUT)===m.id?"on":""}" data-moyeneclair="${m.id}">${ech(m.nom)}</button>`).join("");
   dlg.innerHTML = `<div class="dlg-c" style="padding:14px 15px">
@@ -3994,7 +4047,7 @@ function vueBilanAnnuel(){
       <div class="fiche" style="padding:6px 0">${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
-        <span class="v">${euro(v,0)}</span></div>`).join("")}</div>`);
+        <span class="v">${euro(v,0)}</span></div>${htmlSousCdep((r.sousCategories || {})[id])}`).join("")}</div>`);
   }
 
   h.push(`<div class="oeil" style="margin-top:18px">Charges et solde, mois par mois</div>`);
@@ -4179,21 +4232,20 @@ function vueBudget(){
   if(b.dep.length){
     /* Net des remboursements encaissés : « Santé 5 € » plutôt que 40 € avancés
        dont 35 € déjà revenus. La part remboursée reste mentionnée en petit. */
-    const tot = {}, remb = {};
-    b.dep.forEach(x => {
-      const c = x.categorie_id || "?";
-      tot[c] = (tot[c] || 0) + montantNet(x);
-      remb[c] = (remb[c] || 0) + rembourseDe(x);
-    });
-    const lignes = Object.entries(tot).sort((a,c) => c[1] - a[1]);
+    /* Par catégorie principale, en net des remboursements encaissés, avec le
+       détail « dont … » par sous-catégorie. */
+    const rep = repartitionCdep(b.dep, montantNet);
+    const remb = {};
+    b.dep.forEach(x => { const r = racineCdep(x.categorie_id || "?"); remb[r] = (remb[r] || 0) + rembourseDe(x); });
+    const lignes = rep.lignes;
     const max = lignes[0][1] || 1;
     const mentionRemb = id => remb[id] > 0
-      ? `<div class="mention-remb">dont ${euro(remb[id],2)} remboursés</div>` : "";
+      ? `<div class="mention-remb">${euro(remb[id],2)} remboursés, déjà déduits</div>` : "";
     h.push(`<div class="oeil">Répartition</div><div class="fiche" style="padding:6px 0">
       ${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
-        <span class="v">${euro(v,0)}</span></div>${mentionRemb(id)}`).join("")}</div>`);
+        <span class="v">${euro(v,0)}</span></div>${htmlSousCdep(rep.sous[id])}${mentionRemb(id)}`).join("")}</div>`);
 
     /* Un seul accordéon, comme le "Récap" plus haut : un clic déplie
        toutes les catégories d'un coup (pas un accordéon par catégorie). */
@@ -4202,12 +4254,13 @@ function vueBudget(){
       Dépenses par catégorie ${vue.depensesCategorieOuvert ? "▾" : "▸"}</button>`);
     if(vue.depensesCategorieOuvert){
       h.push(lignes.map(([id,v]) => {
-        const depensesCat = b.dep.filter(x => (x.categorie_id || "?") === id)
+        const depensesCat = b.dep.filter(x => racineCdep(x.categorie_id || "?") === id)
           .sort((a,c) => c.date.localeCompare(a.date));
         return `<div class="oeil" style="margin-top:12px;font-size:12.5px">${ech(cdepDe(id)?.nom || "Sans catégorie")}<span class="a-droite">${euro(v,0)}</span></div>
         <div class="fiche liste">${depensesCat.map(x => `<div class="ligne">
           <div class="corps"><div class="intitule">${ech(x.libelle) || (cdepDe(x.categorie_id)?.nom) || "Dépense"}</div>
             <div class="meta"><span class="puce date">${dateCourte(x.date)}</span>${
+              (x.categorie_id && x.categorie_id !== id) ? `<span class="puce">${ech(cdepDe(x.categorie_id)?.nom || "")}</span>` : ""}${
               rembourseDe(x) > 0 ? `<span class="puce">avancé ${euro(x.montant,2)} · remboursé ${euro(rembourseDe(x),2)}</span>` : ""}</div></div>
           <div class="somme">${euro(montantNet(x),2)}</div>
         </div>`).join("")}</div>`;
@@ -4962,10 +5015,12 @@ function vueReglages(){
   const listeMod = (titre, items, genre) => `<div class="bloc">
     <div class="oeil">${titre}</div>
     <div class="fiche liste">${items.map(x => `<div class="ligne" data-${genre}="${x.id}">
-      <div class="corps"><div class="intitule">${ech(x.nom)}</div>
+      <div class="corps"${genre === "cdepense" && parentCdep(x) ? ' style="padding-left:22px"' : ""}><div class="intitule">${
+        genre === "cdepense" && parentCdep(x) ? `<span style="color:var(--encre-3)">↳ </span>` : ""}${ech(x.nom)}</div>
       ${x.alias?.length ? `<div class="meta"><span class="repousse">@${x.alias.join(" · @")}</span></div>` : ""}</div>
       <div class="outils"><button class="ico" data-act="editer">✎</button></div></div>`).join("")}</div>
-    <div style="margin-top:9px"><button class="btn mini creux" data-act="ajouter-${genre}">Ajouter</button></div></div>`;
+    <div style="margin-top:9px"><button class="btn mini creux" data-act="ajouter-${genre}">Ajouter</button></div>${
+      genre === "cdepense" ? `<p class="petit-detail" style="margin:8px 0 0">Pour une sous-catégorie (Courses › Boulangerie) : Ajouter, puis choisir « Sous-catégorie de ».</p>` : ""}</div>`;
 
   const c = Sync.lireCfg(), es = Sync.lireEtat();
   const motEtat = { off:"inactive", attente:"modifications en attente", occupe:"en cours…",
@@ -5103,7 +5158,7 @@ function vueReglages(){
 
   ${listeMod("Contextes de tâche", db.contextes, "contexte")}
   ${listeMod("Catégories de dossier", db.categories, "categorie")}
-  ${listeMod("Catégories de dépense", db.categories_depense, "cdepense")}
+  ${listeMod("Catégories de dépense", cdepOrdonnees(), "cdepense")}
   ${listeMod("Moyens de paiement", db.moyens, "moyen")}
 
   ${(() => {
@@ -5391,7 +5446,7 @@ function ouvrirCalculatrice(){
 const optCtx  = () => [{v:"",n:"— aucun —"}, ...db.contextes.map(c => ({v:c.id,n:c.nom}))];
 const optCat  = () => [{v:"",n:"— aucune —"}, ...db.categories.map(c => ({v:c.id,n:c.nom}))];
 const optDoss = () => [{v:"",n:"— aucun —"}, ...db.dossiers.map(d => ({v:d.id,n:d.nom}))];
-const optCdep = () => [{v:"",n:"— aucune —"}, ...db.categories_depense.map(c => ({v:c.id,n:c.nom}))];
+const optCdep = () => [{v:"",n:"— aucune —"}, ...cdepOrdonnees().map(c => ({v:c.id,n:nomCdep(c.id)}))];
 const optUnite = [{v:"jour",n:"jour(s)"},{v:"semaine",n:"semaine(s)"},{v:"mois",n:"mois"},{v:"an",n:"an(s)"}];
 
 /* Sous-tâches : gérées uniquement depuis la fiche d'une tâche déjà créée
@@ -6069,15 +6124,22 @@ function editerListe(genre, item){
   const x = item || (genre === "contexte" ? { id:uid(), nom:"", alias:[] } : { id:uid(), nom:"" });
   const champs = [{ cle:"nom", nom:"Nom" }];
   if(genre === "contexte") champs.push({ cle:"alias", nom:"Alias de saisie (virgules)", ph:"tel, phone, appel" });
+  /* Une catégorie de dépense peut devenir sous-catégorie d'une autre — sauf
+     si elle a elle-même des sous-catégories (un seul niveau). */
+  if(genre === "cdepense" && !(!neuf && enfantsCdep(x.id).length))
+    champs.push({ cle:"parent_id", nom:"Sous-catégorie de", type:"select", options:[
+      { v:"", n:"— aucune (catégorie principale) —" },
+      ...db.categories_depense.filter(c => !parentCdep(c) && c.id !== x.id).map(c => ({ v:c.id, n:c.nom }))] });
   const tas = { contexte:"contextes", categorie:"categories", cdepense:"categories_depense", moyen:"moyens" }[genre];
   /* « especes » est un identifiant protégé : le calcul du budget s'appuie
      dessus (une dépense en espèces n'est pas recomptée, déjà décomptée au
      retrait). Le renommer reste possible, le supprimer casserait ce calcul
      silencieusement — mieux vaut le dire clairement plutôt que deviner. */
   const protege = genre === "moyen" && !neuf && x.id === "especes";
-  formulaire(neuf ? "Nouvel élément" : "Modifier", champs, { ...x, alias:(x.alias||[]).join(", ") }, d => {
+  formulaire(neuf ? "Nouvel élément" : "Modifier", champs, { ...x, alias:(x.alias||[]).join(", "), parent_id:x.parent_id || "" }, d => {
     if(!d.nom) return;
     x.nom = d.nom;
+    if(genre === "cdepense" && "parent_id" in d) x.parent_id = d.parent_id || null;
     if(genre === "contexte") x.alias = (d.alias||"").split(",").map(s => sansAccents(s.trim())).filter(Boolean);
     touche(x);
     if(neuf) db[tas].push(x);
@@ -6092,8 +6154,13 @@ function editerListe(genre, item){
     }else if(genre === "categorie"){
       db.dossiers.forEach(d => { if(d.categorie_id === x.id) d.categorie_id = null; });
     }else if(genre === "cdepense"){
-      db.depenses.forEach(p => { if(p.categorie_id === x.id) p.categorie_id = null; });
-      if(vue.catDep === x.id) vue.catDep = null;
+      /* Les dépenses d'une sous-catégorie supprimée remontent dans sa
+         catégorie principale plutôt que de perdre leur rangement ; les
+         sous-catégories d'une principale supprimée deviennent principales. */
+      const versParent = parentCdep(x)?.id || null;
+      db.depenses.forEach(p => { if(p.categorie_id === x.id){ p.categorie_id = versParent; touche(p); } });
+      db.categories_depense.forEach(c => { if(c.parent_id === x.id){ c.parent_id = null; touche(c); } });
+      if(vue.catDep === x.id) vue.catDep = versParent;
     }
     maj();
   }));
@@ -6186,23 +6253,24 @@ function exporter(){
 function exporterCSVMoisComplet(){
   const b = bilan(vue.decalage);
   const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
-  const lignes = [["Type","Date","Catégorie / Dossier","Libellé","Montant (€)"]];
+  const lignes = [["Type","Date","Catégorie / Dossier","Sous-catégorie","Libellé","Montant (€)"]];
 
   [...b.dep].sort((x,y) => (x.date||"").localeCompare(y.date||"")).forEach(x => {
-    lignes.push(["Dépense", x.date || "", (cdepDe(x.categorie_id)||{}).nom || "",
+    const cat = cdepDe(x.categorie_id), parent = parentCdep(cat);
+    lignes.push(["Dépense", x.date || "", (parent || cat || {}).nom || "", parent ? cat.nom : "",
       x.libelle || "", String(x.montant ?? 0).replace(".", ",")]);
   });
 
   (db.rentrees||[]).filter(r => r.recu && r.date && r.date >= b.deb && r.date <= b.fin)
     .sort((x,y) => (x.date||"").localeCompare(y.date||""))
     .forEach(r => {
-      lignes.push([r.depense_id ? "Remboursement" : "Rentrée", r.date || "", "",
+      lignes.push([r.depense_id ? "Remboursement" : "Rentrée", r.date || "", "", "",
         r.libelle || "", String(r.montant ?? 0).replace(".", ",")]);
     });
 
   toutesLignes().forEach(({ l, d }) => {
     datesPrelevement(l, b.deb, b.fin).forEach(date => {
-      lignes.push(["Charge", date, d.nom, l.libelle, String(Math.round(l.montant*100)/100).replace(".", ",")]);
+      lignes.push(["Charge", date, d.nom, "", l.libelle, String(Math.round(l.montant*100)/100).replace(".", ",")]);
     });
   });
 
@@ -6321,7 +6389,10 @@ document.addEventListener("click", ev => {
   if(bT){ db.reglages.accent = bT.dataset.teinte; appliquerTeinte(); return maj(); }
   const bCat = c.closest("[data-catdep]");
   if(bCat){
-    vue.catDep = vue.catDep === bCat.dataset.catdep ? null : bCat.dataset.catdep;
+    /* Retoucher une sous-catégorie choisie revient à sa catégorie principale ;
+       retoucher une principale choisie désélectionne tout. */
+    const idTouche = bCat.dataset.catdep, parent = parentCdep(cdepDe(idTouche));
+    vue.catDep = vue.catDep === idTouche ? (parent ? parent.id : null) : idTouche;
     const z = document.getElementById("catsEclair");
     if(z && dlg.__chips) z.innerHTML = dlg.__chips();
     return;
