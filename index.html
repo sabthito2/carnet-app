@@ -1225,7 +1225,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 195;
+const VERSION_APP = 196;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4043,7 +4043,7 @@ function vueBilanAnnuel(){
   if(Object.keys(r.parCategorie).length){
     const lignes = Object.entries(r.parCategorie).sort((a,b) => b[1] - a[1]);
     const max = lignes[0][1];
-    h.push(`<div class="oeil" style="margin-top:18px">Répartition par catégorie</div>
+    h.push(`<div class="oeil" style="margin-top:18px">Répartition par catégorie<span class="a-droite">${euro(lignes.reduce((t,[,v]) => t + v, 0),0)}</span></div>
       <div class="fiche" style="padding:6px 0">${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
@@ -4241,7 +4241,8 @@ function vueBudget(){
     const max = lignes[0][1] || 1;
     const mentionRemb = id => remb[id] > 0
       ? `<div class="mention-remb">${euro(remb[id],2)} remboursés, déjà déduits</div>` : "";
-    h.push(`<div class="oeil">Répartition</div><div class="fiche" style="padding:6px 0">
+    const totalRep = lignes.reduce((t,[,v]) => t + v, 0);
+    h.push(`<div class="oeil">Répartition<span class="a-droite">${euro(totalRep,0)}</span></div><div class="fiche" style="padding:6px 0">
       ${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
