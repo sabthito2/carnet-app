@@ -462,6 +462,19 @@
     border-top:1px solid var(--fiche-2);cursor:pointer}
   .sem-case.hors{background:var(--papier);border-top-color:var(--papier);cursor:default}
   .barre-fait,.barre-fait *{text-decoration:line-through;opacity:.6}
+  .elan-cit{font-size:13.5px;font-style:italic;color:var(--encre-2);line-height:1.45;margin:4px 0 2px}
+  .elan-aut{font-size:11.5px;color:var(--encre-3);margin:0 0 4px}
+  .elan-carte{background:var(--fiche);border:1px solid var(--filet);border-radius:14px;padding:18px;position:relative}
+  .elan-prov{font:10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+  .elan-tache{font-size:21px;font-weight:650;line-height:1.25}
+  .elan-meta{font:11.5px var(--mono);color:var(--encre-3);margin-top:8px}
+  .elan-etq{color:var(--accent)}
+  .elan-pas{margin-top:14px;padding:10px 12px;border-left:2px solid var(--accent);background:var(--accent-pale);border-radius:0 8px 8px 0;font-size:13.5px}
+  .elan-pas small{display:block;font:10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:3px}
+  .elan-fait{display:block;width:100%;margin-top:16px;padding:13px;font-size:15px;font-weight:600}
+  .elan-rang{display:flex;gap:8px;margin-top:8px}
+  .elan-rang .btn{flex:1;padding:12px}
+  .retard-tag{font-size:10.5px;color:var(--encre-3);white-space:nowrap;font-style:normal}
   .sem-case.we{background:var(--fiche-2)}
   .sem-case.lundi{border-top:2px solid var(--encre-2)}
   .sem-case.ferie{background:#F7E2E9}
@@ -555,7 +568,7 @@
   .rdv .jalon{font-family:var(--mono);font-size:10px;font-style:normal;color:var(--encre-3);
     border:1px solid var(--filet);border-radius:2px;padding:0 3px}
   .note-rdv{font-size:12.5px;color:var(--encre-2);line-height:1.45;margin-top:4px;white-space:pre-wrap}
-  .rdv.tache{color:var(--encre-3);font-size:11.5px;opacity:.55}
+  .rdv.tache{color:var(--encre-2);font-size:11.5px;opacity:.85}
   .rdv.tache:hover{opacity:.9}
   /* Dans le Accueil (à l'intérieur d'une fiche liste), la tâche a besoin du
      même padding que les rendez-vous à côté d'elle — sinon elle colle aux
@@ -782,6 +795,7 @@ function svgTellurique(cle, taille){
 }
 const SVG_PLUS = `<svg viewBox="0 0 24 24" width="12" height="12"><line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`;
 const SVG_COEUR = `<svg class="coeur-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.2C8.5 17.3 3 12.9 3 8.3 3 5.4 5.2 3.3 7.9 3.3c1.7 0 3.2 0.9 4.1 2.3 0.9-1.4 2.4-2.3 4.1-2.3C18.8 3.3 21 5.4 21 8.3c0 4.6-5.5 9-9 11.9z"/></svg>`;
+const SVG_MARCHES = `<svg class="coeur-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 19.4h4.7v-4.5h4.7v-4.5h4.7v-4.5h4.7"/></svg>`;
 /* Croissant/gibbeuse en gris, dessiné géométriquement (limbe + terminateur
    elliptique) — la même méthode que les widgets de phase lunaire usuels. */
 function svgLune(phase, taille){
@@ -1227,7 +1241,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 197;
+const VERSION_APP = 204;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -2321,6 +2335,16 @@ const anniDu = iso => (db.anniversaires||[]).filter(a => a.mois === +iso.slice(5
    (habillage festif ce jour-là en Accueil, voir plus bas). */
 const iconeAnniv = a => a.icone === "coeur" ? "❤️" : a.icone === "etoile" ? "⭐" : "🎂";
 const tachesDu = iso => db.taches.filter(t => t.statut !== "done" && t.date_due === iso && passeSphere(t));
+/* Échéances non cochées dont la date est passée : l'agenda les montre EN PLUS
+   sur le jour d'aujourd'hui (et seulement lui, pas sur chaque jour écoulé),
+   avec un repère de retard. Leur vraie date ne change pas : elles restent
+   aussi sur leur jour d'origine, et dans « En retard » des Échéances. Celles
+   « en attente » d'un tiers n'y figurent pas, comme dans les Échéances. */
+const tachesEnRetard = () => datees().filter(t => passeSphere(t) && t.date_due < jourISO());
+const depuisLe = iso => `le ${dateCourte(iso).slice(0,5)}`;
+/* Repère volontairement discret (pas de « en retard », pas de rouge) : juste
+   depuis quand la tâche attend. */
+const repereRetard = t => `<span class="retard-tag">depuis ${depuisLe(t.date_due)}</span>`;
 
 const prochaineDe = id => { const l = duDossier(id).filter(t => t.date_due).map(t => t.date_due).sort(); return l[0] || null; };
 
@@ -3387,7 +3411,12 @@ function vueAccueil(){
      nettement séparés : d'un coup d'œil, on doit savoir si c'est aujourd'hui
      qu'il se passe quelque chose, ou seulement demain. */
   const demain = jourISO(new Date(versDate(j).getTime() + 86400000));
-  const paquet = iso => ({ iso, rdv:rdvDu(iso).filter(r => !r.masque_accueil), anni:anniDu(iso), ferie:ferieDe(iso) });
+  /* Un rendez-vous peut être retiré de l'Accueil en entier (masque_accueil)
+     ou pour une seule occurrence d'une série (masque_accueil_jours : les dates
+     de début des occurrences retirées). */
+  const masqueEnAccueil = (r, iso) => r.masque_accueil
+    || (r.masque_accueil_jours || []).includes(debutOccurrence(r, iso) || iso);
+  const paquet = iso => ({ iso, rdv:rdvDu(iso).filter(r => !masqueEnAccueil(r, iso)), anni:anniDu(iso), ferie:ferieDe(iso) });
 
   const lignesDuJour = p => {
     const l = [];
@@ -3760,7 +3789,9 @@ function vueAgendaMois(){
          <button class="ico sup" data-act="jeter" title="Supprimer">✕</button></div>`).join("");
 
     const taches = cote => cote === "perso" ? tachesDu(iso).map(t =>
-      `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)}</div>`).join("") : "";
+      `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)}</div>`).join("") +
+      (iso === j ? tachesEnRetard().map(t =>
+      `<div class="rdv tache" data-tache="${t.id}">◷ ${ech(t.intitule)} ${repereRetard(t)}</div>`).join("") : "") : "";
 
     const google = cote => (cote === "pro" && googleVisible) ? evenementsGoogleDu(iso).map(g =>
       `<div class="rdv google ${g.secondaire ? "secondaire" : ""}" title="Google Agenda — lecture seule${g.secondaire ? " (second agenda)" : ""}">
@@ -3908,6 +3939,7 @@ function vueSemaineCondensee(){
       ...anni.map(a => `${iconeAnniv(a)} ${ech(a.nom)}`),
       ...rdv.map(r => `<span class="${r.barre ? "barre-fait" : ""}" data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv" title="Modifier" style="cursor:pointer">${r.heure ? ech(r.heure)+" " : ""}${ech(r.intitule)}</span>`),
       ...tas.map(t => `◷ ${ech(t.intitule)}`),
+      ...(estAuj ? tachesEnRetard().map(t => `◷ ${ech(t.intitule)} ${repereRetard(t)}`) : []),
       ...goog.map(g => `<span style="color:${g.secondaire ? "#7A5FA8" : "#C2703D"}">${g.heure ? ech(g.heure)+" " : ""}${ech(g.resume)}</span>`),
     ];
     return `<div class="hebdo-jour ${estAuj ? "auj" : ""}">
@@ -4103,6 +4135,8 @@ function vueBudget(){
     /* Trois groupes courts, en chiffres discrets : le solde, ce qui sort
        encore, puis d'où vient le calcul. Aucun grand nombre. */
     const aPrel = resteAPrelever(b.deb, b.fin);
+    /* Part des dépenses de CE mois avancées et pas encore remboursées. */
+    const attenteMois = b.dep.filter(x => x.rembourser && !x.rembourse).reduce((t,x) => t + (x.montant || 0), 0);
     const ligne = (nom, valeur, note, cl) => `<div class="cpt-l">
       <span class="cpt-n">${nom}</span>
       <span class="cpt-v ${cl||""}">${valeur}</span>
@@ -4118,7 +4152,10 @@ function vueBudget(){
       ${aPrel > 0 && b.courante ? ligne("Encore à prélever", euro(aPrel,0), "déjà retirés") : ""}
       ${b.sortiePonctuelle > 0 ? ligne("Facture annuelle du mois", euro(b.sortiePonctuelle,0), "retirée en plus") : ""}
       <div class="cpt-filet"></div>
-      ${ligne("Dépenses du mois", euro(b.depense,0), b.especes > 0 ? `+ ${euro(b.especes,0)} en espèces, déjà décomptés` : "")}
+      ${ligne("Dépenses du mois", euro(b.depense,0), [
+        attenteMois > 0 ? `dont ${euro(attenteMois,0)} en attente de remboursement` : "",
+        b.especes > 0 ? `+ ${euro(b.especes,0)} en espèces, déjà décomptés` : "",
+      ].filter(Boolean).join(" · "))}
       <div class="cpt-filet"></div>
       ${ligne("Budget initial", euro(b.disponible,0),
               b.encaissees > 0 ? `dont ${euro(b.encaissees,0)} de rentrées ponctuelles` : "")}
@@ -4385,6 +4422,72 @@ function vueBudget(){
 }
 
 /* ---- Suivi ---- */
+/* ---- Élan ----
+   Pour s'y mettre : une seule tâche à la fois, piochée dans « À faire » et
+   dans les tâches des dossiers pas encore remontées. « Au calme » ne garde
+   que celles qui portent cette étiquette. En haut, une citation tirée au
+   hasard dans la liste personnelle (Réglages) : elle vit dans les données,
+   donc dans le dépôt privé, jamais dans les fichiers publics du site. */
+const normEtq = e => sansAccents(String(e || "").toLowerCase()).replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+function piocheElan(calme){
+  const vus = new Set(), l = [];
+  const ajoute = t => { if(!vus.has(t.id)){ vus.add(t.id); l.push(t); } };
+  suivantes().forEach(ajoute);
+  db.taches.filter(t => t.dossier_id && t.statut !== "done" && !t.attente).forEach(ajoute);
+  return l.filter(t => passeSphere(t) && (!calme || (t.etiquettes || []).some(e => normEtq(e) === "au calme")))
+    .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
+      || (a.date_due || "9999").localeCompare(b.date_due || "9999")
+      || (a.suivant_le || a.cree_le || "").localeCompare(b.suivant_le || b.cree_le || ""));
+}
+function citationsElan(){
+  const sansGuillemets = s => s.replace(/^[«"“]\s*/, "").replace(/\s*[»"”]$/, "");
+  return String(db.reglages.citations_elan || "").split("\n").map(s => s.trim()).filter(Boolean).map(s => {
+    const m = s.match(/^(.*?)\s+[—–-]\s+([^—–-]+)$/);
+    return m ? { texte: sansGuillemets(m[1].trim()), auteur: m[2].trim() } : { texte: sansGuillemets(s), auteur: "" };
+  });
+}
+function vueElanPage(){
+  const calme = !!vue.elanCalme, l = piocheElan(calme), cits = citationsElan();
+  if(vue.elanCitation == null || vue.elanCitation >= cits.length)
+    vue.elanCitation = cits.length ? Math.floor(Math.random() * cits.length) : null;
+  const c = vue.elanCitation != null ? cits[vue.elanCitation] : null;
+  const h = [`<button class="retour" data-act="fermerElan">← Suivi</button>`,
+    `<h1 class="titre" style="margin-bottom:6px">Élan</h1>`];
+  if(c) h.push(`<p class="elan-cit">« ${ech(c.texte)} »</p>${c.auteur ? `<p class="elan-aut">${ech(c.auteur)}</p>` : ""}`);
+  h.push(`<div class="segment" style="margin-top:14px">
+    <button class="${!calme ? "actif" : ""}" data-act="elanMode" data-calme="0">Toutes</button>
+    <button class="${calme ? "actif" : ""}" data-act="elanMode" data-calme="1">Au calme</button></div>`);
+  if(!l.length){
+    h.push(calme
+      ? vide("Aucune tâche « au calme »", "Pour en ajouter une : écrivez « au calme » dans le champ Étiquettes de sa fiche.")
+      : vide("Rien qui attend", "Ni « À faire » ni tâche de dossier en cours. Profitez-en !"));
+  }else{
+    const i = (vue.elanIndex || 0) % l.length, t = l[i];
+    const d = t.dossier_id ? dossDe(t.dossier_id) : null;
+    const meta = [];
+    if(t.date_due) meta.push(`échéance le ${dateCourte(t.date_due).slice(0,5)}`);
+    const depuis = t.suivant_le || t.cree_le;
+    if(depuis && depuis < jourISO()) meta.push(`attend depuis le ${dateCourte(depuis).slice(0,5)}`);
+    (t.etiquettes || []).forEach(e => meta.push(`<span class="elan-etq">#${ech(e)}</span>`));
+    h.push(`<div class="elan-carte">
+      <div class="elan-prov">${d ? `Dossier · ${ech(d.nom)}` : "À faire"}</div>
+      <div class="elan-tache">${ech(t.intitule)}</div>
+      ${meta.length ? `<div class="elan-meta">${meta.join(" · ")}</div>` : ""}
+      ${t.premier_pas ? `<div class="elan-pas"><small>Premier petit pas</small>${ech(t.premier_pas)}</div>` : ""}
+    </div>
+    <button class="btn elan-fait" data-act="elanFait" data-tache-id="${t.id}">C'est fait ✓</button>
+    <div class="elan-rang">
+      <button class="btn creux" data-act="elanAutre"${l.length < 2 ? " disabled" : ""}>Une autre</button>
+      <button class="btn creux" data-act="elanPas" data-tache-id="${t.id}">Petit pas</button></div>
+    <p class="petit-detail" style="text-align:center;margin-top:12px">${i + 1} sur ${l.length}</p>`);
+  }
+  h.push(piedAide([
+    "Une seule tâche à la fois, piochée dans « À faire » et dans les tâches des dossiers : l'urgent d'abord, puis l'échéance la plus proche, puis ce qui attend depuis le plus longtemps.",
+    "« Au calme » ne garde que les tâches qui portent l'étiquette « au calme » (champ Étiquettes de la tâche).",
+    "« Petit pas » note la toute première action, minuscule, pour se lancer. Les citations se règlent dans Réglages.",
+  ]));
+  return h.join("");
+}
 function vueSuivi(){
   if(vue.noteOuverte) return vueNoteOuverte();
   if(vue.dossier) return vueDossier();
@@ -4396,6 +4499,7 @@ function vueSuivi(){
   if(vue.pageGaranties) return vueGarantiesPage();
   if(vue.pageAstronomie) return vueAstronomiePage();
   if(vue.pageCoherence) return vueCoherencePage();
+  if(vue.pageElan) return vueElanPage();
   const alerteGaranties = db.garanties.filter(g => ecartJours(jourISO(), ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois")) <= 60).length;
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
     `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
@@ -4406,6 +4510,7 @@ function vueSuivi(){
        <button class="btn creux" data-act="ouvrirGaranties">Garanties${alerteGaranties ? ` <span class="cpt">${alerteGaranties}</span>` : ""}</button>
        <button class="btn creux" data-act="ouvrirAstronomie">Astronomie</button>
        <button class="btn creux" data-act="ouvrirCoherence" title="Cohérence cardiaque" aria-label="Cohérence cardiaque" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_COEUR}</button>
+       <button class="btn creux" data-act="ouvrirElan" title="Élan" aria-label="Élan" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MARCHES}</button>
      </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -5062,19 +5167,6 @@ function vueReglages(){
   const dep = db.reglages.dernier_export;
   return `<div class="entete-mob"><h1 class="titre">Réglages</h1><div class="jour">${dateCourte(j)}</div></div>
 
-  ${blocSync}
-
-  <div class="bloc"><div class="oeil">Position
-      <span class="a-droite">${db.reglages.utiliser_position ? "activée" : "désactivée"}</span></div>
-    <div class="fiche" style="padding:14px">
-      <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
-        ${db.reglages.utiliser_position
-          ? "Le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris."
-          : "Active pour que le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris par défaut. Votre téléphone demandera l'autorisation."}</p>
-      <button class="btn ${db.reglages.utiliser_position ? "danger" : ""}" data-act="basculerPosition">
-        ${db.reglages.utiliser_position ? "Désactiver" : "Activer"}</button>
-    </div></div>
-
   <div class="bloc"><div class="oeil">Sauvegarde</div>
     <div class="fiche" style="padding:14px">
       <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
@@ -5088,6 +5180,19 @@ function vueReglages(){
         fermez-y l'application et rouvrez-la : elle garde parfois l'ancienne version en cache.<br>
         Stockage : ${Stockage.persistant() ? "IndexedDB, actif." : "indisponible — session en mémoire seulement."}
         Sur iPhone, ajoutez le site à l'écran d'accueil : sans ça, Safari efface les données après 7 jours d'inactivité.</p>
+    </div></div>
+
+  ${blocSync}
+
+  <div class="bloc"><div class="oeil">Position
+      <span class="a-droite">${db.reglages.utiliser_position ? "activée" : "désactivée"}</span></div>
+    <div class="fiche" style="padding:14px">
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
+        ${db.reglages.utiliser_position
+          ? "Le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris."
+          : "Active pour que le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris par défaut. Votre téléphone demandera l'autorisation."}</p>
+      <button class="btn ${db.reglages.utiliser_position ? "danger" : ""}" data-act="basculerPosition">
+        ${db.reglages.utiliser_position ? "Désactiver" : "Activer"}</button>
     </div></div>
 
   <div class="bloc"><div class="oeil">Couleur d'accent</div>
@@ -5212,6 +5317,14 @@ function vueReglages(){
     <p style="margin:9px 0 0;font-size:12.5px;color:var(--encre-3)">
       Renseignées jusqu'à l'été 2027, dernier calendrier publié au Journal officiel.
       Indiquez le dernier jour de congé, pas le jour de la rentrée. Les jours fériés, eux, sont calculés.</p></div>
+
+  <div class="bloc"><div class="oeil">Citations · Élan
+      <span class="a-droite">${citationsElan().length || "aucune"}</span></div>
+    <div class="fiche" style="padding:14px">
+      <p style="margin:0 0 10px;font-size:13.5px;color:var(--encre-2)">Une par ligne, sous la forme <i>Texte — Auteur</i>.
+        L'une d'elles est tirée au hasard à chaque ouverture d'Élan. Elles restent dans vos données (dépôt privé), jamais dans les fichiers publics du site.</p>
+      <textarea id="citationsElan" rows="7" style="width:100%;box-sizing:border-box;font:13px/1.45 var(--sans);padding:10px;border:1px solid var(--filet);border-radius:var(--r);background:var(--papier);color:var(--encre)">${ech(db.reglages.citations_elan || "")}</textarea>
+    </div></div>
 
   <div class="bloc"><div class="oeil">Anniversaires
       <span class="a-droite">${(db.anniversaires||[]).length}</span></div>
@@ -5427,7 +5540,7 @@ function ouvrirCalculatrice(){
         ${bt("0","0")}${bt(",","point")}${bt("=","egal","")}
       </div>
     </div>
-    <div class="dlg-p"><button type="button" class="btn mini creux" id="dlgNon">Fermer</button></div>
+    <div class="dlg-p"><button type="button" class="btn mini creux esp" id="dlgNon">Fermer</button></div>
   </form>`;
 
   dlg.querySelectorAll("[data-calc]").forEach(b => b.onclick = () => {
@@ -5583,6 +5696,33 @@ function choisirPortee(r, debut){
     jeter("rendez-vous", r);
     db.rendez_vous = db.rendez_vous.filter(y => y.id !== r.id);
     maj();
+  };
+}
+
+/* Retirer un rendez-vous RÉCURRENT de l'Accueil : ce jour seulement, ou
+   toute la série. L'événement lui-même n'est jamais supprimé. */
+function choisirMasquageAccueil(r, debut){
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-t">Retirer « ${ech(r.intitule)} » de l'Accueil</div>
+    <div class="dlg-c"><p style="margin:0;font-size:13.5px;color:var(--encre-2)">
+      Ce rendez-vous se répète. Le retirer de l'Accueil seulement pour le
+      ${dateLongue(debut)}, ou pour toute la série ?<br><br>
+      L'événement reste dans l'agenda dans les deux cas.</p></div>
+    <div class="dlg-p">
+      <button type="button" class="btn mini creux esp" id="mNon">Annuler</button>
+      <button type="button" class="btn mini creux" id="mTout">Toute la série</button>
+      <button type="button" class="btn mini" id="mUn">Ce jour seulement</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  dlg.querySelector("#mNon").onclick = () => dlg.close();
+  dlg.querySelector("#mUn").onclick = () => {
+    dlg.close();
+    r.masque_accueil_jours = [...new Set([...(r.masque_accueil_jours || []), debut])];
+    touche(r); maj();
+  };
+  dlg.querySelector("#mTout").onclick = () => {
+    dlg.close();
+    r.masque_accueil = true;
+    touche(r); maj();
   };
 }
 
@@ -6346,7 +6486,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; vue.pageElan = false; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -6635,6 +6775,21 @@ document.addEventListener("click", ev => {
   if(act === "fermerAstronomie"){ vue.pageAstronomie = false; return rendre(); }
   if(act === "ouvrirCoherence"){ vue.dossier = null; vue.pageCoherence = true; return rendre(); }
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
+  if(act === "ouvrirElan"){ vue.dossier = null; vue.pageElan = true; vue.elanIndex = 0; vue.elanCitation = null; return rendre(); }
+  if(act === "fermerElan"){ vue.pageElan = false; return rendre(); }
+  if(act === "elanMode"){ vue.elanCalme = b.dataset.calme === "1"; vue.elanIndex = 0; return rendre(); }
+  if(act === "elanAutre"){ vue.elanIndex = (vue.elanIndex || 0) + 1; return rendre(); }
+  if(act === "elanFait"){
+    const t = db.taches.find(x => x.id === b.dataset.tacheId); if(!t) return;
+    touche(t);
+    return basculerFait(t, document.querySelector(".elan-carte") || b);
+  }
+  if(act === "elanPas"){
+    const t = db.taches.find(x => x.id === b.dataset.tacheId); if(!t) return;
+    return formulaire("Premier petit pas", [
+      { cle:"pas", nom:"La toute première action, minuscule", ph:"Chercher le numéro de dossier…" },
+    ], { pas: t.premier_pas || "" }, d => { t.premier_pas = (d.pas || "").trim(); touche(t); maj(); });
+  }
   if(act === "demarrerCoherence") return demarrerCoherence();
   if(act === "allerVersCoherence"){ vue.onglet = "suivi"; vue.dossier = null; vue.pageCoherence = true; return rendre(); }
   if(act === "basculerChargeConfirmee"){
@@ -6834,6 +6989,10 @@ document.addEventListener("click", ev => {
     }
     if(act === "editerRdv") return editerRdv(r);
     if(act === "masquerRdvAccueil"){
+      if(r.repete){
+        const jourVise = lv.elt.dataset.rdvjour || jourISO();
+        return choisirMasquageAccueil(r, debutOccurrence(r, jourVise) || jourVise);
+      }
       if(!confirm("Supprimer l'événement de l'affichage en Accueil ?\n\nL'événement lui-même n'est pas supprimé — juste retiré de cette page. Vous pourrez le remettre depuis sa fiche.")) return;
       r.masque_accueil = true;
       touche(r);
@@ -7086,6 +7245,7 @@ document.addEventListener("keydown", ev => {
 
 document.addEventListener("input", ev => {
   Sync.noterGeste();
+  if(ev.target.id === "citationsElan"){ db.reglages.citations_elan = ev.target.value; sauver(); return; }
   if(ev.target.id === "noteTitreGrand" || ev.target.id === "noteTexteGrand"){
     const genre = ev.target.dataset.genre, parentId = ev.target.dataset.parent, noteId = ev.target.dataset.note;
     const parent = genre === "projet" ? (db.projets||[]).find(x => x.id === parentId) : dossDe(parentId);
