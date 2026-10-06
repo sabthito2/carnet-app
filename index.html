@@ -1252,7 +1252,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 206;
+const VERSION_APP = 207;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4439,13 +4439,22 @@ function vueBudget(){
    que celles qui portent cette étiquette. En haut, une citation tirée au
    hasard dans la liste personnelle (Réglages) : elle vit dans les données,
    donc dans le dépôt privé, jamais dans les fichiers publics du site. */
-const normEtq = e => sansAccents(String(e || "").toLowerCase()).replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
-function piocheElan(calme){
+/* L'étiquette est reconnue quelle que soit sa graphie : « Au repos »,
+   « #au repos », « au-repos », « AuRepos »… */
+const normEtq = e => sansAccents(String(e || "").toLowerCase()).replace(/[#\s\-_]+/g, "");
+const estAuRepos = t => (t.etiquettes || []).some(e => normEtq(e) === "aurepos");
+/* « Toutes » : « À faire » + tâches des dossiers. « Au repos » : TOUTES les
+   tâches en cours qui portent l'étiquette, où qu'elles soient (À trier,
+   datées, dossiers…) — l'étiquette est un choix explicite, il prime. */
+function piocheElan(calme, ignorerSphere){
   const vus = new Set(), l = [];
   const ajoute = t => { if(!vus.has(t.id)){ vus.add(t.id); l.push(t); } };
-  suivantes().forEach(ajoute);
-  db.taches.filter(t => t.dossier_id && t.statut !== "done" && !t.attente).forEach(ajoute);
-  return l.filter(t => passeSphere(t) && (!calme || (t.etiquettes || []).some(e => normEtq(e) === "au repos")))
+  if(calme) db.taches.filter(t => t.statut !== "done" && !t.attente && estAuRepos(t)).forEach(ajoute);
+  else{
+    suivantes().forEach(ajoute);
+    db.taches.filter(t => t.dossier_id && t.statut !== "done" && !t.attente).forEach(ajoute);
+  }
+  return l.filter(t => ignorerSphere || passeSphere(t))
     .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
       || (a.date_due || "9999").localeCompare(b.date_due || "9999")
       || (a.suivant_le || a.cree_le || "").localeCompare(b.suivant_le || b.cree_le || ""));
@@ -4469,8 +4478,12 @@ function vueElanPage(){
     <button class="${!calme ? "actif" : ""}" data-act="elanMode" data-calme="0">Toutes</button>
     <button class="${calme ? "actif" : ""}" data-act="elanMode" data-calme="1">Au repos</button></div>`);
   if(!l.length){
+    const autreSphere = calme ? piocheElan(true, true).length : 0;
     h.push(calme
-      ? vide("Aucune tâche « au repos »", "Pour en ajouter une : écrivez « au repos » dans le champ Étiquettes de sa fiche.")
+      ? (autreSphere
+          ? vide(`${autreSphere} tâche${autreSphere > 1 ? "s" : ""} « au repos » côté ${sphere() === "travail" ? "perso" : "travail"}`,
+              `<button class="btn mini creux" data-sphere="${sphere() === "travail" ? "perso" : "travail"}" style="margin-top:8px">Passer en ${sphere() === "travail" ? "perso" : "travail"}</button>`)
+          : vide("Aucune tâche « au repos »", "Pour en ajouter une : écrivez « au repos » dans le champ Étiquettes de sa fiche."))
       : vide("Rien qui attend", "Ni « À faire » ni tâche de dossier en cours. Profitez-en !"));
   }else{
     const i = (vue.elanIndex || 0) % l.length, t = l[i];
@@ -4494,7 +4507,7 @@ function vueElanPage(){
   }
   h.push(piedAide([
     "Une seule tâche à la fois, piochée dans « À faire » et dans les tâches des dossiers : l'urgent d'abord, puis l'échéance la plus proche, puis ce qui attend depuis le plus longtemps.",
-    "« Au repos » ne garde que les tâches qui portent l'étiquette « au repos » (champ Étiquettes de la tâche).",
+    "« Au repos » propose toutes les tâches en cours qui portent l'étiquette « au repos », où qu'elles soient (À faire, À trier, dossiers…).",
     "« Petit pas » note la toute première action, minuscule, pour se lancer. Les citations se règlent dans Réglages.",
   ]));
   return h.join("");
@@ -5146,6 +5159,7 @@ const CSS_IMP = `
 .imp-doc h3{font-size:8.5pt;margin:12px 0 4px;color:#444;text-transform:uppercase;letter-spacing:.07em;break-after:avoid;page-break-after:avoid}
 .imp-jour{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #e2e2e2;break-inside:avoid;page-break-inside:avoid}
 .imp-date{flex:0 0 58px;font-weight:600;color:#333}
+.imp-jour.imp-sem{border-top:2px solid #222;margin-top:7px;padding-top:5px}
 .imp-items div{margin:1px 0}
 .imp-raye{text-decoration:line-through;color:#888}
 .imp-pro{font-style:normal;font-size:8pt;color:#555;border:1px solid #bbb;border-radius:3px;padding:0 3px}
@@ -5162,7 +5176,7 @@ const dateImp = iso => iso ? dateCourte(iso) : "";
 
 function htmlImpAgenda(du, au){
   if(au < du) [du, au] = [au, du];
-  const out = []; let mois = null;
+  const out = []; let mois = null, semPrec = null;
   for(let iso = du, n = 0; iso <= au && n < 800; iso = ajouterPeriode(iso, 1, "jour"), n++){
     const items = [];
     const fer = ferieDe(iso); if(fer) items.push(`<span class="imp-ferie">${ech(fer)}</span>`);
@@ -5173,8 +5187,14 @@ function htmlImpAgenda(du, au){
       r.cote === "pro" ? ` <i class="imp-pro">pro</i>` : ""}</span>`));
     db.taches.filter(t => t.date_due === iso).forEach(t => items.push(`${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}`));
     if(!items.length) continue;
-    if(iso.slice(0,7) !== mois){ mois = iso.slice(0,7); { const m = MOIS[+mois.slice(5,7) - 1]; out.push(`<h2>${m.charAt(0).toUpperCase() + m.slice(1)} ${mois.slice(0,4)}</h2>`); } }
-    out.push(`<div class="imp-jour"><div class="imp-date">${jourImp(iso)}</div><div class="imp-items">${items.map(i => `<div>${i}</div>`).join("")}</div></div>`);
+    let nouveauMois = false;
+    if(iso.slice(0,7) !== mois){ mois = iso.slice(0,7); nouveauMois = true; { const m = MOIS[+mois.slice(5,7) - 1]; out.push(`<h2>${m.charAt(0).toUpperCase() + m.slice(1)} ${mois.slice(0,4)}</h2>`); } }
+    /* Un trait épais marque chaque nouvelle semaine (sauf juste sous un titre
+       de mois, qui sépare déjà). */
+    const lundi = semaineDe(iso)[0];
+    const nouvelleSem = semPrec && lundi !== semPrec && !nouveauMois;
+    semPrec = lundi;
+    out.push(`<div class="imp-jour${nouvelleSem ? " imp-sem" : ""}"><div class="imp-date">${jourImp(iso)}</div><div class="imp-items">${items.map(i => `<div>${i}</div>`).join("")}</div></div>`);
   }
   return out.length ? out.join("") : `<p class="imp-vide">Rien entre ces deux dates.</p>`;
 }
