@@ -1252,7 +1252,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 207;
+const VERSION_APP = 208;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4442,7 +4442,9 @@ function vueBudget(){
 /* L'étiquette est reconnue quelle que soit sa graphie : « Au repos »,
    « #au repos », « au-repos », « AuRepos »… */
 const normEtq = e => sansAccents(String(e || "").toLowerCase()).replace(/[#\s\-_]+/g, "");
-const estAuRepos = t => (t.etiquettes || []).some(e => normEtq(e) === "aurepos");
+/* « Au repos » peut être une étiquette OU un contexte de tâche (@…). */
+const estAuRepos = t => (t.etiquettes || []).some(e => normEtq(e) === "aurepos")
+  || normEtq(ctxDe(t.contexte_id)?.nom) === "aurepos";
 /* « Toutes » : « À faire » + tâches des dossiers. « Au repos » : TOUTES les
    tâches en cours qui portent l'étiquette, où qu'elles soient (À trier,
    datées, dossiers…) — l'étiquette est un choix explicite, il prime. */
@@ -4483,7 +4485,7 @@ function vueElanPage(){
       ? (autreSphere
           ? vide(`${autreSphere} tâche${autreSphere > 1 ? "s" : ""} « au repos » côté ${sphere() === "travail" ? "perso" : "travail"}`,
               `<button class="btn mini creux" data-sphere="${sphere() === "travail" ? "perso" : "travail"}" style="margin-top:8px">Passer en ${sphere() === "travail" ? "perso" : "travail"}</button>`)
-          : vide("Aucune tâche « au repos »", "Pour en ajouter une : écrivez « au repos » dans le champ Étiquettes de sa fiche."))
+          : vide("Aucune tâche « au repos »", "Pour en ajouter une : donnez-lui le contexte « Au repos », ou écrivez « au repos » dans ses étiquettes."))
       : vide("Rien qui attend", "Ni « À faire » ni tâche de dossier en cours. Profitez-en !"));
   }else{
     const i = (vue.elanIndex || 0) % l.length, t = l[i];
@@ -4492,6 +4494,7 @@ function vueElanPage(){
     if(t.date_due) meta.push(`échéance le ${dateCourte(t.date_due).slice(0,5)}`);
     const depuis = t.suivant_le || t.cree_le;
     if(depuis && depuis < jourISO()) meta.push(`attend depuis le ${dateCourte(depuis).slice(0,5)}`);
+    { const cx = ctxDe(t.contexte_id); if(cx) meta.push(`<span class="elan-etq">@${ech(cx.nom)}</span>`); }
     (t.etiquettes || []).forEach(e => meta.push(`<span class="elan-etq">#${ech(e)}</span>`));
     h.push(`<div class="elan-carte">
       <div class="elan-prov">${d ? `Dossier · ${ech(d.nom)}` : "À faire"}</div>
@@ -4507,7 +4510,7 @@ function vueElanPage(){
   }
   h.push(piedAide([
     "Une seule tâche à la fois, piochée dans « À faire » et dans les tâches des dossiers : l'urgent d'abord, puis l'échéance la plus proche, puis ce qui attend depuis le plus longtemps.",
-    "« Au repos » propose toutes les tâches en cours qui portent l'étiquette « au repos », où qu'elles soient (À faire, À trier, dossiers…).",
+    "« Au repos » propose toutes les tâches en cours qui ont le contexte ou l'étiquette « au repos », où qu'elles soient (À faire, À trier, dossiers…).",
     "« Petit pas » note la toute première action, minuscule, pour se lancer. Les citations se règlent dans Réglages.",
   ]));
   return h.join("");
@@ -5205,6 +5208,7 @@ const ligneImpTache = (t, avecDossier = true) => {
   if(d) meta.push(ech(d.nom));
   if(t.statut === "done" && t.fait_le) meta.push(`fait le ${dateImp(t.fait_le)}`);
   else if(t.date_due) meta.push(`échéance ${dateImp(t.date_due)}`);
+  { const cx = ctxDe(t.contexte_id); if(cx) meta.push("@" + ech(cx.nom)); }
   (t.etiquettes || []).forEach(e => meta.push("#" + ech(e)));
   if(t.travail) meta.push("pro");
   return `<li>${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}${meta.length ? ` <span class="imp-meta">· ${meta.join(" · ")}</span>` : ""}</li>`;
