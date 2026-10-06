@@ -462,6 +462,17 @@
     border-top:1px solid var(--fiche-2);cursor:pointer}
   .sem-case.hors{background:var(--papier);border-top-color:var(--papier);cursor:default}
   .barre-fait,.barre-fait *{text-decoration:line-through;opacity:.6}
+  #impression{display:none}
+  body.en-impression #impression{display:block;position:fixed;inset:0;z-index:9999;overflow:auto;-webkit-overflow-scrolling:touch;background:#fff}
+  .imp-outils{position:sticky;top:0;z-index:2;display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+    padding:calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;background:var(--papier);border-bottom:1px solid var(--filet)}
+  .imp-outils .imp-fermer{margin-left:auto}
+  @media print{
+    body.en-impression > *:not(#impression){display:none !important}
+    body.en-impression #impression{position:static;overflow:visible}
+    body.en-impression{zoom:1 !important;background:#fff !important}
+    .imp-outils{display:none !important}
+  }
   .elan-cit{font-size:13.5px;font-style:italic;color:var(--encre-2);line-height:1.45;margin:4px 0 2px}
   .elan-aut{font-size:11.5px;color:var(--encre-3);margin:0 0 4px}
   .elan-carte{background:var(--fiche);border:1px solid var(--filet);border-radius:14px;padding:18px;position:relative}
@@ -1241,7 +1252,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 204;
+const VERSION_APP = 206;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4424,7 +4435,7 @@ function vueBudget(){
 /* ---- Suivi ---- */
 /* ---- Élan ----
    Pour s'y mettre : une seule tâche à la fois, piochée dans « À faire » et
-   dans les tâches des dossiers pas encore remontées. « Au calme » ne garde
+   dans les tâches des dossiers pas encore remontées. « Au repos » ne garde
    que celles qui portent cette étiquette. En haut, une citation tirée au
    hasard dans la liste personnelle (Réglages) : elle vit dans les données,
    donc dans le dépôt privé, jamais dans les fichiers publics du site. */
@@ -4434,7 +4445,7 @@ function piocheElan(calme){
   const ajoute = t => { if(!vus.has(t.id)){ vus.add(t.id); l.push(t); } };
   suivantes().forEach(ajoute);
   db.taches.filter(t => t.dossier_id && t.statut !== "done" && !t.attente).forEach(ajoute);
-  return l.filter(t => passeSphere(t) && (!calme || (t.etiquettes || []).some(e => normEtq(e) === "au calme")))
+  return l.filter(t => passeSphere(t) && (!calme || (t.etiquettes || []).some(e => normEtq(e) === "au repos")))
     .sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)
       || (a.date_due || "9999").localeCompare(b.date_due || "9999")
       || (a.suivant_le || a.cree_le || "").localeCompare(b.suivant_le || b.cree_le || ""));
@@ -4456,10 +4467,10 @@ function vueElanPage(){
   if(c) h.push(`<p class="elan-cit">« ${ech(c.texte)} »</p>${c.auteur ? `<p class="elan-aut">${ech(c.auteur)}</p>` : ""}`);
   h.push(`<div class="segment" style="margin-top:14px">
     <button class="${!calme ? "actif" : ""}" data-act="elanMode" data-calme="0">Toutes</button>
-    <button class="${calme ? "actif" : ""}" data-act="elanMode" data-calme="1">Au calme</button></div>`);
+    <button class="${calme ? "actif" : ""}" data-act="elanMode" data-calme="1">Au repos</button></div>`);
   if(!l.length){
     h.push(calme
-      ? vide("Aucune tâche « au calme »", "Pour en ajouter une : écrivez « au calme » dans le champ Étiquettes de sa fiche.")
+      ? vide("Aucune tâche « au repos »", "Pour en ajouter une : écrivez « au repos » dans le champ Étiquettes de sa fiche.")
       : vide("Rien qui attend", "Ni « À faire » ni tâche de dossier en cours. Profitez-en !"));
   }else{
     const i = (vue.elanIndex || 0) % l.length, t = l[i];
@@ -4483,7 +4494,7 @@ function vueElanPage(){
   }
   h.push(piedAide([
     "Une seule tâche à la fois, piochée dans « À faire » et dans les tâches des dossiers : l'urgent d'abord, puis l'échéance la plus proche, puis ce qui attend depuis le plus longtemps.",
-    "« Au calme » ne garde que les tâches qui portent l'étiquette « au calme » (champ Étiquettes de la tâche).",
+    "« Au repos » ne garde que les tâches qui portent l'étiquette « au repos » (champ Étiquettes de la tâche).",
     "« Petit pas » note la toute première action, minuscule, pour se lancer. Les citations se règlent dans Réglages.",
   ]));
   return h.join("");
@@ -5118,6 +5129,165 @@ function vueNoteOuverte(){
 }
 
 /* ---- Réglages ---- */
+/* =====================================================================
+   IMPRIMER / PDF
+   Pas de bibliothèque PDF (lourde) : on compose une page propre, noir sur
+   blanc, par-dessus l'appli, puis on laisse le téléphone l'imprimer ou
+   l'enregistrer en PDF. Secours : « Partager le fichier » envoie la même page
+   en .html dans le menu Partager d'iOS (à ouvrir puis Imprimer → PDF), ce
+   qui marche même depuis l'écran d'accueil. Les jours et sections vides
+   sont sautés, pour économiser le papier.
+   ===================================================================== */
+const CSS_IMP = `
+.imp-doc{font:11pt/1.45 -apple-system,"Helvetica Neue",Arial,sans-serif;color:#111;background:#fff;max-width:740px;margin:0 auto;padding:18px 18px 40px}
+.imp-doc h1{font-size:19pt;margin:0 0 2px;line-height:1.2}
+.imp-doc .imp-sous{color:#666;font-size:9pt;margin:0 0 12px}
+.imp-doc h2{font-size:13pt;margin:16px 0 6px;padding-bottom:3px;border-bottom:1px solid #999;break-after:avoid;page-break-after:avoid}
+.imp-doc h3{font-size:8.5pt;margin:12px 0 4px;color:#444;text-transform:uppercase;letter-spacing:.07em;break-after:avoid;page-break-after:avoid}
+.imp-jour{display:flex;gap:10px;padding:3px 0;border-bottom:1px solid #e2e2e2;break-inside:avoid;page-break-inside:avoid}
+.imp-date{flex:0 0 58px;font-weight:600;color:#333}
+.imp-items div{margin:1px 0}
+.imp-raye{text-decoration:line-through;color:#888}
+.imp-pro{font-style:normal;font-size:8pt;color:#555;border:1px solid #bbb;border-radius:3px;padding:0 3px}
+.imp-ferie{color:#a33;font-style:italic}
+.imp-vac{color:#2a5d9f;font-style:italic}
+.imp-liste{margin:0;padding:0;list-style:none}
+.imp-liste li{padding:2px 0;border-bottom:1px solid #eee;break-inside:avoid;page-break-inside:avoid}
+.imp-meta{color:#666;font-size:9pt}
+.imp-note{margin:4px 0 8px;padding:6px 8px;border-left:2px solid #999;background:#f5f5f5;break-inside:avoid;page-break-inside:avoid}
+.imp-vide{color:#777;font-style:italic}
+@page{margin:14mm}`;
+const jourImp = iso => { const n = JOURS[versDate(iso).getDay()]; return n.charAt(0).toUpperCase() + n.slice(1,3) + " " + iso.slice(8,10); };
+const dateImp = iso => iso ? dateCourte(iso) : "";
+
+function htmlImpAgenda(du, au){
+  if(au < du) [du, au] = [au, du];
+  const out = []; let mois = null;
+  for(let iso = du, n = 0; iso <= au && n < 800; iso = ajouterPeriode(iso, 1, "jour"), n++){
+    const items = [];
+    const fer = ferieDe(iso); if(fer) items.push(`<span class="imp-ferie">${ech(fer)}</span>`);
+    (db.vacances || []).filter(v => v.debut === iso || (iso === du && v.debut < du && v.fin >= du))
+      .forEach(v => items.push(`<span class="imp-vac">Vacances : ${ech(v.nom)}, jusqu'au ${dateCourte(v.fin).slice(0,5)}</span>`));
+    anniDu(iso).forEach(a => items.push(`${iconeAnniv(a)} ${ech(a.nom)}`));
+    rdvDu(iso).forEach(r => items.push(`<span class="${r.barre ? "imp-raye" : ""}">${r.heure ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}${
+      r.cote === "pro" ? ` <i class="imp-pro">pro</i>` : ""}</span>`));
+    db.taches.filter(t => t.date_due === iso).forEach(t => items.push(`${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}`));
+    if(!items.length) continue;
+    if(iso.slice(0,7) !== mois){ mois = iso.slice(0,7); { const m = MOIS[+mois.slice(5,7) - 1]; out.push(`<h2>${m.charAt(0).toUpperCase() + m.slice(1)} ${mois.slice(0,4)}</h2>`); } }
+    out.push(`<div class="imp-jour"><div class="imp-date">${jourImp(iso)}</div><div class="imp-items">${items.map(i => `<div>${i}</div>`).join("")}</div></div>`);
+  }
+  return out.length ? out.join("") : `<p class="imp-vide">Rien entre ces deux dates.</p>`;
+}
+
+const ligneImpTache = (t, avecDossier = true) => {
+  const meta = [];
+  const d = avecDossier && t.dossier_id ? dossDe(t.dossier_id) : null;
+  if(d) meta.push(ech(d.nom));
+  if(t.statut === "done" && t.fait_le) meta.push(`fait le ${dateImp(t.fait_le)}`);
+  else if(t.date_due) meta.push(`échéance ${dateImp(t.date_due)}`);
+  (t.etiquettes || []).forEach(e => meta.push("#" + ech(e)));
+  if(t.travail) meta.push("pro");
+  return `<li>${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}${meta.length ? ` <span class="imp-meta">· ${meta.join(" · ")}</span>` : ""}</li>`;
+};
+const sectionImp = (titre, l, f) => l.length ? `<h2>${titre}</h2><ul class="imp-liste">${l.map(f).join("")}</ul>` : "";
+
+function htmlImpTaches(){
+  const j = jourISO(), il30 = ajouterPeriode(j, -30, "jour");
+  const dat = datees();
+  const seau = t => { const n = ecartJours(j, t.date_due); return n < 0 ? 0 : n <= 15 ? 1 : n <= 90 ? 2 : n <= 365 ? 3 : 4; };
+  const noms = ["Dates passées", "15 jours", "3 mois", "Moins d'un an", "Plus d'un an"];
+  const echeances = noms.map((nom, k) => { const l = dat.filter(t => seau(t) === k);
+    return l.length ? `<h3>${nom}</h3><ul class="imp-liste">${l.map(t => ligneImpTache(t)).join("")}</ul>` : ""; }).join("");
+  const html = [
+    sectionImp("À faire", suivantes(), t => ligneImpTache(t)),
+    sectionImp("À trier", aTrier(), t => ligneImpTache(t)),
+    sectionImp("En attente d'un retour", db.taches.filter(t => t.attente && t.statut !== "done"), t => ligneImpTache(t)),
+    echeances ? `<h2>Échéances</h2>${echeances}` : "",
+    sectionImp("Réglées ces 30 derniers jours", reglees().filter(t => (t.fait_le || "") >= il30), t => ligneImpTache(t)),
+  ].join("");
+  return html || `<p class="imp-vide">Aucune tâche.</p>`;
+}
+
+function htmlImpDossiers(ids){
+  const ds = db.dossiers.filter(d => ids.includes(d.id)).sort((a,b) => a.nom.localeCompare(b.nom));
+  return ds.map(d => {
+    const c = catDe(d.categorie_id), meta = [];
+    if(c) meta.push(ech(c.nom));
+    if(d.identifiant) meta.push("identifiant " + ech(d.identifiant));
+    if(d.contrat) meta.push("n° " + ech(d.contrat));
+    if(d.url) meta.push(ech(d.url));
+    const lgs = lignesDe(d);
+    const taches = db.taches.filter(t => t.dossier_id === d.id);
+    const enCoursD = taches.filter(t => t.statut !== "done").sort((a,b) => (a.date_due || "9").localeCompare(b.date_due || "9"));
+    const faites = taches.filter(t => t.statut === "done").sort((a,b) => (b.fait_le || "").localeCompare(a.fait_le || ""));
+    const notes = [...(d.mur || [])];
+    if(typeof d.notes === "string" && d.notes.trim()) notes.unshift({ titre:"", texte:d.notes });
+    return `<h2>${ech(d.nom)}</h2>${meta.length ? `<p class="imp-meta" style="margin:0 0 6px">${meta.join(" · ")}</p>` : ""}
+      ${lgs.length ? `<h3>Charges · ${euro(parMoisDossier(d),2)} par mois</h3><ul class="imp-liste">${lgs.map(l =>
+        `<li>${ech(l.libelle)} <span class="imp-meta">· ${euro(l.montant,2)} · ${ech(l.periodicite)}${
+          l.jour ? ` · le ${l.jour}${l.mois ? " " + MOIS[l.mois - 1] : ""}` : ""}</span></li>`).join("")}</ul>` : ""}
+      ${enCoursD.length ? `<h3>À faire</h3><ul class="imp-liste">${enCoursD.map(t => ligneImpTache(t, false)).join("")}</ul>` : ""}
+      ${faites.length ? `<h3>Fait</h3><ul class="imp-liste">${faites.map(t => ligneImpTache(t, false)).join("")}</ul>` : ""}
+      ${notes.length ? `<h3>Notes</h3>${notes.map(n => `<div class="imp-note">${n.titre ? `<b>${ech(n.titre)}</b><br>` : ""}${
+        ech(n.texte || "").replace(/\n/g, "<br>")}${n.piece_jointe ? `<br><span class="imp-meta">📎 ${ech(n.piece_jointe.nom || "pièce jointe")}</span>` : ""}</div>`).join("")}` : ""}`;
+  }).join("") || `<p class="imp-vide">Aucun dossier choisi.</p>`;
+}
+
+let docImpression = null;
+function ouvrirImpression(titre, corps){
+  if(!document.getElementById("styleImp")){
+    const st = document.createElement("style"); st.id = "styleImp"; st.textContent = CSS_IMP; document.head.appendChild(st);
+  }
+  const html = `<h1>${ech(titre)}</h1><p class="imp-sous">Carnet · imprimé le ${dateLongue(jourISO())} ${jourISO().slice(0,4)}</p>${corps}`;
+  docImpression = { titre, html };
+  let z = document.getElementById("impression");
+  if(!z){ z = document.createElement("div"); z.id = "impression"; document.body.appendChild(z); }
+  z.innerHTML = `<div class="imp-outils">
+      <button type="button" class="btn mini" data-act="imprimerPDF">Imprimer / PDF</button>
+      <button type="button" class="btn mini creux" data-act="partagerImpression">Partager le fichier</button>
+      <button type="button" class="btn mini creux imp-fermer" data-act="fermerImpression">Fermer</button></div>
+    <div class="imp-doc">${html}</div>`;
+  document.body.classList.add("en-impression");
+  z.scrollTop = 0;
+}
+async function partagerImpression(){
+  if(!docImpression) return;
+  const { titre, html } = docImpression;
+  const page = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${ech(titre)}</title><style>${CSS_IMP}</style></head><body style="margin:0;background:#fff"><div class="imp-doc">${html}</div></body></html>`;
+  const nom = `carnet-${sansAccents(titre).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.html`;
+  const fichier = new File([page], nom, { type:"text/html" });
+  if(navigator.canShare && navigator.canShare({ files:[fichier] })){
+    try{ await navigator.share({ files:[fichier], title:titre }); }catch(e){}
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(fichier); a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function choisirDossiersImpression(){
+  const ds = [...db.dossiers].sort((a,b) => a.nom.localeCompare(b.nom));
+  if(!ds.length){ alert("Aucun dossier pour l'instant."); return; }
+  if(dlg.open) dlg.close();
+  dlg.innerHTML = `<div class="dlg-t">Dossiers à imprimer</div>
+    <div class="dlg-c">
+      <label style="display:flex;gap:9px;align-items:center;font-weight:600;padding:4px 0 8px;border-bottom:1px solid var(--filet);margin-bottom:6px">
+        <input type="checkbox" id="impTous" checked> Tous</label>
+      ${ds.map(d => `<label style="display:flex;gap:9px;align-items:center;padding:5px 0">
+        <input type="checkbox" class="impDos" value="${d.id}" checked> ${ech(d.nom)}</label>`).join("")}</div>
+    <div class="dlg-p"><button type="button" class="btn mini creux esp" id="impNon">Annuler</button>
+      <button type="button" class="btn mini" id="impOui">Préparer</button></div>`;
+  try{ dlg.showModal(); }catch(e){}
+  const cases = [...dlg.querySelectorAll(".impDos")];
+  dlg.querySelector("#impTous").onchange = ev => cases.forEach(c => c.checked = ev.target.checked);
+  dlg.querySelector("#impNon").onclick = () => dlg.close();
+  dlg.querySelector("#impOui").onclick = () => {
+    const ids = cases.filter(c => c.checked).map(c => c.value);
+    dlg.close();
+    ouvrirImpression(ids.length === ds.length ? "Dossiers" : ids.length === 1 ? (dossDe(ids[0])?.nom || "Dossier") : "Dossiers choisis", htmlImpDossiers(ids));
+  };
+}
+
 function vueReglages(){
   const j = jourISO();
   const listeMod = (titre, items, genre) => `<div class="bloc">
@@ -5180,6 +5350,19 @@ function vueReglages(){
         fermez-y l'application et rouvrez-la : elle garde parfois l'ancienne version en cache.<br>
         Stockage : ${Stockage.persistant() ? "IndexedDB, actif." : "indisponible — session en mémoire seulement."}
         Sur iPhone, ajoutez le site à l'écran d'accueil : sans ça, Safari efface les données après 7 jours d'inactivité.</p>
+    </div></div>
+
+  <div class="bloc"><div class="oeil">Imprimer / PDF</div>
+    <div class="fiche" style="padding:14px">
+      <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">Une page propre, noir sur blanc, à imprimer ou à enregistrer en PDF.
+        Les jours et rubriques vides sont sautés pour économiser le papier. Google Agenda n'y figure pas.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:13.5px">
+        <span>Agenda du</span><input type="date" id="impDu" value="${vue.impDu || (jourISO().slice(0,8) + "01")}" style="font-size:14px">
+        <span>au</span><input type="date" id="impAu" value="${vue.impAu || jourISO(new Date(+jourISO().slice(0,4), +jourISO().slice(5,7), 0))}" style="font-size:14px">
+        <button class="btn mini" data-act="impAgenda">Agenda</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn mini creux" data-act="impDossiers">Dossiers</button>
+        <button class="btn mini creux" data-act="impTaches">Tâches et échéances</button></div>
     </div></div>
 
   ${blocSync}
@@ -6775,6 +6958,18 @@ document.addEventListener("click", ev => {
   if(act === "fermerAstronomie"){ vue.pageAstronomie = false; return rendre(); }
   if(act === "ouvrirCoherence"){ vue.dossier = null; vue.pageCoherence = true; return rendre(); }
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
+  if(act === "impAgenda"){
+    const du = document.getElementById("impDu")?.value, au = document.getElementById("impAu")?.value;
+    if(!du || !au) return;
+    vue.impDu = du; vue.impAu = au;
+    const [a, z] = du <= au ? [du, au] : [au, du];
+    return ouvrirImpression(`Agenda du ${dateCourte(a)} au ${dateCourte(z)}`, htmlImpAgenda(a, z));
+  }
+  if(act === "impTaches") return ouvrirImpression("Tâches et échéances", htmlImpTaches());
+  if(act === "impDossiers") return choisirDossiersImpression();
+  if(act === "imprimerPDF") return window.print();
+  if(act === "partagerImpression") return partagerImpression();
+  if(act === "fermerImpression"){ document.body.classList.remove("en-impression"); return; }
   if(act === "ouvrirElan"){ vue.dossier = null; vue.pageElan = true; vue.elanIndex = 0; vue.elanCitation = null; return rendre(); }
   if(act === "fermerElan"){ vue.pageElan = false; return rendre(); }
   if(act === "elanMode"){ vue.elanCalme = b.dataset.calme === "1"; vue.elanIndex = 0; return rendre(); }
