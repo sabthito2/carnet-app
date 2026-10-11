@@ -678,6 +678,23 @@
     .saisie{flex-wrap:wrap}
     .barre-cat .nom{flex:0 0 40%}
   }
+  /* Vue « L » de l'agenda : la mise en page de l'export PDF, aux couleurs de l'appli */
+  .imp-doc.imp-ecran{background:transparent;color:var(--encre);font-size:15px;max-width:none;padding:0 0 90px}
+  .imp-ecran h2{border-bottom-color:var(--filet-fort);font-size:17px}
+  .imp-ecran .imp-jour{border-bottom-color:var(--filet)}
+  .imp-ecran .imp-jour.imp-sem{border-top-color:var(--encre)}
+  .imp-ecran .imp-date{color:var(--encre);flex-basis:62px}
+  .imp-ecran .imp-raye{color:var(--encre-3)}
+  .imp-ecran .imp-pro{color:var(--encre-2);border-color:var(--filet-fort)}
+  .imp-ecran .imp-ferie{color:var(--rouge)}
+  .imp-ecran .imp-vac{color:var(--accent)}
+  .imp-ecran .imp-vide{color:var(--encre-3)}
+  body.sombre .imp-ecran .imp-vac{color:#7FB3C8}
+  .imp-ecran [data-act]{cursor:pointer}
+  .citation-jour{display:flex;align-items:flex-start;gap:6px;margin:-6px 0 16px}
+  .citation-jour p{margin:0;flex:1;font-size:12.5px;line-height:1.45;font-style:italic;color:var(--encre-2)}
+  .citation-jour .auteur{font-style:normal;color:var(--encre-3);white-space:nowrap}
+  .citation-jour .ico{flex:0 0 auto;font-size:11px;padding:2px 4px;color:var(--encre-3);opacity:.7}
 </style>
 </head>
 <body>
@@ -1252,7 +1269,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 208;
+const VERSION_APP = 211;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3387,6 +3404,16 @@ function vueAccueil(){
     h.push(`<p style="margin:-6px 0 16px;font-size:12.5px;color:var(--encre-3)">${txt}</p>`);
   }
 
+  /* Citation du jour : une seule par jour, toujours la même tout au long de la
+     journée (tirée d'après la date), en petit. La croix la retire jusqu'à demain. */
+  { const cits = citationsElan();
+    if(cits.length && db.reglages.citation_masquee_le !== j){
+      let n = 0; for(const ch of j) n = (n * 31 + ch.charCodeAt(0)) % 100003;
+      const c = cits[n % cits.length];
+      h.push(`<div class="citation-jour"><p>«&nbsp;${ech(c.texte)}&nbsp;»${c.auteur ? `<span class="auteur"> — ${ech(c.auteur)}</span>` : ""}</p>
+        <button class="ico" data-act="masquerCitationJour" title="Retirer pour aujourd'hui" aria-label="Retirer la citation pour aujourd'hui">✕</button></div>`);
+    } }
+
   h.push(ligneAstro());
 
   /* Sommeil : deux carrés-icônes discrets (mêmes gestes qu'ailleurs dans
@@ -3748,14 +3775,45 @@ function barreVuesAgenda(actuelle){
     <button class="${actuelle==="edt"?"actif":""}" data-act="ouvrirEdt" title="Emploi du temps">▦</button>
     <button class="${actuelle==="mois"?"actif":""}" data-act="allerVueMois" title="Vue du mois">M</button>
     <button class="${actuelle==="semestre"?"actif":""}" data-act="ouvrirSemestre" title="Vue sur six mois">A</button>
+    <button class="${actuelle==="liste"?"actif":""}" data-act="allerVueListe" title="Liste des événements à la suite">L</button>
   </div>`;
 }
 function vueAgenda(){
   if(vue.semestre) return vueSemestre();
   if(vue.edt) return vueEdt();
+  if(vue.agendaListe) return vueAgendaListe();
   if(vue.vueMois) return vueAgendaMois();
   vue.semaineCondensee = true;
   return vueSemaineCondensee();
+}
+/* Vue « L » : la même mise en page que l'agenda exporté en PDF (jours sans
+   rien omis, trait épais à chaque semaine), mais aux couleurs de l'appli et
+   avec des événements qu'on touche pour les modifier. Par défaut : d'aujourd'hui
+   à deux mois ; les flèches avancent d'un mois entier. */
+function vueAgendaListe(){
+  const j = jourISO();
+  const du = vue.listeDebut || j;
+  const [a, m] = du.split("-").map(Number);
+  const finMois = new Date(a, m + 1, 0);   /* fin du mois suivant */
+  if(!document.getElementById("styleImp")){
+    const st = document.createElement("style"); st.id = "styleImp"; st.textContent = CSS_IMP; document.head.appendChild(st);
+  }
+  const au = `${finMois.getFullYear()}-${String(finMois.getMonth()+1).padStart(2,"0")}-${String(finMois.getDate()).padStart(2,"0")}`;
+  return [`<div class="entete-mob"><h1 class="titre">Liste</h1></div>`,
+    barreVuesAgenda("liste"),
+    `<div class="nav-mois">
+      <button class="btn mini creux" data-act="decalerListe" data-v="-1">←</button>
+      <button class="btn mini creux" data-act="decalerListe" data-v="0">Today</button>
+      <button class="btn mini creux" data-act="decalerListe" data-v="1">→</button></div>`,
+    `<div class="imp-doc imp-ecran">${htmlImpAgenda(du, au, true)}</div>`,
+    `<button class="fab" data-act="nouveauRdv" title="Nouveau rendez-vous" aria-label="Nouveau rendez-vous">+</button>`].join("");
+}
+function decalerListe(v){
+  if(v === 0){ vue.listeDebut = null; return; }
+  const [a, m] = (vue.listeDebut || jourISO()).split("-").map(Number);
+  const d = new Date(a, m - 1 + v, 1);
+  const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`;
+  vue.listeDebut = iso.slice(0,7) === jourISO().slice(0,7) ? null : iso;
 }
 function vueAgendaMois(){
   const j = jourISO();
@@ -5177,7 +5235,7 @@ const CSS_IMP = `
 const jourImp = iso => { const n = JOURS[versDate(iso).getDay()]; return n.charAt(0).toUpperCase() + n.slice(1,3) + " " + iso.slice(8,10); };
 const dateImp = iso => iso ? dateCourte(iso) : "";
 
-function htmlImpAgenda(du, au){
+function htmlImpAgenda(du, au, ecran = false){
   if(au < du) [du, au] = [au, du];
   const out = []; let mois = null, semPrec = null;
   for(let iso = du, n = 0; iso <= au && n < 800; iso = ajouterPeriode(iso, 1, "jour"), n++){
@@ -5186,9 +5244,12 @@ function htmlImpAgenda(du, au){
     (db.vacances || []).filter(v => v.debut === iso || (iso === du && v.debut < du && v.fin >= du))
       .forEach(v => items.push(`<span class="imp-vac">Vacances : ${ech(v.nom)}, jusqu'au ${dateCourte(v.fin).slice(0,5)}</span>`));
     anniDu(iso).forEach(a => items.push(`${iconeAnniv(a)} ${ech(a.nom)}`));
-    rdvDu(iso).forEach(r => items.push(`<span class="${r.barre ? "imp-raye" : ""}">${r.heure ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}${
+    rdvDu(iso).forEach(r => items.push(`<span class="${r.barre ? "imp-raye" : ""}"${
+      ecran ? ` data-rdv="${r.id}" data-rdvjour="${iso}" data-act="editerRdv"` : ""}>${r.heure ? `<b>${ech(r.heure)}</b> ` : ""}${ech(r.intitule)}${
       r.cote === "pro" ? ` <i class="imp-pro">pro</i>` : ""}</span>`));
-    db.taches.filter(t => t.date_due === iso).forEach(t => items.push(`${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}`));
+    db.taches.filter(t => t.date_due === iso).forEach(t => items.push(ecran
+      ? `<span data-tache="${t.id}" data-act="editer">${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}</span>`
+      : `${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}`));
     if(!items.length) continue;
     let nouveauMois = false;
     if(iso.slice(0,7) !== mois){ mois = iso.slice(0,7); nouveauMois = true; { const m = MOIS[+mois.slice(5,7) - 1]; out.push(`<h2>${m.charAt(0).toUpperCase() + m.slice(1)} ${mois.slice(0,4)}</h2>`); } }
@@ -6572,10 +6633,11 @@ function basculerFait(t, elt){
     let d = ajouterPeriode(t.date_due, t.n, t.unite), garde = 0;
     while(d <= j && garde++ < 300) d = ajouterPeriode(d, t.n, t.unite);
     t.date_due = d; t.suivant_le = null; t.reports = 0; t.en_inbox = false;
+    t.attente = null;   /* la réponse est arrivée : la prochaine occurrence repart de zéro */
     sauver(); elt.classList.add("faite");
     return tamponner(elt, `Réglé · ${dateCourte(j)}`, rendre);
   }
-  t.statut = "done"; t.fait_le = j; t.suivant_le = null;
+  t.statut = "done"; t.fait_le = j; t.suivant_le = null; t.attente = null;
   sauver(); elt.classList.add("faite");
   tamponner(elt, `Fait · ${dateCourte(j)}`, rendre);
 }
@@ -6716,7 +6778,7 @@ document.addEventListener("click", ev => {
   const bEdt = c.closest("[data-ouvriredt]");
   if(bEdt){
     if(dlg.open) dlg.close();
-    vue.onglet = "agenda"; vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.onglet = "agenda"; vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false; vue.agendaListe = false;
     vue.edt = bEdt.dataset.ouvriredt;
     return rendre();
   }
@@ -6829,27 +6891,34 @@ document.addEventListener("click", ev => {
   if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
   if(act === "nouvelEdt") return editerEdt(null);
   if(act === "ouvrirEdt"){
-    vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false; vue.agendaListe = false;
     const l = db.emplois || [];
     if(!l.length) return editerEdt(null);
     if(l.length === 1){ vue.edt = l[0].id; return rendre(); }
     return choisirEdt(l);
   }
   if(act === "fermerEdt"){ vue.edt = null; return rendre(); }
+  if(act === "masquerCitationJour"){ db.reglages.citation_masquee_le = jourISO(); return maj(); }
+  if(act === "allerVueListe"){
+    vue.edt = null; vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.agendaListe = true; vue.listeDebut = null;
+    return rendre();
+  }
+  if(act === "decalerListe"){ decalerListe(+b.dataset.v); return rendre(); }
   if(act === "allerVueSemaine"){
-    vue.edt = null; vue.semestre = null; vue.vueMois = false;
+    vue.agendaListe = false; vue.edt = null; vue.semestre = null; vue.vueMois = false;
     vue.semaineCondensee = true; vue.decalageSemaine = 0;
     return rendre();
   }
   if(act === "allerVueMois"){
-    vue.edt = null; vue.semestre = null; vue.semaineCondensee = false;
+    vue.agendaListe = false; vue.edt = null; vue.semestre = null; vue.semaineCondensee = false;
     vue.vueMois = true;
     return rendre();
   }
   if(act === "ouvrirSemaineCondensee"){ vue.semaineCondensee = true; vue.decalageSemaine = 0; return rendre(); }
   if(act === "fermerSemaineCondensee"){ vue.semaineCondensee = false; vue.decalageSemaine = 0; return rendre(); }
   if(act === "ouvrirSemestre"){
-    vue.edt = null; vue.vueMois = false; vue.semaineCondensee = false;
+    vue.agendaListe = false; vue.edt = null; vue.vueMois = false; vue.semaineCondensee = false;
     vue.semestre = (vue.moisAgenda || jourISO().slice(0,7));
     return rendre();
   }
@@ -7997,6 +8066,7 @@ document.addEventListener("touchend", ev => {
   toucheDebut = null;
   if(rapide && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8){
     if(vue.semaineCondensee) decalerSemaineCondensee(dx < 0 ? 1 : -1);
+    else if(vue.agendaListe && !vue.edt && !vue.semestre) decalerListe(dx < 0 ? 1 : -1);
     else decalerMois(dx < 0 ? 1 : -1);
     rendre();
   }
