@@ -455,6 +455,8 @@
   .sem-grille{display:flex;min-width:760px}
   .sem-col{flex:1;min-width:126px;border-right:1px solid var(--filet)}
   .sem-col:last-child{border-right:0}
+  .sem-grille.sem-3{min-width:0}
+  .sem-grille.sem-3 .sem-col{min-width:0;flex:1 1 0}
   .sem-titre{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
     color:var(--encre-3);text-align:center;padding:6px 0 5px;border-bottom:1px solid var(--filet-fort);
     position:sticky;top:0;background:var(--fiche);z-index:2}
@@ -690,6 +692,14 @@
   .imp-ecran .imp-vac{color:var(--accent)}
   .imp-ecran .imp-vide{color:var(--encre-3)}
   body.sombre .imp-ecran .imp-vac{color:#7FB3C8}
+  .imp-ecran .imp-jour{min-height:30px}
+  .imp-ecran .imp-vide-j .imp-date{color:var(--encre-3);font-weight:500}
+  .imp-ecran .imp-date span{padding:1px 4px;margin-left:-4px;border-radius:3px}
+  .imp-ecran .imp-j-vac .imp-date span{background:#F7C6D6;color:var(--encre)}
+  body.sombre .imp-ecran .imp-j-vac .imp-date span{background:#7A3550;color:#fff}
+  .imp-ecran .imp-j-ferie{background:#F7E2E9}
+  body.sombre .imp-ecran .imp-j-ferie{background:#4A2530}
+  .imp-ecran .imp-auj .imp-date span{color:var(--accent);font-weight:700;outline:1.5px solid var(--accent)}
   .imp-ecran [data-act]{cursor:pointer}
   .citation-jour{display:flex;align-items:flex-start;gap:6px;margin:-6px 0 16px}
   .citation-jour p{margin:0;flex:1;font-size:12.5px;line-height:1.45;font-style:italic;color:var(--encre-2)}
@@ -1269,7 +1279,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 211;
+const VERSION_APP = 213;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3905,7 +3915,11 @@ function vueSemestre(){
   const j = jourISO();
   const base = vue.semestre || j.slice(0,7);
   const [an0, mo0] = base.split("-").map(Number);
-  const mois = Array.from({ length:6 }, (_, k) => {
+  /* Sur téléphone, six colonnes ne tiennent pas : on en voyait trois et les
+     flèches sautaient de six mois, ce qui masquait les trois suivants. On
+     affiche donc trois mois qui tiennent dans l'écran, et on avance de trois. */
+  const nb = window.innerWidth < 700 ? 3 : 6;
+  const mois = Array.from({ length:nb }, (_, k) => {
     const d = new Date(an0, mo0 - 1 + k, 1);
     return { an:d.getFullYear(), mo:d.getMonth() };
   });
@@ -3914,10 +3928,10 @@ function vueSemestre(){
   const h = [`<button class="retour" data-act="fermerSemestre">← Agenda</button>`,
     barreVuesAgenda("semestre"),
     `<div class="nav-mois">
-      <button class="btn mini creux" data-sem="-6">←</button>
+      <button class="btn mini creux" data-sem="-${nb}">←</button>
       <button class="btn mini creux" data-sem="0">Now</button>
-      <button class="btn mini creux" data-sem="6">→</button>
-      <span class="boite-note">${MOIS[mois[0].mo]} ${mois[0].an} → ${MOIS[mois[5].mo]} ${mois[5].an}</span>
+      <button class="btn mini creux" data-sem="${nb}">→</button>
+      <span class="boite-note">${MOIS[mois[0].mo]} ${mois[0].an} → ${MOIS[mois[nb-1].mo]} ${mois[nb-1].an}</span>
     </div>`];
 
   const colonnes = mois.map(m => {
@@ -3956,9 +3970,9 @@ function vueSemestre(){
       ${cases.join("")}</div>`;
   });
 
-  h.push(`<div class="sem-cadre"><div class="sem-grille">${colonnes.join("")}</div></div>`);
+  h.push(`<div class="sem-cadre"><div class="sem-grille${nb === 3 ? " sem-3" : ""}">${colonnes.join("")}</div></div>`);
   h.push(piedAide([
-    "Six mois d'un coup d'œil. Un clic sur un jour y ajoute un rendez-vous, un clic sur un intitulé l'ouvre en entier.",
+    (nb === 3 ? "Trois mois d'un coup d'œil (six sur un écran plus large)." : "Six mois d'un coup d'œil.") + " Un clic sur un jour y ajoute un rendez-vous, un clic sur un intitulé l'ouvre en entier.",
     "Les jours fériés sont en rose, les vacances portent un liseré à gauche, les week-ends sont grisés.",
     "Les anniversaires et les échéances n'y figurent pas : cette vue sert aux dates qui structurent le semestre.",
   ]));
@@ -5250,7 +5264,9 @@ function htmlImpAgenda(du, au, ecran = false){
     db.taches.filter(t => t.date_due === iso).forEach(t => items.push(ecran
       ? `<span data-tache="${t.id}" data-act="editer">${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}</span>`
       : `${t.statut === "done" ? "✓" : "◷"} ${ech(t.intitule)}`));
-    if(!items.length) continue;
+    /* À l'écran (vue L), on garde aussi les jours vides ; le PDF, lui,
+       continue de les sauter pour économiser le papier. */
+    if(!items.length && !ecran) continue;
     let nouveauMois = false;
     if(iso.slice(0,7) !== mois){ mois = iso.slice(0,7); nouveauMois = true; { const m = MOIS[+mois.slice(5,7) - 1]; out.push(`<h2>${m.charAt(0).toUpperCase() + m.slice(1)} ${mois.slice(0,4)}</h2>`); } }
     /* Un trait épais marque chaque nouvelle semaine (sauf juste sous un titre
@@ -5258,7 +5274,8 @@ function htmlImpAgenda(du, au, ecran = false){
     const lundi = semaineDe(iso)[0];
     const nouvelleSem = semPrec && lundi !== semPrec && !nouveauMois;
     semPrec = lundi;
-    out.push(`<div class="imp-jour${nouvelleSem ? " imp-sem" : ""}"><div class="imp-date">${jourImp(iso)}</div><div class="imp-items">${items.map(i => `<div>${i}</div>`).join("")}</div></div>`);
+    const cl = ecran ? [!items.length && "imp-vide-j", fer && "imp-j-ferie", vacanceDe(iso) && "imp-j-vac", iso === jourISO() && "imp-auj"].filter(Boolean).join(" ") : "";
+    out.push(`<div class="imp-jour${nouvelleSem ? " imp-sem" : ""}${cl ? " " + cl : ""}"><div class="imp-date">${ecran ? `<span>${jourImp(iso)}</span>` : jourImp(iso)}</div><div class="imp-items">${items.map(i => `<div>${i}</div>`).join("")}</div></div>`);
   }
   return out.length ? out.join("") : `<p class="imp-vide">Rien entre ces deux dates.</p>`;
 }
