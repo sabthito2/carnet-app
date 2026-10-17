@@ -977,7 +977,11 @@ async function initMeteo(){
 }
 
 function positionPourMeteo(){
-  if(db.reglages.utiliser_position && positionActuelle) return positionActuelle;
+  /* Arrondi au dixième de degré (environ 10 km) : bien assez pour la météo,
+     et le service ne reçoit jamais la position exacte. Le calcul du soleil,
+     lui, se fait sur le téléphone et garde la position précise. */
+  if(db.reglages.utiliser_position && positionActuelle)
+    return { lat: Math.round(positionActuelle.lat * 10) / 10, lng: Math.round(positionActuelle.lng * 10) / 10 };
   return { lat: 48.8566, lng: 2.3522 }; // Paris, par défaut
 }
 
@@ -1327,7 +1331,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 214;
+const VERSION_APP = 215;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
