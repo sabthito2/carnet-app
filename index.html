@@ -738,9 +738,19 @@
   body.sombre .morse-retour.ok{background:#22382A}
   .morse-retour .code,.morse-code{font-family:var(--mono);letter-spacing:.18em}
   .morse-stop{display:block;margin:18px auto 0}
+  .morse-ligne{font-size:15px}
+  .morse-gestion{margin-top:10px}.morse-gestion .btn{flex:0 1 auto;padding:6px 12px}
+  .morse-ligne b{font:700 22px var(--mono)}
+  .morse-dessin{display:flex;gap:14px;align-items:center;justify-content:center;min-height:40px;margin:6px 0 4px}
+  .morse-dessin i{display:block;height:20px;border-radius:10px;background:var(--encre)}
+  .morse-dessin i.pt{width:20px}.morse-dessin i.tr{width:64px}
+  .morse-retour.ok .morse-dessin i{background:var(--vert)}
+  .morse-retour.non .morse-dessin i{background:var(--rouge)}
+  .morse-carte .morse-dessin i{background:var(--accent)}
   .morse-cible{text-align:center;margin:4px 0}.morse-cible small{display:block;font-size:13px;color:var(--encre-2)}
   .morse-cible b{font:700 64px var(--mono);line-height:1.1}
-  .morse-trace{display:flex;gap:10px;justify-content:center;align-items:center;height:30px;margin:6px 0 12px}
+  .morse-trace{display:flex;gap:14px;justify-content:center;align-items:center;height:40px;margin:6px 0 12px}
+  .morse-trace i{height:20px !important;border-radius:10px !important}.morse-trace i.pt{width:20px !important}.morse-trace i.tr{width:64px !important}
   .morse-trace i,.morse-deux i{display:block;background:var(--accent);height:12px;border-radius:6px}
   .morse-trace i.pt,.morse-deux i.pt{width:12px}.morse-trace i.tr,.morse-deux i.tr{width:38px}
   .morse-pad{height:220px;border-radius:22px;background:var(--encre);display:flex;align-items:center;justify-content:center;
@@ -1331,7 +1341,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 215;
+const VERSION_APP = 219;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1592,6 +1602,10 @@ const MORSE_CODES = { A:".-", B:"-...", C:"-.-.", D:"-..", E:".", F:"..-.", G:"-
   "5":".....", "6":"-....", "7":"--...", "8":"---..", "9":"----.", ".":".-.-.-", ",":"--..--", "?":"..--..", "/":"-..-." };
 const MORSE_PAR_CODE = Object.fromEntries(Object.entries(MORSE_CODES).map(([k,v]) => [v,k]));
 const SVG_MORSE = `<svg class="coeur-svg" viewBox="0 0 24 24"><circle cx="5.8" cy="12" r="1.9" fill="currentColor"/><path d="M11 12h8.6" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/></svg>`;
+/* Le code dessiné en grand (ronds et barres), pour ne jamais le confondre
+   avec un tiret de ponctuation. */
+const dessinMorse = code => `<span class="morse-dessin" aria-label="${code.replace(/\./g,"point ").replace(/-/g,"trait ")}">${
+  [...code].map(x => `<i class="${x === "." ? "pt" : "tr"}"></i>`).join("")}</span>`;
 const codeLisible = code => code.replace(/\./g, "·").replace(/-/g, "–");
 const MORSE_DUREE = 5 * 60;   /* secondes par séance */
 const MORSE_MIN_REPONSES = 25; /* en dessous, une séance ne débloque rien */
@@ -1603,6 +1617,8 @@ function etatMorse(){
   if(!m.hauteur) m.hauteur = 600;
   if(m.flash == null) m.flash = true;
   if(!m.emission) m.emission = "une";
+  if(m.auto == null) m.auto = false;   /* nouvelles lettres : c'est vous qui décidez */
+  if(!m.pause) m.pause = 2;            /* secondes d'affichage du schéma après une bonne réponse */
   m.stats = m.stats || {};
   m.seances = m.seances || [];
   return m;
@@ -1741,8 +1757,9 @@ function repondreMorse(c){
   noterMorse(s.cible, juste);
   s.etat = "reponse"; s.repondu = c;
   rendre();
-  if(juste) s.suite = setTimeout(questionMorse, 900);
-  else { const d = jouerCodeMorse(MORSE_CODES[s.cible]); s.suite = setTimeout(questionMorse, d + 1100); }
+  const pause = etatMorse().pause * 1000;
+  if(juste) s.suite = setTimeout(questionMorse, pause);
+  else { const d = jouerCodeMorse(MORSE_CODES[s.cible]); s.suite = setTimeout(questionMorse, d + Math.max(1200, pause)); }
 }
 /* Émission : on classe chaque appui en point ou trait d'après la vitesse
    propre de la personne (moyennes glissantes), pas d'après un barème fixe. */
@@ -1769,15 +1786,16 @@ function validerEmissionMorse(){
   const r = document.getElementById("morse-retour");
   if(r){
     r.className = "morse-retour " + (juste ? "ok" : "non");
-    r.innerHTML = juste ? `✓ Juste — <b>${ech(s.cible)}</b> <span class="code">${codeLisible(s.saisie)}</span>`
-      : `Vous avez fait ${fait ? `<b>${ech(fait)}</b> ` : ""}<span class="code">${codeLisible(s.saisie)}</span><br>
-         ${ech(s.cible)} se fait <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span>`;
+    r.innerHTML = juste ? `<div class="morse-ligne">✓ Juste : <b>${ech(s.cible)}</b></div>${dessinMorse(s.saisie)}`
+      : `<div class="morse-ligne">Vous avez fait${fait ? ` <b>${ech(fait)}</b>` : " :"}</div>${dessinMorse(s.saisie)}
+         <div class="morse-ligne">${ech(s.cible)} se fait :</div>${dessinMorse(MORSE_CODES[s.cible])}`;
   }
   const temps = document.getElementById("morse-score");
   if(temps) temps.textContent = `${s.justes} ✓ · ${s.total - s.justes} ✗`;
   let d = 0;
   if(!juste) d = jouerCodeMorse(MORSE_CODES[s.cible]);
-  s.suite = setTimeout(questionMorse, juste ? 1000 : d + 1400);
+  const pause = etatMorse().pause * 1000;
+  s.suite = setTimeout(questionMorse, juste ? pause : d + Math.max(1400, pause));
 }
 function terminerMorse(){
   const s = morseS; if(!s) return;
@@ -1785,10 +1803,10 @@ function terminerMorse(){
   const m = etatMorse(), j = jourISO();
   if(!s.total){ vue.morseFin = null; return rendre(); }
   const pct = Math.round(100 * s.justes / s.total);
-  let nouvelle = null;
+  let nouvelle = null, prete = null;
   if(s.mode === "ecoute" && s.total >= MORSE_MIN_REPONSES && pct >= 90 && m.niveau < MORSE_KOCH.length){
-    m.niveau++; nouvelle = MORSE_KOCH[m.niveau - 1];
-    m.stats[nouvelle] = { n:0, e:0.3 };
+    if(m.auto) nouvelle = ajouterLettreMorse();
+    else prete = MORSE_KOCH[m.niveau];
   }
   m.seances.unshift({ date:j, mode:s.mode, justes:s.justes, total:s.total });
   m.seances = m.seances.slice(0, 40);
@@ -1797,9 +1815,15 @@ function terminerMorse(){
   if(hab && !habitudeFaite(hab.id, j)){ basculerHabitude(hab.id, j); habCochee = true; }
   else if(hab) habCochee = true;
   const conf = Object.entries(s.confusions).sort((a,b) => b[1] - a[1]).slice(0,3);
-  vue.morseFin = { mode:s.mode, justes:s.justes, total:s.total, pct, nouvelle, conf, hab: habCochee ? hab.nom : null,
+  vue.morseFin = { mode:s.mode, justes:s.justes, total:s.total, pct, nouvelle, prete, conf, hab: habCochee ? hab.nom : null,
                    court: s.mode === "ecoute" && s.total < MORSE_MIN_REPONSES };
   maj();
+}
+function ajouterLettreMorse(){
+  const m = etatMorse(); if(m.niveau >= MORSE_KOCH.length) return null;
+  m.niveau++; const c = MORSE_KOCH[m.niveau - 1];
+  m.stats[c] = { n:0, e:0.3 };
+  return c;
 }
 function arreterMorse(garder){
   if(morseS){ clearInterval(morseS.horloge); clearTimeout(morseS.suite); clearTimeout(morseS.minuteur); }
@@ -1828,9 +1852,12 @@ function vueMorsePage(){
       MORSE_KOCH.slice(l.length, l.length + 3).split("").map(c => `<span class="morse-p vide">${ech(c)}</span>`).join("")}</div>
     ${pctDer != null ? `<div class="barre-morse"><i style="width:${Math.min(100, pctDer / 0.9)}%"></i></div>` : ""}
     <p class="petit-detail" style="margin:6px 0 0">${
-      pctDer == null ? "Touchez une lettre pour l'entendre. La suivante arrive quand vous reconnaissez les premières à 90 % sur une séance."
-      : `Dernière séance d'écoute : <b>${pctDer} %</b>${l.length < MORSE_KOCH.length ? ` — la lettre <b>${ech(MORSE_KOCH[l.length])}</b> arrive à 90 %` : ""}.`}${
-      l.some(morseFaible) ? "<br>En rose : les lettres que vous confondez encore." : ""}</p></div>`);
+      pctDer == null ? (m.auto ? "Touchez une lettre pour l'entendre. La suivante arrive quand vous reconnaissez les premières à 90 % sur une séance."
+        : "Touchez une lettre pour l'entendre. Vous ajoutez la suivante quand vous vous sentez prête ; l'appli vous le proposera à partir de 90 %.")
+      : `Dernière séance d'écoute : <b>${pctDer} %</b>.${l.length < MORSE_KOCH.length ? (m.auto ? ` La lettre <b>${ech(MORSE_KOCH[l.length])}</b> arrive à 90 %.` : ` À partir de 90 %, l'appli vous proposera <b>${ech(MORSE_KOCH[l.length])}</b>.`) : ""}`}${
+      l.some(morseFaible) ? "<br>En rose : les lettres que vous confondez encore." : ""}</p>
+    <div class="morse-rangee morse-gestion">${l.length > 2 ? `<button class="btn creux mini" data-act="morseRetirer">− Retirer ${ech(l[l.length-1])}</button>` : ""}${
+      l.length < MORSE_KOCH.length ? `<button class="btn creux mini" data-act="morseAjouter">+ Ajouter ${ech(MORSE_KOCH[l.length])}</button>` : ""}</div></div>`);
   h.push(onglet === "ecoute"
     ? `<button class="btn morse-go" data-act="morseDemarrer" data-mode="ecoute">▶ Séance d'écoute · 5 min</button>`
     : `<p class="petit-detail" style="margin:0 0 10px">Vous émettez seulement les lettres que vous savez déjà reconnaître.</p>
@@ -1842,11 +1869,15 @@ function vueMorsePage(){
     ${reg("hauteur", "Hauteur du son", m.hauteur + " Hz")}
     ${reg("flash", "Flash à l'écran", m.flash ? "oui" : "non")}
     ${reg("emission", "Émission", m.emission === "une" ? "une touche" : "deux touches")}
+    ${reg("fin_lettre", "Fin de lettre (émission)", m.fin_lettre ? String(m.fin_lettre).replace(".", ",") + " s de silence" : "auto")}
+    ${reg("auto", "Nouvelles lettres", m.auto ? "automatiques à 90 %" : "je choisis")}
+    ${reg("pause", "Schéma affiché", m.pause + " s")}
     <div class="morse-reg"><span>Habitude cochée à la fin</span><b>${hab ? ech(hab.nom) : "—"}</b></div></div>`);
   if(!hab) h.push(`<p class="petit-detail">Une habitude dont le nom contient « morse » sera cochée toute seule à la fin de chaque séance.</p>`);
   if(m.seances.length) h.push(`<div class="oeil" style="margin-top:18px">Dernières séances</div>
-    <div class="fiche liste">${m.seances.slice(0,6).map(x => `<div class="ligne"><div class="corps"><div class="intitule">${dateLongue(x.date)}</div></div>
-      <div class="outils"><span class="puce">${x.mode === "ecoute" ? "écoute" : "émission"}</span><span class="puce">${Math.round(100*x.justes/x.total)} % · ${x.total}</span></div></div>`).join("")}</div>`);
+    <div class="fiche liste">${m.seances.slice(0,10).map((x, i) => `<div class="ligne"><div class="corps"><div class="intitule">${dateLongue(x.date)}</div></div>
+      <div class="outils"><span class="puce">${x.mode === "ecoute" ? "écoute" : "émission"}</span><span class="puce">${Math.round(100*x.justes/x.total)} % · ${x.total}</span>
+        <button class="ico sup" data-act="morseSupSeance" data-i="${i}" title="Supprimer cette séance">✕</button></div></div>`).join("")}</div>`);
   return h.join("");
 }
 function enteteSeanceMorse(){
@@ -1860,8 +1891,8 @@ function vueMorseEcoute(){
   const s = morseS, l = lettresMorse();
   const etat = c => s.etat !== "reponse" ? "" : c === s.cible ? "ok" : c === s.repondu ? "non" : "";
   const retour = s.etat !== "reponse" ? `<div class="morse-retour vide">&nbsp;</div>`
-    : s.repondu === s.cible ? `<div class="morse-retour ok">✓ Juste — <b>${ech(s.cible)}</b> <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span></div>`
-    : `<div class="morse-retour non">C'était <b>${ech(s.cible)}</b> <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span> — écoutez-le encore.</div>`;
+    : s.repondu === s.cible ? `<div class="morse-retour ok"><div class="morse-ligne">✓ Juste : <b>${ech(s.cible)}</b></div>${dessinMorse(MORSE_CODES[s.cible])}</div>`
+    : `<div class="morse-retour non"><div class="morse-ligne">C'était <b>${ech(s.cible)}</b>, écoutez-le encore :</div>${dessinMorse(MORSE_CODES[s.cible])}</div>`;
   return enteteSeanceMorse() + `
     <button class="morse-rond" id="morse-flash" data-act="morseRejouer" aria-label="Réécouter"><span>↻</span><small>RÉÉCOUTER</small></button>
     <p class="petit-detail" style="text-align:center;margin:0">Quelle lettre avez-vous entendue ?</p>
@@ -1889,8 +1920,13 @@ function vueMorseFin(){
     `<div class="morse-carte" style="text-align:center"><div class="oeil">Séance ${f.mode === "ecoute" ? "d'écoute" : "d'émission"} terminée</div>
       <div class="morse-pct">${f.pct} %</div><div class="petit-detail">${f.justes} juste${f.justes > 1 ? "s" : ""} sur ${f.total}</div></div>`];
   if(f.nouvelle) h.push(`<div class="morse-carte" style="text-align:center"><div class="oeil">Nouvelle lettre</div>
-      <div class="morse-grande">${ech(f.nouvelle)}</div><div class="morse-code">${codeLisible(MORSE_CODES[f.nouvelle])}</div>
+      <div class="morse-grande">${ech(f.nouvelle)}</div><div>${dessinMorse(MORSE_CODES[f.nouvelle])}</div>
       <button class="btn creux" style="margin-top:12px" data-act="morseJouer" data-c="${ech(f.nouvelle)}">▶ L'écouter</button></div>`);
+  else if(f.prete) h.push(`<div class="morse-carte" style="text-align:center"><div class="oeil">Prête pour la suite ?</div>
+      <p class="petit-detail" style="margin:0 0 10px">Vous reconnaissez vos lettres à ${f.pct} %. Vous pouvez ajouter la suivante, ou rester encore avec celles-ci.</p>
+      <div class="morse-grande">${ech(f.prete)}</div><div>${dessinMorse(MORSE_CODES[f.prete])}</div>
+      <div class="morse-rangee"><button class="btn creux" data-act="morseJouer" data-c="${ech(f.prete)}">▶ L'écouter</button>
+        <button class="btn" data-act="morseAjouterFin">Ajouter ${ech(f.prete)}</button></div></div>`);
   else if(f.court) h.push(`<p class="petit-detail">Séance un peu courte (${f.total} réponses) : il en faut ${MORSE_MIN_REPONSES} pour débloquer une lettre.</p>`);
   if(f.conf.length) h.push(`<div class="morse-carte"><div class="oeil">À revoir</div><div class="petit-detail">${
     f.conf.map(([k, n]) => { const [a, b] = k.split(">"); return `<b>${ech(a)}</b> ${b === "?" ? "mal formée" : `confondue avec <b>${ech(b)}</b>`}${n > 1 ? ` (${n} fois)` : ""}`; }).join(" · ")}</div></div>`);
@@ -1918,7 +1954,8 @@ const relacheMorse = ev => {
   tonMorse(false);
   appuiMorse(d);
   /* Fin de lettre : un silence nettement plus long qu'un point. */
-  const attente = Math.min(1300, Math.max(450, morseS.point * 3.2));
+  const fin = etatMorse().fin_lettre;
+  const attente = fin ? fin * 1000 : Math.min(1300, Math.max(450, morseS.point * 3.2));
   morseS.minuteur = setTimeout(validerEmissionMorse, attente);
 };
 document.addEventListener("pointerup", relacheMorse);
@@ -7480,6 +7517,18 @@ document.addEventListener("click", ev => {
   if(act === "morseRetourPage"){ vue.morseFin = null; return rendre(); }
   if(act === "morseSigne"){ if(morseS && morseS.etat === "question"){ morseS.saisie += b.dataset.s; audioMorse(); jouerCodeMorse(b.dataset.s); majTraceMorse(); } return; }
   if(act === "morseEffacer"){ if(morseS && morseS.etat === "question"){ morseS.saisie = ""; majTraceMorse(); } return; }
+  if(act === "morseAjouter"){ const c = ajouterLettreMorse(); if(c){ audioMorse(); jouerCodeMorse(MORSE_CODES[c]); } return maj(); }
+  if(act === "morseAjouterFin"){ const c = ajouterLettreMorse(); if(vue.morseFin){ vue.morseFin.nouvelle = c; vue.morseFin.prete = null; } return maj(); }
+  if(act === "morseRetirer"){
+    const m = etatMorse(); if(m.niveau <= 2) return;
+    if(!confirm(`Retirer la lettre ${MORSE_KOCH[m.niveau-1]} ? Vous pourrez la remettre quand vous voudrez.`)) return;
+    m.niveau--; return maj();
+  }
+  if(act === "morseSupSeance"){
+    const m = etatMorse(), i = +b.dataset.i, x = m.seances[i]; if(!x) return;
+    if(!confirm(`Supprimer la séance ${x.mode === "ecoute" ? "d'écoute" : "d'émission"} du ${dateCourte(x.date)} (${Math.round(100*x.justes/x.total)} %) ?`)) return;
+    m.seances.splice(i, 1); return maj();
+  }
   if(act === "morseValider"){ validerEmissionMorse(); return; }
   if(act === "morseRegle"){
     const m = etatMorse(), cle = b.dataset.cle;
@@ -7488,6 +7537,9 @@ document.addEventListener("click", ev => {
     if(cle === "hauteur") m.hauteur = tour([500,600,700], m.hauteur);
     if(cle === "flash") m.flash = !m.flash;
     if(cle === "emission") m.emission = m.emission === "une" ? "deux" : "une";
+    if(cle === "auto") m.auto = !m.auto;
+    if(cle === "fin_lettre") m.fin_lettre = tour([0, 0.6, 0.9, 1.2, 1.6, 2], m.fin_lettre || 0);
+    if(cle === "pause") m.pause = tour([1,2,3,4], m.pause);
     if(cle === "hauteur" || cle === "vitesse"){ audioMorse(); jouerCodeMorse(".-"); }
     return maj();
   }
