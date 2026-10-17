@@ -705,6 +705,54 @@
   .citation-jour p{margin:0;flex:1;font-size:12.5px;line-height:1.45;font-style:italic;color:var(--encre-2)}
   .citation-jour .auteur{font-style:normal;color:var(--encre-3);white-space:nowrap}
   .citation-jour .ico{flex:0 0 auto;font-size:11px;padding:2px 4px;color:var(--encre-3);opacity:.7}
+  /* ---------- Morse ---------- */
+  .morse-carte{background:var(--fiche);border:1px solid var(--filet);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+  .morse-puces{display:flex;flex-wrap:wrap;gap:6px}
+  .morse-p{font:600 15px var(--mono);width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    background:var(--accent-pale);color:var(--accent);border:0;padding:0}
+  .morse-p.faible{background:var(--rouge-pale);color:var(--rouge)}
+  .morse-p.vide{background:transparent;border:1px dashed var(--filet-fort);color:var(--encre-3);font-weight:400}
+  .barre-morse{height:6px;background:var(--fiche-2);border-radius:3px;overflow:hidden;margin:10px 0 2px}
+  .barre-morse i{display:block;height:100%;background:var(--accent);transition:width .4s}
+  .morse-go{display:block;width:100%;padding:14px;font-size:16px;font-weight:600;margin-bottom:14px}
+  .morse-regs{padding:4px 16px}
+  .morse-reg{display:flex;justify-content:space-between;align-items:center;width:100%;padding:11px 0;border:0;border-top:1px solid var(--filet);
+    background:none;font-size:14px;color:var(--encre);text-align:left}
+  .morse-regs .morse-reg:first-child{border-top:0}
+  .morse-reg b{font-weight:600;font-family:var(--mono);font-size:13px}
+  .morse-haut{display:flex;justify-content:space-between;font:12px var(--mono);color:var(--encre-3)}
+  .morse-rond{display:flex;flex-direction:column;align-items:center;justify-content:center;width:150px;height:150px;border-radius:50%;
+    margin:10px auto 12px;border:2px solid var(--accent);background:var(--accent-pale);color:var(--accent);transition:background .04s}
+  .morse-rond span{font-size:38px;line-height:1}.morse-rond small{font:11px var(--mono);letter-spacing:.1em;margin-top:6px}
+  #morse-flash.allume{background:var(--accent);color:var(--papier)}
+  .morse-clav{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+  .morse-clav.serre{grid-template-columns:repeat(6,1fr)}
+  .morse-clav button{height:54px;border-radius:10px;background:var(--fiche);border:1px solid var(--filet-fort);font:600 22px var(--mono);color:var(--encre);padding:0}
+  .morse-clav.serre button{height:46px;font-size:18px}
+  .morse-clav button.ok{background:#DDEEDF;border-color:var(--vert);color:var(--vert)}
+  .morse-clav button.non{background:var(--rouge-pale);border-color:var(--rouge);color:var(--rouge)}
+  body.sombre .morse-clav button.ok{background:#22382A}
+  .morse-retour{margin-top:14px;padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px;min-height:42px;line-height:1.45}
+  .morse-retour.ok{border-left:2px solid var(--vert);background:#E5F0E6}
+  .morse-retour.non{border-left:2px solid var(--rouge);background:var(--rouge-pale)}
+  body.sombre .morse-retour.ok{background:#22382A}
+  .morse-retour .code,.morse-code{font-family:var(--mono);letter-spacing:.18em}
+  .morse-stop{display:block;margin:18px auto 0}
+  .morse-cible{text-align:center;margin:4px 0}.morse-cible small{display:block;font-size:13px;color:var(--encre-2)}
+  .morse-cible b{font:700 64px var(--mono);line-height:1.1}
+  .morse-trace{display:flex;gap:10px;justify-content:center;align-items:center;height:30px;margin:6px 0 12px}
+  .morse-trace i,.morse-deux i{display:block;background:var(--accent);height:12px;border-radius:6px}
+  .morse-trace i.pt,.morse-deux i.pt{width:12px}.morse-trace i.tr,.morse-deux i.tr{width:38px}
+  .morse-pad{height:220px;border-radius:22px;background:var(--encre);display:flex;align-items:center;justify-content:center;
+    touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer}
+  .morse-pad-in{color:var(--papier);font-size:15px;pointer-events:none;padding:10px 18px;border-radius:10px}
+  .morse-pad.presse{background:var(--accent)}
+  .morse-deux{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .morse-deux button{height:140px;border-radius:18px;border:1.5px solid var(--filet-fort);background:var(--fiche);display:flex;align-items:center;justify-content:center;
+    touch-action:manipulation}
+  .morse-rangee{display:flex;gap:10px;margin-top:12px}.morse-rangee .btn{flex:1;padding:12px}
+  .morse-pct{font-size:46px;font-weight:700;margin:6px 0 0}
+  .morse-grande{font:700 54px var(--mono);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -1279,7 +1327,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 213;
+const VERSION_APP = 214;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1526,6 +1574,353 @@ function vueSeanceCoherence(){
 }
 
 /* ---- Page Suivi : historique des séances ---- */
+
+/* ================= Morse =================
+   Méthode Koch : on entend chaque lettre à vitesse réelle, comme un motif
+   sonore, et on n'en ajoute une nouvelle qu'après 90 % de justes sur une
+   séance. Le son est fabriqué sur place (aucun fichier, aucun réseau).
+   L'état d'apprentissage vit dans db.morse (suit les synchronisations,
+   comme les réglages) ; la séance en cours, elle, reste en mémoire. */
+const MORSE_KOCH = "KMRSUAPTLOWI.NJEF0Y,VG5/Q9ZH38B?427C1D6X";
+const MORSE_CODES = { A:".-", B:"-...", C:"-.-.", D:"-..", E:".", F:"..-.", G:"--.", H:"....", I:"..", J:".---",
+  K:"-.-", L:".-..", M:"--", N:"-.", O:"---", P:".--.", Q:"--.-", R:".-.", S:"...", T:"-", U:"..-", V:"...-",
+  W:".--", X:"-..-", Y:"-.--", Z:"--..", "0":"-----", "1":".----", "2":"..---", "3":"...--", "4":"....-",
+  "5":".....", "6":"-....", "7":"--...", "8":"---..", "9":"----.", ".":".-.-.-", ",":"--..--", "?":"..--..", "/":"-..-." };
+const MORSE_PAR_CODE = Object.fromEntries(Object.entries(MORSE_CODES).map(([k,v]) => [v,k]));
+const SVG_MORSE = `<svg class="coeur-svg" viewBox="0 0 24 24"><circle cx="5.8" cy="12" r="1.9" fill="currentColor"/><path d="M11 12h8.6" stroke="currentColor" stroke-width="3" stroke-linecap="round" fill="none"/></svg>`;
+const codeLisible = code => code.replace(/\./g, "·").replace(/-/g, "–");
+const MORSE_DUREE = 5 * 60;   /* secondes par séance */
+const MORSE_MIN_REPONSES = 25; /* en dessous, une séance ne débloque rien */
+
+function etatMorse(){
+  const m = db.morse = db.morse || {};
+  if(!(m.niveau >= 2)) m.niveau = 2;
+  if(!m.vitesse) m.vitesse = 20;
+  if(!m.hauteur) m.hauteur = 600;
+  if(m.flash == null) m.flash = true;
+  if(!m.emission) m.emission = "une";
+  m.stats = m.stats || {};
+  m.seances = m.seances || [];
+  return m;
+}
+const lettresMorse = () => MORSE_KOCH.slice(0, etatMorse().niveau).split("");
+const morseFaible = c => { const s = etatMorse().stats[c]; return !!s && s.n >= 5 && s.e > 0.25; };
+const habitudeMorse = () => (db.habitudes || []).find(x => !x.archive && sansAccents(x.nom || "").toLowerCase().includes("morse"));
+
+/* ---- Son ----
+   Web Audio pour la précision du rythme. Sur iPhone, le bouton silencieux
+   coupe Web Audio ; une piste muette jouée par un élément <audio> bascule la
+   page en mode « lecture », ce qui laisse passer le son (même astuce que les
+   lecteurs de musique). */
+let morseAC = null, morseMuet = null, morseTon = null;
+function wavMuet(){
+  const n = 4000, buf = new Uint8Array(44 + n), v = new DataView(buf.buffer);
+  const ecr = (o, s) => [...s].forEach((ch, i) => buf[o + i] = ch.charCodeAt(0));
+  ecr(0, "RIFF"); v.setUint32(4, 36 + n, true); ecr(8, "WAVEfmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+  v.setUint16(32, 1, true); v.setUint16(34, 8, true); ecr(36, "data"); v.setUint32(40, n, true);
+  buf.fill(128, 44);
+  let s = ""; buf.forEach(b => s += String.fromCharCode(b));
+  return "data:audio/wav;base64," + btoa(s);
+}
+function audioMorse(){
+  try{
+    if(!morseAC){ const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null; morseAC = new AC(); }
+    if(morseAC.state === "suspended") morseAC.resume();
+    try{ if(navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}
+    if(!morseMuet){ morseMuet = new Audio(wavMuet()); morseMuet.loop = true; morseMuet.setAttribute("playsinline", ""); }
+    const p = morseMuet.play(); if(p && p.catch) p.catch(() => {});
+    return morseAC;
+  }catch(e){ return null; }
+}
+function couperAudioMorse(){
+  try{ if(morseMuet) morseMuet.pause(); }catch(e){}
+  try{ if(morseTon){ morseTon.osc.stop(); morseTon = null; } }catch(e){ morseTon = null; }
+}
+/* Joue un code (".-.") et fait clignoter l'élément #morse-flash au même rythme.
+   Renvoie la durée en millisecondes. */
+function jouerCodeMorse(code){
+  const ac = audioMorse(), m = etatMorse();
+  const u = 1.2 / m.vitesse;
+  const flash = m.flash ? document.getElementById("morse-flash") : null;
+  let t = 0;
+  const segs = [...code].map(s => { const d = (s === "-" ? 3 : 1) * u; const seg = [t, d]; t += d + u; return seg; });
+  if(ac){
+    const t0 = ac.currentTime + 0.05;
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.frequency.value = m.hauteur; osc.type = "sine";
+    g.gain.setValueAtTime(0, t0);
+    segs.forEach(([deb, d]) => {
+      g.gain.setValueAtTime(0, t0 + deb);
+      g.gain.linearRampToValueAtTime(0.45, t0 + deb + 0.005);
+      g.gain.setValueAtTime(0.45, t0 + deb + d - 0.005);
+      g.gain.linearRampToValueAtTime(0, t0 + deb + d);
+    });
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t0); osc.stop(t0 + t + 0.05);
+  }
+  if(flash) segs.forEach(([deb, d]) => {
+    setTimeout(() => flash.classList.add("allume"), 50 + deb * 1000);
+    setTimeout(() => flash.classList.remove("allume"), 50 + (deb + d) * 1000);
+  });
+  return 50 + t * 1000;
+}
+/* Ton continu pour l'émission : il sonne tant que le doigt est posé. */
+function tonMorse(actif){
+  const ac = morseAC; if(!ac) return;
+  if(!morseTon){
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.frequency.value = etatMorse().hauteur; g.gain.value = 0;
+    osc.connect(g); g.connect(ac.destination); osc.start();
+    morseTon = { osc, g };
+  }
+  const t = ac.currentTime, g = morseTon.g.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+  g.linearRampToValueAtTime(actif ? 0.45 : 0, t + 0.006);
+  const f = etatMorse().flash ? document.getElementById("morse-flash") : null;
+  if(f) f.classList.toggle("allume", actif);
+}
+
+/* ---- Séance ---- */
+let morseS = null;   /* séance en cours (jamais enregistrée telle quelle) */
+function tirerLettreMorse(){
+  const l = lettresMorse(), m = etatMorse(), s = morseS;
+  const nouvelle = l[l.length - 1];
+  let c;
+  for(let essai = 0; essai < 6; essai++){
+    if(l.length > 2 && Math.random() < 0.3) c = nouvelle;
+    else {
+      const poids = l.map(x => 1 + 3 * ((m.stats[x] || {}).e ?? 0.3));
+      let r = Math.random() * poids.reduce((a,b) => a + b, 0);
+      c = l[poids.findIndex(p => (r -= p) < 0)] || l[0];
+    }
+    /* jamais trois fois de suite la même */
+    if(!(s.hist.length >= 2 && s.hist[s.hist.length-1] === c && s.hist[s.hist.length-2] === c)) break;
+  }
+  s.hist.push(c);
+  return c;
+}
+function noterMorse(c, juste){
+  const st = etatMorse().stats, x = st[c] = st[c] || { n:0, e:0.3 };
+  x.n++; x.e = Math.round((x.e * 0.8 + (juste ? 0 : 0.2)) * 1000) / 1000;
+}
+function demarrerMorse(mode){
+  audioMorse();
+  morseS = { mode, debut:Date.now(), justes:0, total:0, hist:[], confusions:{}, cible:null, etat:"question",
+             saisie:"", dernierRelache:0, minuteur:null, horloge:null, suite:null,
+             point:120, trait:360 };
+  vue.morseFin = null;
+  morseS.horloge = setInterval(() => {
+    if(!morseS) return;
+    if(!document.getElementById("morse-zone")) return arreterMorse(false);
+    const reste = MORSE_DUREE - Math.floor((Date.now() - morseS.debut) / 1000);
+    const el = document.getElementById("morse-temps");
+    if(el) el.textContent = `${Math.floor(Math.max(reste,0)/60)}:${String(Math.max(reste,0)%60).padStart(2,"0")} restantes`;
+    const b = document.getElementById("morse-avance");
+    if(b) b.style.width = Math.min(100, (Date.now() - morseS.debut) / 10 / MORSE_DUREE) + "%";
+    if(reste <= 0 && morseS.etat === "question") terminerMorse();
+  }, 500);
+  questionMorse();
+}
+function questionMorse(){
+  if(!morseS) return;
+  if((Date.now() - morseS.debut) / 1000 >= MORSE_DUREE) return terminerMorse();
+  morseS.cible = tirerLettreMorse(); morseS.etat = "question"; morseS.saisie = ""; morseS.repondu = null;
+  rendre();
+  if(morseS.mode === "ecoute") setTimeout(() => morseS && jouerCodeMorse(MORSE_CODES[morseS.cible]), 250);
+}
+function repondreMorse(c){
+  const s = morseS; if(!s || s.etat !== "question" || s.mode !== "ecoute") return;
+  const juste = c === s.cible;
+  s.total++; if(juste) s.justes++;
+  else { const k = s.cible + ">" + c; s.confusions[k] = (s.confusions[k] || 0) + 1; }
+  noterMorse(s.cible, juste);
+  s.etat = "reponse"; s.repondu = c;
+  rendre();
+  if(juste) s.suite = setTimeout(questionMorse, 900);
+  else { const d = jouerCodeMorse(MORSE_CODES[s.cible]); s.suite = setTimeout(questionMorse, d + 1100); }
+}
+/* Émission : on classe chaque appui en point ou trait d'après la vitesse
+   propre de la personne (moyennes glissantes), pas d'après un barème fixe. */
+function appuiMorse(duree){
+  const s = morseS; if(!s || s.etat !== "question") return;
+  const seuil = (s.point + s.trait) / 2;
+  const signe = duree < seuil ? "." : "-";
+  if(signe === ".") s.point = s.point * 0.75 + Math.max(40, duree) * 0.25;
+  else s.trait = s.trait * 0.75 + Math.min(1500, duree) * 0.25;
+  if(s.trait < s.point * 2) s.trait = s.point * 2;
+  s.saisie += signe;
+  majTraceMorse();
+}
+function majTraceMorse(){
+  const el = document.getElementById("morse-trace");
+  if(el) el.innerHTML = [...morseS.saisie].map(x => `<i class="${x === "." ? "pt" : "tr"}"></i>`).join("");
+}
+function validerEmissionMorse(){
+  const s = morseS; if(!s || s.etat !== "question" || !s.saisie) return;
+  const fait = MORSE_PAR_CODE[s.saisie] || null, juste = s.saisie === MORSE_CODES[s.cible];
+  s.total++; if(juste) s.justes++;
+  else { const k = s.cible + ">" + (fait || "?"); s.confusions[k] = (s.confusions[k] || 0) + 1; }
+  s.etat = "reponse";
+  const r = document.getElementById("morse-retour");
+  if(r){
+    r.className = "morse-retour " + (juste ? "ok" : "non");
+    r.innerHTML = juste ? `✓ Juste — <b>${ech(s.cible)}</b> <span class="code">${codeLisible(s.saisie)}</span>`
+      : `Vous avez fait ${fait ? `<b>${ech(fait)}</b> ` : ""}<span class="code">${codeLisible(s.saisie)}</span><br>
+         ${ech(s.cible)} se fait <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span>`;
+  }
+  const temps = document.getElementById("morse-score");
+  if(temps) temps.textContent = `${s.justes} ✓ · ${s.total - s.justes} ✗`;
+  let d = 0;
+  if(!juste) d = jouerCodeMorse(MORSE_CODES[s.cible]);
+  s.suite = setTimeout(questionMorse, juste ? 1000 : d + 1400);
+}
+function terminerMorse(){
+  const s = morseS; if(!s) return;
+  arreterMorse(true);
+  const m = etatMorse(), j = jourISO();
+  if(!s.total){ vue.morseFin = null; return rendre(); }
+  const pct = Math.round(100 * s.justes / s.total);
+  let nouvelle = null;
+  if(s.mode === "ecoute" && s.total >= MORSE_MIN_REPONSES && pct >= 90 && m.niveau < MORSE_KOCH.length){
+    m.niveau++; nouvelle = MORSE_KOCH[m.niveau - 1];
+    m.stats[nouvelle] = { n:0, e:0.3 };
+  }
+  m.seances.unshift({ date:j, mode:s.mode, justes:s.justes, total:s.total });
+  m.seances = m.seances.slice(0, 40);
+  const hab = habitudeMorse();
+  let habCochee = false;
+  if(hab && !habitudeFaite(hab.id, j)){ basculerHabitude(hab.id, j); habCochee = true; }
+  else if(hab) habCochee = true;
+  const conf = Object.entries(s.confusions).sort((a,b) => b[1] - a[1]).slice(0,3);
+  vue.morseFin = { mode:s.mode, justes:s.justes, total:s.total, pct, nouvelle, conf, hab: habCochee ? hab.nom : null,
+                   court: s.mode === "ecoute" && s.total < MORSE_MIN_REPONSES };
+  maj();
+}
+function arreterMorse(garder){
+  if(morseS){ clearInterval(morseS.horloge); clearTimeout(morseS.suite); clearTimeout(morseS.minuteur); }
+  if(morseTon) tonMorse(false);
+  couperAudioMorse();
+  morseS = null;
+  if(!garder) vue.morseFin = null;
+}
+
+/* ---- Affichage ---- */
+function vueMorsePage(){
+  const m = etatMorse();
+  if(morseS) return morseS.mode === "ecoute" ? vueMorseEcoute() : vueMorseEmission();
+  if(vue.morseFin) return vueMorseFin();
+  const l = lettresMorse(), onglet = vue.morseOnglet || "ecoute";
+  const derniere = m.seances.find(x => x.mode === "ecoute");
+  const pctDer = derniere ? Math.round(100 * derniere.justes / derniere.total) : null;
+  const h = [`<button class="retour" data-act="fermerMorse">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Morse</h1></div>`,
+    `<div class="segment">
+       <button class="${onglet === "ecoute" ? "actif" : ""}" data-act="morseOnglet" data-o="ecoute">Écouter</button>
+       <button class="${onglet === "emission" ? "actif" : ""}" data-act="morseOnglet" data-o="emission">Émettre</button></div>`];
+  h.push(`<div class="morse-carte">
+    <div class="oeil">Vos lettres · ${l.length} sur ${MORSE_KOCH.length}</div>
+    <div class="morse-puces">${l.map(c => `<button class="morse-p ${morseFaible(c) ? "faible" : ""}" data-act="morseJouer" data-c="${ech(c)}" title="Écouter ${ech(c)}">${ech(c)}</button>`).join("")}${
+      MORSE_KOCH.slice(l.length, l.length + 3).split("").map(c => `<span class="morse-p vide">${ech(c)}</span>`).join("")}</div>
+    ${pctDer != null ? `<div class="barre-morse"><i style="width:${Math.min(100, pctDer / 0.9)}%"></i></div>` : ""}
+    <p class="petit-detail" style="margin:6px 0 0">${
+      pctDer == null ? "Touchez une lettre pour l'entendre. La suivante arrive quand vous reconnaissez les premières à 90 % sur une séance."
+      : `Dernière séance d'écoute : <b>${pctDer} %</b>${l.length < MORSE_KOCH.length ? ` — la lettre <b>${ech(MORSE_KOCH[l.length])}</b> arrive à 90 %` : ""}.`}${
+      l.some(morseFaible) ? "<br>En rose : les lettres que vous confondez encore." : ""}</p></div>`);
+  h.push(onglet === "ecoute"
+    ? `<button class="btn morse-go" data-act="morseDemarrer" data-mode="ecoute">▶ Séance d'écoute · 5 min</button>`
+    : `<p class="petit-detail" style="margin:0 0 10px">Vous émettez seulement les lettres que vous savez déjà reconnaître.</p>
+       <button class="btn morse-go" data-act="morseDemarrer" data-mode="emission">▶ Séance d'émission · 5 min</button>`);
+  const hab = habitudeMorse();
+  const reg = (cle, nom, val) => `<button class="morse-reg" data-act="morseRegle" data-cle="${cle}"><span>${nom}</span><b>${val}</b></button>`;
+  h.push(`<div class="morse-carte morse-regs">
+    ${reg("vitesse", "Vitesse des lettres", m.vitesse + " mots/min")}
+    ${reg("hauteur", "Hauteur du son", m.hauteur + " Hz")}
+    ${reg("flash", "Flash à l'écran", m.flash ? "oui" : "non")}
+    ${reg("emission", "Émission", m.emission === "une" ? "une touche" : "deux touches")}
+    <div class="morse-reg"><span>Habitude cochée à la fin</span><b>${hab ? ech(hab.nom) : "—"}</b></div></div>`);
+  if(!hab) h.push(`<p class="petit-detail">Une habitude dont le nom contient « morse » sera cochée toute seule à la fin de chaque séance.</p>`);
+  if(m.seances.length) h.push(`<div class="oeil" style="margin-top:18px">Dernières séances</div>
+    <div class="fiche liste">${m.seances.slice(0,6).map(x => `<div class="ligne"><div class="corps"><div class="intitule">${dateLongue(x.date)}</div></div>
+      <div class="outils"><span class="puce">${x.mode === "ecoute" ? "écoute" : "émission"}</span><span class="puce">${Math.round(100*x.justes/x.total)} % · ${x.total}</span></div></div>`).join("")}</div>`);
+  return h.join("");
+}
+function enteteSeanceMorse(){
+  const s = morseS;
+  const reste = Math.max(0, MORSE_DUREE - Math.floor((Date.now() - s.debut) / 1000));
+  return `<div id="morse-zone"><div class="morse-haut"><span id="morse-temps">${Math.floor(reste/60)}:${String(reste%60).padStart(2,"0")} restantes</span>
+      <span id="morse-score">${s.justes} ✓ · ${s.total - s.justes} ✗</span></div>
+    <div class="barre-morse" style="margin:4px 0 14px"><i id="morse-avance" style="width:${Math.min(100, (Date.now() - s.debut) / 10 / MORSE_DUREE)}%"></i></div>`;
+}
+function vueMorseEcoute(){
+  const s = morseS, l = lettresMorse();
+  const etat = c => s.etat !== "reponse" ? "" : c === s.cible ? "ok" : c === s.repondu ? "non" : "";
+  const retour = s.etat !== "reponse" ? `<div class="morse-retour vide">&nbsp;</div>`
+    : s.repondu === s.cible ? `<div class="morse-retour ok">✓ Juste — <b>${ech(s.cible)}</b> <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span></div>`
+    : `<div class="morse-retour non">C'était <b>${ech(s.cible)}</b> <span class="code">${codeLisible(MORSE_CODES[s.cible])}</span> — écoutez-le encore.</div>`;
+  return enteteSeanceMorse() + `
+    <button class="morse-rond" id="morse-flash" data-act="morseRejouer" aria-label="Réécouter"><span>↻</span><small>RÉÉCOUTER</small></button>
+    <p class="petit-detail" style="text-align:center;margin:0">Quelle lettre avez-vous entendue ?</p>
+    <div class="morse-clav ${l.length > 12 ? "serre" : ""}">${l.map(c => `<button class="${etat(c)}" data-act="morseRep" data-c="${ech(c)}">${ech(c)}</button>`).join("")}</div>
+    ${retour}
+    <button class="btn creux mini morse-stop" data-act="morseArreter">Terminer la séance</button></div>`;
+}
+function vueMorseEmission(){
+  const s = morseS, deux = etatMorse().emission === "deux";
+  return enteteSeanceMorse() + `
+    <div class="morse-cible"><small>Émettez la lettre</small><b>${ech(s.cible)}</b></div>
+    <div class="morse-trace" id="morse-trace"></div>
+    ${deux
+      ? `<div class="morse-deux"><button id="morse-flash" data-act="morseSigne" data-s="." aria-label="Point"><i class="pt"></i></button>
+           <button data-act="morseSigne" data-s="-" aria-label="Trait"><i class="tr"></i></button></div>
+         <div class="morse-rangee"><button class="btn creux" data-act="morseEffacer">Effacer</button><button class="btn" data-act="morseValider">Valider</button></div>`
+      : `<p class="petit-detail" style="text-align:center;margin:0 0 8px">Appui court = point · appui long = trait</p>
+         <div class="morse-pad" id="morse-pad"><span id="morse-flash" class="morse-pad-in">Appuyez ici</span></div>`}
+    <div class="morse-retour vide" id="morse-retour">&nbsp;</div>
+    <button class="btn creux mini morse-stop" data-act="morseArreter">Terminer la séance</button></div>`;
+}
+function vueMorseFin(){
+  const f = vue.morseFin;
+  const h = [`<button class="retour" data-act="morseRetourPage">← Morse</button>`,
+    `<div class="morse-carte" style="text-align:center"><div class="oeil">Séance ${f.mode === "ecoute" ? "d'écoute" : "d'émission"} terminée</div>
+      <div class="morse-pct">${f.pct} %</div><div class="petit-detail">${f.justes} juste${f.justes > 1 ? "s" : ""} sur ${f.total}</div></div>`];
+  if(f.nouvelle) h.push(`<div class="morse-carte" style="text-align:center"><div class="oeil">Nouvelle lettre</div>
+      <div class="morse-grande">${ech(f.nouvelle)}</div><div class="morse-code">${codeLisible(MORSE_CODES[f.nouvelle])}</div>
+      <button class="btn creux" style="margin-top:12px" data-act="morseJouer" data-c="${ech(f.nouvelle)}">▶ L'écouter</button></div>`);
+  else if(f.court) h.push(`<p class="petit-detail">Séance un peu courte (${f.total} réponses) : il en faut ${MORSE_MIN_REPONSES} pour débloquer une lettre.</p>`);
+  if(f.conf.length) h.push(`<div class="morse-carte"><div class="oeil">À revoir</div><div class="petit-detail">${
+    f.conf.map(([k, n]) => { const [a, b] = k.split(">"); return `<b>${ech(a)}</b> ${b === "?" ? "mal formée" : `confondue avec <b>${ech(b)}</b>`}${n > 1 ? ` (${n} fois)` : ""}`; }).join(" · ")}</div></div>`);
+  if(f.hab) h.push(`<p class="petit-detail" style="text-align:center">✓ Habitude « ${ech(f.hab)} » cochée pour aujourd'hui</p>`);
+  h.push(`<div class="morse-rangee"><button class="btn creux" data-act="morseRetourPage">Retour</button>
+    <button class="btn" data-act="morseDemarrer" data-mode="${f.mode}">Encore une séance</button></div>`);
+  return h.join("");
+}
+
+/* Appuis sur le manipulateur : on mesure nous-mêmes la durée du contact. */
+let morseAppui = null;
+document.addEventListener("pointerdown", ev => {
+  const p = ev.target.closest && ev.target.closest("#morse-pad");
+  if(!p || !morseS || morseS.etat !== "question") return;
+  ev.preventDefault();
+  try{ p.setPointerCapture(ev.pointerId); }catch(e){}
+  clearTimeout(morseS.minuteur);
+  morseAppui = performance.now();
+  p.classList.add("presse"); tonMorse(true);
+});
+const relacheMorse = ev => {
+  if(morseAppui == null || !morseS) return;
+  const d = performance.now() - morseAppui; morseAppui = null;
+  const p = document.getElementById("morse-pad"); if(p) p.classList.remove("presse");
+  tonMorse(false);
+  appuiMorse(d);
+  /* Fin de lettre : un silence nettement plus long qu'un point. */
+  const attente = Math.min(1300, Math.max(450, morseS.point * 3.2));
+  morseS.minuteur = setTimeout(validerEmissionMorse, attente);
+};
+document.addEventListener("pointerup", relacheMorse);
+document.addEventListener("pointercancel", relacheMorse);
+document.addEventListener("contextmenu", ev => { if(ev.target.closest && ev.target.closest("#morse-pad")) ev.preventDefault(); });
+
 function vueCoherencePage(){
   const h = [`<button class="retour" data-act="fermerCoherence">← Suivi</button>`,
     `<div class="entete-d"><h1 class="titre">Cohérence cardiaque</h1></div>`,
@@ -3436,6 +3831,7 @@ function vueAccueil(){
     <button class="carre-action" data-act="ouvrirSommeil" title="Bilan sommeil" aria-label="Bilan sommeil">📊</button>
     <span class="sep-decalage"></span>
     <button class="carre-action" data-act="allerVersCoherence" title="Cohérence cardiaque" aria-label="Cohérence cardiaque">${SVG_COEUR}</button>
+    <button class="carre-action" data-act="allerVersMorse" title="Morse" aria-label="Morse">${SVG_MORSE}</button>
   </div>`);
   /* Pas de récapitulatif chiffré : on lit les listes elles-mêmes. */
 
@@ -4599,6 +4995,7 @@ function vueSuivi(){
   if(vue.pageAstronomie) return vueAstronomiePage();
   if(vue.pageCoherence) return vueCoherencePage();
   if(vue.pageElan) return vueElanPage();
+  if(vue.pageMorse) return vueMorsePage();
   const alerteGaranties = db.garanties.filter(g => ecartJours(jourISO(), ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois")) <= 60).length;
   const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
     `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
@@ -4610,6 +5007,7 @@ function vueSuivi(){
        <button class="btn creux" data-act="ouvrirAstronomie">Astronomie</button>
        <button class="btn creux" data-act="ouvrirCoherence" title="Cohérence cardiaque" aria-label="Cohérence cardiaque" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_COEUR}</button>
        <button class="btn creux" data-act="ouvrirElan" title="Élan" aria-label="Élan" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MARCHES}</button>
+       <button class="btn creux" data-act="ouvrirMorse" title="Morse" aria-label="Morse" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MORSE}</button>
      </div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
@@ -6772,7 +7170,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; vue.pageElan = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; vue.pageElan = false; vue.pageMorse = false; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -7066,6 +7464,29 @@ document.addEventListener("click", ev => {
     return;
   }
   if(act === "fermerAstronomie"){ vue.pageAstronomie = false; return rendre(); }
+  if(act === "ouvrirMorse"){ vue.dossier = null; vue.pageMorse = true; return rendre(); }
+  if(act === "allerVersMorse"){ vue.onglet = "suivi"; vue.dossier = null; vue.pageMorse = true; return rendre(); }
+  if(act === "fermerMorse"){ arreterMorse(false); vue.pageMorse = false; return rendre(); }
+  if(act === "morseOnglet"){ vue.morseOnglet = b.dataset.o; return rendre(); }
+  if(act === "morseJouer"){ audioMorse(); jouerCodeMorse(MORSE_CODES[b.dataset.c] || ""); return; }
+  if(act === "morseDemarrer"){ demarrerMorse(b.dataset.mode); return; }
+  if(act === "morseRejouer"){ if(morseS && morseS.cible) jouerCodeMorse(MORSE_CODES[morseS.cible]); return; }
+  if(act === "morseRep"){ repondreMorse(b.dataset.c); return; }
+  if(act === "morseArreter"){ terminerMorse(); return; }
+  if(act === "morseRetourPage"){ vue.morseFin = null; return rendre(); }
+  if(act === "morseSigne"){ if(morseS && morseS.etat === "question"){ morseS.saisie += b.dataset.s; audioMorse(); jouerCodeMorse(b.dataset.s); majTraceMorse(); } return; }
+  if(act === "morseEffacer"){ if(morseS && morseS.etat === "question"){ morseS.saisie = ""; majTraceMorse(); } return; }
+  if(act === "morseValider"){ validerEmissionMorse(); return; }
+  if(act === "morseRegle"){
+    const m = etatMorse(), cle = b.dataset.cle;
+    const tour = (l, v) => l[(l.indexOf(v) + 1) % l.length];
+    if(cle === "vitesse") m.vitesse = tour([15,18,20,25], m.vitesse);
+    if(cle === "hauteur") m.hauteur = tour([500,600,700], m.hauteur);
+    if(cle === "flash") m.flash = !m.flash;
+    if(cle === "emission") m.emission = m.emission === "une" ? "deux" : "une";
+    if(cle === "hauteur" || cle === "vitesse"){ audioMorse(); jouerCodeMorse(".-"); }
+    return maj();
+  }
   if(act === "ouvrirCoherence"){ vue.dossier = null; vue.pageCoherence = true; return rendre(); }
   if(act === "fermerCoherence"){ vue.pageCoherence = false; return rendre(); }
   if(act === "impAgenda"){
