@@ -775,6 +775,12 @@
   .morse-rangee{display:flex;gap:10px;margin-top:12px}.morse-rangee .btn{flex:1;padding:12px}
   .morse-pct{font-size:46px;font-weight:700;margin:6px 0 0}
   .morse-grande{font:700 54px var(--mono);color:var(--accent)}
+  .suivi-cherche input{width:100%;padding:12px 14px;font-size:16px;border:1px solid var(--filet-fort);border-radius:var(--r);
+    background:var(--fiche);color:var(--encre)}
+  #suivi-resultats{margin-top:8px}
+  .suivi-res{display:flex;align-items:center;width:100%;border:0;background:none;text-align:left;color:var(--encre);font:inherit}
+  .suivi-res .corps{display:flex;flex-direction:column;gap:3px}
+  .suivi-res-fl{margin-left:auto;color:var(--encre-3);font-size:20px;padding-left:8px}
 </style>
 </head>
 <body>
@@ -992,8 +998,30 @@ function astroDuJour(){
    Rafraîchi toutes les 30 minutes environ, jamais bloquant. */
 let meteoCache = null, meteoErreur = false;
 
+/* La position GPS est rangée sur l'appareil seulement (clé à part, jamais
+   dans le carnet synchronisé ni dans l'export). Avant, elle n'était gardée
+   qu'en mémoire : à chaque réouverture de l'appli, on retombait sur Paris
+   sans le dire. Au démarrage, on la relit, puis on la rafraîchit en silence
+   si la localisation est déjà autorisée (jamais de nouvelle demande). */
+function memoriserPosition(p){
+  positionActuelle = p;
+  try{ Stockage.ecrire(p, "position_locale"); }catch(e){}
+}
+async function initPosition(){
+  try{ const p = await Stockage.lire("position_locale"); if(p && typeof p.lat === "number") positionActuelle = p; }catch(e){}
+  if(!positionActuelle || !navigator.permissions || !navigator.geolocation) return;
+  try{
+    const st = await navigator.permissions.query({ name:"geolocation" });
+    if(st.state !== "granted") return;
+    navigator.geolocation.getCurrentPosition(pos => {
+      memoriserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      rendre();
+    }, () => {}, { maximumAge: 30*60*1000, timeout: 15000 });
+  }catch(e){}
+}
 async function initMeteo(){
   try{ meteoCache = await Stockage.lire("meteo"); }catch(e){}
+  await initPosition();
   await recupererMeteo();
   rendre();
 }
@@ -1002,7 +1030,7 @@ function positionPourMeteo(){
   /* Arrondi au dixième de degré (environ 10 km) : bien assez pour la météo,
      et le service ne reçoit jamais la position exacte. Le calcul du soleil,
      lui, se fait sur le téléphone et garde la position précise. */
-  if(db.reglages.utiliser_position && positionActuelle)
+  if(positionActuelle)
     return { lat: Math.round(positionActuelle.lat * 10) / 10, lng: Math.round(positionActuelle.lng * 10) / 10 };
   return { lat: 48.8566, lng: 2.3522 }; // Paris, par défaut
 }
@@ -1353,7 +1381,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 225;
+const VERSION_APP = 228;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1491,7 +1519,7 @@ function formatHeureLocale_(date){
    centralisé ici pour ne pas dupliquer cette bascule à chaque endroit où
    le Soleil est montré. */
 function soleilEffectif(donneesJour, date){
-  if(db.reglages.utiliser_position && positionActuelle){
+  if(positionActuelle){
     const s = soleilPourPosition(date || new Date(), positionActuelle.lat, positionActuelle.lng);
     if(s) return {
       lever: formatHeureLocale_(s.lever),
@@ -5046,6 +5074,42 @@ function vueElanPage(){
   ]));
   return h.join("");
 }
+/* Accueil de Suivi : les rubriques, puis une recherche qui ouvre un dossier
+   directement (« van » → le dossier Van), sans passer par la liste. */
+function vueSuiviAccueil(alerteGaranties){
+  return [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
+    `<div style="margin-bottom:18px;display:flex;gap:8px;flex-wrap:wrap">
+       <button class="btn" data-act="ouvrirDossiers">Dossiers${db.dossiers.length ? ` <span class="cpt">${db.dossiers.length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirListes">Listes${db.listes.length ? ` <span class="cpt">${db.listes.length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirProjets">Projets${db.projets.length ? ` <span class="cpt">${db.projets.length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirCommandes">Commandes${db.commandes.filter(c=>!c.recue).length ? ` <span class="cpt">${db.commandes.filter(c=>!c.recue).length}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirGaranties">Garanties${alerteGaranties ? ` <span class="cpt">${alerteGaranties}</span>` : ""}</button>
+       <button class="btn creux" data-act="ouvrirAstronomie">Astronomie</button>
+       <button class="btn creux" data-act="ouvrirCoherence" title="Cohérence cardiaque" aria-label="Cohérence cardiaque" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_COEUR}</button>
+       <button class="btn creux" data-act="ouvrirElan" title="Élan" aria-label="Élan" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MARCHES}</button>
+       <button class="btn creux" data-act="ouvrirMorse" title="Morse" aria-label="Morse" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MORSE}</button>
+     </div>`,
+    `<div class="suivi-cherche">
+       <input id="suivi-cherche" type="search" placeholder="Ouvrir un dossier… (ex. van)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+       <div id="suivi-resultats">${resultatsSuiviCherche("")}</div></div>`].join("");
+}
+function dossiersCherches(q){
+  const n = x => sansAccents(String(x || "")).toLowerCase();
+  const m = n(q).trim();
+  if(!m) return [];
+  return db.dossiers.filter(d => n(d.nom).includes(m) || n(catDe(d.categorie_id)?.nom).includes(m))
+    .sort((a,b) => (n(a.nom).startsWith(m) ? 0 : 1) - (n(b.nom).startsWith(m) ? 0 : 1) || a.nom.localeCompare(b.nom))
+    .slice(0, 8);
+}
+function resultatsSuiviCherche(q){
+  if(!q.trim()) return "";
+  const l = dossiersCherches(q);
+  if(!l.length) return `<p class="petit-detail" style="margin:8px 2px">Aucun dossier ne correspond.</p>`;
+  return `<div class="fiche liste">${l.map(d => { const c = catDe(d.categorie_id); return `<button class="ligne suivi-res" data-act="ouvrirDossierCherche" data-id="${d.id}">
+    <span class="corps"><span class="intitule">${ech(d.nom)}</span>${c ? `<span class="meta"><span class="puce">${ech(c.nom)}</span></span>` : ""}</span>
+    <span class="suivi-res-fl">›</span></button>`; }).join("")}</div>`;
+}
+
 function vueSuivi(){
   if(vue.noteOuverte) return vueNoteOuverte();
   if(vue.dossier) return vueDossier();
@@ -5060,18 +5124,10 @@ function vueSuivi(){
   if(vue.pageElan) return vueElanPage();
   if(vue.pageMorse) return vueMorsePage();
   const alerteGaranties = db.garanties.filter(g => ecartJours(jourISO(), ajouterPeriode(g.date_achat, g.duree_mois || 12, "mois")) <= 60).length;
-  const h = [`<div class="entete-mob"><h1 class="titre">Suivi</h1><div class="jour">${dateCourte(jourISO())}</div></div>`,
-    `<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
-       <button class="btn" data-act="nouveauDossier">Nouveau dossier</button>
-       <button class="btn creux" data-act="ouvrirListes">Listes${db.listes.length ? ` <span class="cpt">${db.listes.length}</span>` : ""}</button>
-       <button class="btn creux" data-act="ouvrirProjets">Projets${db.projets.length ? ` <span class="cpt">${db.projets.length}</span>` : ""}</button>
-       <button class="btn creux" data-act="ouvrirCommandes">Commandes${db.commandes.filter(c=>!c.recue).length ? ` <span class="cpt">${db.commandes.filter(c=>!c.recue).length}</span>` : ""}</button>
-       <button class="btn creux" data-act="ouvrirGaranties">Garanties${alerteGaranties ? ` <span class="cpt">${alerteGaranties}</span>` : ""}</button>
-       <button class="btn creux" data-act="ouvrirAstronomie">Astronomie</button>
-       <button class="btn creux" data-act="ouvrirCoherence" title="Cohérence cardiaque" aria-label="Cohérence cardiaque" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_COEUR}</button>
-       <button class="btn creux" data-act="ouvrirElan" title="Élan" aria-label="Élan" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MARCHES}</button>
-       <button class="btn creux" data-act="ouvrirMorse" title="Morse" aria-label="Morse" style="display:inline-flex;align-items:center;justify-content:center;padding:9px 17px">${SVG_MORSE}</button>
-     </div>`];
+  if(!vue.pageDossiers) return vueSuiviAccueil(alerteGaranties);
+  const h = [`<button class="retour" data-act="fermerDossiers">← Suivi</button>`,
+    `<div class="entete-d"><h1 class="titre">Dossiers</h1></div>`,
+    `<div style="margin-bottom:16px"><button class="btn" data-act="nouveauDossier">Nouveau dossier</button></div>`];
   if(!db.dossiers.length) return h.join("") + vide("Aucun dossier", "Commencez par le sujet qui vous occupe le plus.");
   const tri = [...db.dossiers].sort((a,b) =>
     (catDe(a.categorie_id)?.nom||"zz").localeCompare(catDe(b.categorie_id)?.nom||"zz") || a.nom.localeCompare(b.nom));
@@ -5085,11 +5141,13 @@ function vueSuivi(){
     const avecDate = vues.filter(t => t.date_due);
     const remontees = vues.filter(t => !t.date_due && (t.en_inbox || t.suivant_le)).length;
     const n = vues.length - avecDate.length - remontees;
-    const ech = avecDate.map(t => t.date_due).sort().slice(0,3);
+    /* (nom « echs » et pas « ech » : ech() échappe le texte, et la masquer ici
+       faisait planter la page dès qu'un dossier avait un lien) */
+    const echs = avecDate.map(t => t.date_due).sort().slice(0,3);
     const nEch = avecDate.length;
     return { p, n, c:catDe(d.categorie_id),
       lien: d.url ? `<a class="lien" href="${ech(d.url)}" target="_blank" rel="noopener">Ouvrir ↗</a>` : `<span style="color:var(--encre-3)">—</span>`,
-      remontees, ech, nEch,
+      remontees, ech: echs, nEch,
       cout: parMoisDossier(d) ? `${euro(parMoisDossier(d),2)} / mois` : "—" };
   };
   h.push(`<div class="fiche"><table class="tab"><thead><tr>
@@ -5931,14 +5989,14 @@ function vueReglages(){
   ${blocSync}
 
   <div class="bloc"><div class="oeil">Position
-      <span class="a-droite">${db.reglages.utiliser_position ? "activée" : "désactivée"}</span></div>
+      <span class="a-droite">${positionActuelle ? "activée" : "désactivée"}</span></div>
     <div class="fiche" style="padding:14px">
       <p style="margin:0 0 12px;font-size:13.5px;color:var(--encre-2)">
-        ${db.reglages.utiliser_position
+        ${positionActuelle
           ? "Le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris."
           : "Active pour que le coucher du soleil en Accueil et l'icône météo correspondent à votre position réelle, plutôt qu'à Paris par défaut. Votre téléphone demandera l'autorisation."}</p>
-      <button class="btn ${db.reglages.utiliser_position ? "danger" : ""}" data-act="basculerPosition">
-        ${db.reglages.utiliser_position ? "Désactiver" : "Activer"}</button>
+      <button class="btn ${positionActuelle ? "danger" : ""}" data-act="basculerPosition">
+        ${positionActuelle ? "Désactiver" : "Activer"}</button>
     </div></div>
 
   <div class="bloc"><div class="oeil">Couleur d'accent</div>
@@ -7238,7 +7296,7 @@ document.addEventListener("click", ev => {
 
   const bO = c.closest("[data-onglet]");
   if(bO){ vue.onglet = bO.dataset.onglet;
-    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; vue.pageElan = false; vue.pageMorse = false; }
+    if(vue.onglet !== "suivi"){ vue.dossier = null; vue.liste = null; vue.pageListes = false; vue.projet = null; vue.pageProjets = false; vue.pageCommandes = false; vue.noteOuverte = null; vue.pageGaranties = false; vue.pageAstronomie = false; vue.pageCoherence = false; vue.pageElan = false; vue.pageMorse = false; vue.pageDossiers = false; }
     if(vue.onglet !== "accueil"){ vue.pageSommeil = false; vue.habitudeGrille = null; }
     if(vue.onglet !== "budget") vue.pageBilanAnnuel = false;
     return rendre(); }
@@ -7438,9 +7496,9 @@ document.addEventListener("click", ev => {
     return maj();
   }
   if(act === "basculerPosition"){
-    if(db.reglages.utiliser_position){
+    if(positionActuelle){
       db.reglages.utiliser_position = false;
-      positionActuelle = null;
+      memoriserPosition(null);
       sauver();
       recupererMeteo(true).then(rendre);
       return maj();
@@ -7451,8 +7509,7 @@ document.addEventListener("click", ev => {
     }
     navigator.geolocation.getCurrentPosition(
       pos => {
-        positionActuelle = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        db.reglages.utiliser_position = true;
+        memoriserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         sauver();
         recupererMeteo(true).then(rendre);
         maj();
@@ -7485,6 +7542,9 @@ document.addEventListener("click", ev => {
     const l = c.closest("[data-jourdate]");
     return editerRdv(null, l ? l.dataset.jourdate : jourISO());
   }
+  if(act === "ouvrirDossiers"){ vue.pageDossiers = true; return rendre(); }
+  if(act === "fermerDossiers"){ vue.pageDossiers = false; return rendre(); }
+  if(act === "ouvrirDossierCherche"){ vue.pageDossiers = false; vue.dossier = b.dataset.id; vue.voirFaites = false; return rendre(); }
   if(act === "fermerDossier"){ vue.dossier = null; vue.voirFaites = false; return rendre(); }
   if(act === "ouvrirListes"){ vue.dossier = null; vue.pageListes = true; return rendre(); }
   if(act === "ouvrirProjets"){ vue.dossier = null; vue.pageProjets = true; return rendre(); }
@@ -8047,6 +8107,11 @@ document.addEventListener("keydown", ev => {
   if(ev.key === "/" && !saisie){ ev.preventDefault(); return ouvrirRecherche(); }
   if(ev.key !== "Enter") return;
   if(ev.target.id === "saisie"){ ev.preventDefault(); ajouterDepuis("saisie", null); }
+  if(ev.target.id === "suivi-cherche"){
+    ev.preventDefault();
+    const d = dossiersCherches(ev.target.value)[0];
+    if(d){ ev.target.blur(); vue.pageDossiers = false; vue.dossier = d.id; vue.voirFaites = false; rendre(); }
+  }
   if(ev.target.id === "saisieDoss"){ ev.preventDefault(); ajouterDepuis("saisieDoss", ev.target.dataset.dossier); }
   if(ev.target.id === "itemListeSaisie"){ ev.preventDefault(); ajouterItemListe(ev.target.dataset.liste); }
   if(ev.target.id === "tacheProjetSaisie"){ ev.preventDefault(); ajouterTacheProjet(ev.target.dataset.projet); }
@@ -8055,6 +8120,11 @@ document.addEventListener("keydown", ev => {
 
 document.addEventListener("input", ev => {
   Sync.noterGeste();
+  if(ev.target.id === "suivi-cherche"){
+    const r = document.getElementById("suivi-resultats");
+    if(r) r.innerHTML = resultatsSuiviCherche(ev.target.value);
+    return;
+  }
   if(ev.target.id === "citationsElan"){ db.reglages.citations_elan = ev.target.value; sauver(); return; }
   if(ev.target.id === "noteTitreGrand" || ev.target.id === "noteTexteGrand"){
     const genre = ev.target.dataset.genre, parentId = ev.target.dataset.parent, noteId = ev.target.dataset.note;
