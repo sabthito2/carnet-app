@@ -739,6 +739,18 @@
   .morse-retour .code,.morse-code{font-family:var(--mono);letter-spacing:.18em}
   .morse-stop{display:block;margin:18px auto 0}
   .morse-ligne{font-size:15px}
+  .morse-memo-btn{display:block;margin-top:10px}
+  .morse-memo{margin-top:10px;border-top:1px solid var(--filet)}
+  .morse-memo-l{display:flex;align-items:center;gap:14px;width:100%;padding:8px 2px;border:0;border-bottom:1px solid var(--filet);background:none;color:var(--encre);text-align:left}
+  .morse-memo-l b{font:700 26px var(--mono);width:34px;text-align:right}
+  /* Dans le mémo, le schéma est volontairement petit et gris : c'est le son
+     qui doit retenir l'attention, pas l'image. */
+  .morse-memo-l .morse-dessin{justify-content:flex-start;flex:1;margin:0;min-height:20px;gap:4px}
+  .morse-memo-l .morse-dessin i{height:5px !important;border-radius:3px !important;background:var(--encre-3) !important}
+  .morse-memo-l .morse-dessin i.pt{width:5px !important}.morse-memo-l .morse-dessin i.tr{width:15px !important}
+  .morse-memo-l.faible b{color:var(--rouge)}
+  .morse-memo-ecoute{color:var(--accent);font-size:15px;width:34px;height:34px;border-radius:50%;background:var(--accent-pale);
+    display:flex;align-items:center;justify-content:center;flex:none}
   .morse-gestion{margin-top:10px}.morse-gestion .btn{flex:0 1 auto;padding:6px 12px}
   .morse-ligne b{font:700 22px var(--mono)}
   .morse-dessin{display:flex;gap:14px;align-items:center;justify-content:center;min-height:40px;margin:6px 0 4px}
@@ -1341,7 +1353,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 222;
+const VERSION_APP = 225;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1857,7 +1869,11 @@ function vueMorsePage(){
       : `Dernière séance d'écoute : <b>${pctDer} %</b>.${l.length < MORSE_KOCH.length ? (m.auto ? ` La lettre <b>${ech(MORSE_KOCH[l.length])}</b> arrive à 90 %.` : ` À partir de 90 %, l'appli vous proposera <b>${ech(MORSE_KOCH[l.length])}</b>.`) : ""}`}${
       l.some(morseFaible) ? "<br>En rose : les lettres que vous confondez encore." : ""}</p>
     <div class="morse-rangee morse-gestion">${l.length > 2 ? `<button class="btn creux mini" data-act="morseRetirer">− Retirer ${ech(l[l.length-1])}</button>` : ""}${
-      l.length < MORSE_KOCH.length ? `<button class="btn creux mini" data-act="morseAjouter">+ Ajouter ${ech(MORSE_KOCH[l.length])}</button>` : ""}</div></div>`);
+      l.length < MORSE_KOCH.length ? `<button class="btn creux mini" data-act="morseAjouter">+ Ajouter ${ech(MORSE_KOCH[l.length])}</button>` : ""}</div>
+    <button class="btn creux mini morse-memo-btn" data-act="morseMemo">${vue.morseMemo ? "▴ Fermer le mémo" : "▾ Mémo de mes lettres"}</button>
+    ${vue.morseMemo ? `<div class="morse-memo">${l.map(c => `<button class="morse-memo-l ${morseFaible(c) ? "faible" : ""}" data-act="morseJouer" data-c="${ech(c)}" title="Écouter ${ech(c)}">
+        ${dessinMorse(MORSE_CODES[c])}<b>${ech(c)}</b><span class="morse-memo-ecoute">▶</span></button>`).join("")}
+      <p class="petit-detail" style="margin:8px 0 0">Touchez une lettre pour l'entendre : c'est le son qu'il faut retenir, le petit schéma n'est qu'un repère.</p></div>` : ""}</div>`);
   h.push(onglet === "ecoute"
     ? `<button class="btn morse-go" data-act="morseDemarrer" data-mode="ecoute">▶ Séance d'écoute · 5 min</button>`
     : `<p class="petit-detail" style="margin:0 0 10px">Vous émettez seulement les lettres que vous savez déjà reconnaître.</p>
@@ -7528,6 +7544,7 @@ document.addEventListener("click", ev => {
   if(act === "morseRetourPage"){ vue.morseFin = null; return rendre(); }
   if(act === "morseSigne"){ if(morseS && morseS.etat === "question"){ morseS.saisie += b.dataset.s; audioMorse(); jouerCodeMorse(b.dataset.s); majTraceMorse(); } return; }
   if(act === "morseEffacer"){ if(morseS && morseS.etat === "question"){ morseS.saisie = ""; majTraceMorse(); } return; }
+  if(act === "morseMemo"){ vue.morseMemo = !vue.morseMemo; return rendre(); }
   if(act === "morseAjouter"){ const c = ajouterLettreMorse(); if(c){ audioMorse(); jouerCodeMorse(MORSE_CODES[c]); } return maj(); }
   if(act === "morseAjouterFin"){ const c = ajouterLettreMorse(); if(vue.morseFin){ vue.morseFin.nouvelle = c; vue.morseFin.prete = null; } return maj(); }
   if(act === "morseRetirer"){
