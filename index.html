@@ -784,6 +784,8 @@
   .somme.somme-remb{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
   .somme-init{font-size:11.5px;color:var(--encre-3);font-weight:400}
   .somme-reste{font-weight:700}
+  .puce.reste-puce{display:inline-block}
+  .puce.reste-puce b{font-weight:700;color:var(--encre);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -1384,7 +1386,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 230;
+const VERSION_APP = 231;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4905,7 +4907,7 @@ function vueBudget(){
         <div class="meta">${r.recu
           ? `<span class="puce date">encaissé le ${dateCourte(r.date)}</span>`
           : `<span class="puce ctx">${r.date ? "prévu le " + dateCourte(r.date) : "à venir"}</span>`}${
-          depInit ? `<span class="puce">dépense initiale : ${euro(depInit.montant,2)}</span>` : ""}</div></div>
+          depInit ? `<span class="puce">dépense initiale : ${euro(depInit.montant,2)}</span><span class="puce reste-puce">reste à charge&nbsp;: <b>${euro(montantNet(depInit),2)}</b></span>` : ""}</div></div>
       <div class="somme">${r.montant == null ? "?" : euro(r.montant,2)}</div>
       <div class="outils"><button class="ico" data-act="editer">✎</button>
         <button class="ico sup" data-act="jeter">✕</button></div></div>`;
