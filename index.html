@@ -1341,7 +1341,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 219;
+const VERSION_APP = 222;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3679,7 +3679,10 @@ function ligneTache(t, opts = {}){
   if(d && !opts.sansDossier) meta.push(`<span class="puce doss">${ech(d.nom)}</span>`);
   if(t.date_due){
     const n = ecartJours(j, t.date_due);
-    meta.push(`<span class="puce date ${!faite && n<=2 ? "chaud":""}">${dateCourte(t.date_due)} · ${resteEnMots(t.date_due)}</span>`);
+    /* Une tâche en attente d'une réponse a été faite : sa date passée n'est
+       plus un retard. On garde la date, sans compte de jours ni couleur. */
+    const passeeEnAttente = t.attente && n < 0;
+    meta.push(`<span class="puce date ${!faite && !passeeEnAttente && n<=2 ? "chaud":""}">${dateCourte(t.date_due)}${passeeEnAttente ? "" : " · " + resteEnMots(t.date_due)}</span>`);
   }
   if(t.n > 0) meta.push(`<span class="puce">${recurrenceEnMots(t.n, t.unite)}</span>`);
   (t.etiquettes||[]).forEach(e => meta.push(`<button class="puce etq" data-fetq="${ech(e)}"
@@ -3696,7 +3699,7 @@ function ligneTache(t, opts = {}){
     meta.push(`<button class="puce" data-act="editer" title="Sous-tâches"
       style="background:none;border:0;padding:0;font:inherit;cursor:pointer">☰ ${nFaites}/${t.sous_taches.length}</button>`);
   }
-  const retard = !faite && t.date_due && ecartJours(j, t.date_due) < 0;
+  const retard = !faite && !t.attente && t.date_due && ecartJours(j, t.date_due) < 0;
   const monter = d && !t.date_due && !faite
     ? (t.en_inbox ? `<button class="ico mont" data-act="renvoyer" title="Renvoyer dans le dossier">↩</button>`
                   : `<button class="ico mont" data-act="rapatrier" title="Remonter dans l'inbox">↑</button>`) : "";
@@ -3924,6 +3927,9 @@ function vueAccueil(){
        la section « Échéances » plus bas, pas à sa place : elle regarde
        soit l'une soit l'autre selon le moment. */
     tachesDu(p.iso).forEach(t => l.push(`<div class="rdv tache">◷ ${ech(t.intitule)}</div>`));
+    /* Comme dans l'Agenda : les échéances passées non cochées se reportent
+       sur aujourd'hui (et seulement aujourd'hui), avec « depuis le … ». */
+    if(p.iso === j) tachesEnRetard().forEach(t => l.push(`<div class="rdv tache">◷ ${ech(t.intitule)} ${repereRetard(t)}</div>`));
     return l;
   };
 
@@ -6555,6 +6561,7 @@ function editerRdv(r, dateProposee){
     if(!d.date){ alert("Il faut une date."); return; }
     const H = lireHeure(d.heure);
     if(H === null){ alert("Heure incomprise. Écrivez par exemple 9h30, 9:30 ou 930."); return; }
+    const dateChangee = d.date !== x.date;
     const repete = d.repete_unite
       ? { unite: d.repete_unite, intervalle: Math.max(1, parseInt(d.repete_intervalle, 10) || 1) }
       : null;
@@ -6569,6 +6576,10 @@ function editerRdv(r, dateProposee){
       barre: d.barre === "1",
     });
     if("masque_accueil" in d) x.masque_accueil = d.masque_accueil === "1";
+    /* Un rendez-vous retiré de l'Accueil (souvent parce qu'il était passé)
+       puis déplacé à une autre date redevient visible : le masquage portait
+       sur l'ancienne date, pas sur le nouveau rendez-vous. */
+    if(dateChangee && !repete) x.masque_accueil = false;
     touche(x);
     if(neuf) (db.rendez_vous = db.rendez_vous || []).push(x);
     vue.moisAgenda = x.date.slice(0,7);
