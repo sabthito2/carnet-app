@@ -781,6 +781,9 @@
   .suivi-res{display:flex;align-items:center;width:100%;border:0;background:none;text-align:left;color:var(--encre);font:inherit}
   .suivi-res .corps{display:flex;flex-direction:column;gap:3px}
   .suivi-res-fl{margin-left:auto;color:var(--encre-3);font-size:20px;padding-left:8px}
+  .somme.somme-remb{display:flex;flex-direction:column;align-items:flex-end;line-height:1.2}
+  .somme-init{font-size:11.5px;color:var(--encre-3);font-weight:400}
+  .somme-reste{font-weight:700}
 </style>
 </head>
 <body>
@@ -1381,7 +1384,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 228;
+const VERSION_APP = 230;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3042,6 +3045,9 @@ const sommeDep = l => l.reduce((s,x) => s + (x.montant || 0), 0);
 const rembourseDe = x => Math.min(x.montant || 0,
   (db.rentrees || []).filter(r => r.depense_id === x.id && r.recu).reduce((s,r) => s + (r.montant || 0), 0));
 const montantNet = x => (x.montant || 0) - rembourseDe(x);
+/* Montant d'une dépense remboursée (santé surtout) : la dépense initiale en
+   petit, puis le reste à charge en gras. */
+const sommeRemb = x => `<span class="somme-init">${euro(x.montant,2)}</span><b class="somme-reste">${euro(montantNet(x),2)}</b>`;
 
 function bilan(decalage = 0){
   const deb = debutPeriode(decalage), fin = finPeriode(deb), j = jourISO();
@@ -3056,7 +3062,7 @@ function bilan(decalage = 0){
                          .reduce((s,r) => s + (r.montant||0), 0);
   const attendues = rent.filter(r => !r.recu).reduce((s,r) => s + (r.montant||0), 0);
   const attente = enAttenteRemb();
-  const avances = attente.reduce((s,x) => s + (x.montant||0), 0);
+  const avances = attente.reduce((s,x) => s + montantNet(x), 0);
   const disponible = revenus - charges + encaissees;
   /* Option : retirer aussi la facture en entier le mois où elle tombe.
      Elle est alors comptée deux fois — une fois lissée sur douze mois, une
@@ -4706,7 +4712,7 @@ function vueBudget(){
        encore, puis d'où vient le calcul. Aucun grand nombre. */
     const aPrel = resteAPrelever(b.deb, b.fin);
     /* Part des dépenses de CE mois avancées et pas encore remboursées. */
-    const attenteMois = b.dep.filter(x => x.rembourser && !x.rembourse).reduce((t,x) => t + (x.montant || 0), 0);
+    const attenteMois = b.dep.filter(x => x.rembourser && !x.rembourse).reduce((t,x) => t + montantNet(x), 0);
     const ligne = (nom, valeur, note, cl) => `<div class="cpt-l">
       <span class="cpt-n">${nom}</span>
       <span class="cpt-v ${cl||""}">${valeur}</span>
@@ -4797,9 +4803,9 @@ function vueBudget(){
           ${x.moyen && x.moyen !== MOYEN_DEFAUT ? `<span class="puce">${nomMoyen(x.moyen)}</span>` : ""}
           ${enEspeces(x) ? `<span class="puce">déjà décompté</span>` : ""}
           ${x.rembourser && !x.rembourse ? `<span class="puce ctx">à rembourser</span>` : ""}
-          ${x.rembourse ? `<span class="puce">remboursé</span>` : ""}</div>
+          ${x.rembourse ? `<span class="puce">${rembourseDe(x) > 0 ? `remboursé ${euro(rembourseDe(x),2)}` : "remboursé"}</span>` : ""}</div>
         ${x.note ? `<div class="petit-detail" style="margin-top:2px">${ech(x.note)}</div>` : ""}</div>
-      <div class="somme"${enEspeces(x) ? ` style="color:var(--encre-3)"` : ""}>${euro(x.montant,2)}</div>
+      <div class="somme${rembourseDe(x) > 0 ? " somme-remb" : ""}"${enEspeces(x) ? ` style="color:var(--encre-3)"` : ""}>${rembourseDe(x) > 0 ? sommeRemb(x) : euro(x.montant,2)}</div>
       <div class="outils">
         <button class="ico ${x.rembourser?"actif":""}" data-act="marquerRemb"
           title="${x.rembourser?"Ne plus attendre de remboursement":"À se faire rembourser"}">⟲</button>
@@ -4821,8 +4827,9 @@ function vueBudget(){
         title="J'ai été remboursé" aria-label="Encaisser le remboursement">${CHECK}</button></div>
       <div class="corps"><div class="intitule">${ech(x.libelle) || (c ? ech(c.nom) : "Dépense")}</div>
         <div class="meta"><span class="puce date">avancé le ${dateCourte(x.date)}</span>
-          ${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}</div></div>
-      <div class="somme">${euro(x.montant,2)}</div>
+          ${c && x.libelle ? `<span class="puce">${ech(c.nom)}</span>` : ""}
+          ${rembourseDe(x) > 0 ? `<span class="puce ctx">reçu ${euro(rembourseDe(x),2)} sur ${euro(x.montant,2)}</span>` : ""}</div></div>
+      <div class="somme${rembourseDe(x) > 0 ? " somme-remb" : ""}">${rembourseDe(x) > 0 ? sommeRemb(x) : euro(x.montant,2)}</div>
       <div class="outils"><button class="ico" data-act="marquerRemb" title="Retirer de l'attente">⟲</button></div></div>`; })));
   }
 
@@ -4871,8 +4878,8 @@ function vueBudget(){
           <div class="corps"><div class="intitule">${ech(x.libelle) || (cdepDe(x.categorie_id)?.nom) || "Dépense"}</div>
             <div class="meta"><span class="puce date">${dateCourte(x.date)}</span>${
               (x.categorie_id && x.categorie_id !== id) ? `<span class="puce">${ech(cdepDe(x.categorie_id)?.nom || "")}</span>` : ""}${
-              rembourseDe(x) > 0 ? `<span class="puce">avancé ${euro(x.montant,2)} · remboursé ${euro(rembourseDe(x),2)}</span>` : ""}</div></div>
-          <div class="somme">${euro(montantNet(x),2)}</div>
+              rembourseDe(x) > 0 ? `<span class="puce">remboursé ${euro(rembourseDe(x),2)}</span>` : ""}</div></div>
+          <div class="somme${rembourseDe(x) > 0 ? " somme-remb" : ""}">${rembourseDe(x) > 0 ? sommeRemb(x) : euro(montantNet(x),2)}</div>
         </div>`).join("")}</div>`;
       }).join(""));
     }
@@ -7010,16 +7017,22 @@ function encaisserRentree(r){
 function encaisserRemboursement(x){
   const c = cdepDe(x.categorie_id);
   const nom = x.libelle || (c ? c.nom : "dépense");
+  const deja = rembourseDe(x);
   formulaire("Remboursement · " + nom, [
     { cle:"montant", nom:"Montant reçu (€)", type:"number", step:"0.01", duo:true },
     { cle:"date", nom:"Date", type:"date" },
-  ], { montant:x.montant ?? "", date:jourISO() }, d => {
+    /* Option : rembourser en plusieurs fois (Sécu, puis mutuelle…). */
+    { cle:"suite", nom:"Et ensuite ?", type:"select",
+      options:[{v:"", n:"C'est tout, c'est remboursé"}, {v:"1", n:"J'attends encore un remboursement"}] },
+  ], { montant: deja > 0 ? Math.round((x.montant - deja) * 100) / 100 : (x.montant ?? ""), date:jourISO(), suite:"" }, d => {
     const m = lireMontant(d.montant);
     if(m === null){ alert("Il faut un montant."); return; }
     const r = { id:uid(), libelle:"Remboursement · " + nom, montant:Math.abs(m),
                 date:d.date || jourISO(), recu:true, depense_id:x.id };
     (db.rentrees = db.rentrees || []).push(touche(r));
-    x.rembourse = true;
+    /* « J'attends encore » : la dépense reste dans l'attente, avec ce qui a
+       déjà été reçu ; le reste à charge se met à jour à chaque encaissement. */
+    x.rembourse = d.suite !== "1";
     touche(x);
     vue.surligne = r.id;
     maj();
