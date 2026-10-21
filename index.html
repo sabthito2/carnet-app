@@ -786,6 +786,13 @@
   .somme-reste{font-weight:700}
   .puce.reste-puce{display:inline-block}
   .puce.reste-puce b{font-weight:700;color:var(--encre);white-space:nowrap}
+  .ancres-budget{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+  .ancres-budget button{font-size:12.5px;color:var(--encre-2);border:1px solid var(--filet);border-radius:14px;padding:4px 10px;background:transparent;white-space:nowrap;cursor:pointer}
+  .ancres-budget i{font-style:normal;font:600 10.5px var(--mono);color:var(--accent);margin-left:4px}
+  .oeil .haut-page{order:4}
+  .oeil-ancre{display:flex;align-items:center;gap:8px}
+  .haut-page{margin-left:8px;flex:none;border:1px solid var(--filet);border-radius:10px;background:transparent;color:var(--encre-3);
+    font-size:11px;line-height:1;padding:3px 7px;cursor:pointer;letter-spacing:0}
 </style>
 </head>
 <body>
@@ -1386,7 +1393,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 231;
+const VERSION_APP = 232;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -4772,6 +4779,19 @@ function vueBudget(){
       : `${euro(somme,2)} de facture annuelle sont aussi prélevés ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} — ${liste} —
          mais déjà comptés de façon lissée, ils ne s'ajoutent pas au total.`}</p>`);
   }
+  /* Raccourcis discrets vers les sections plus bas : ce n'est pas un menu,
+     juste de quoi descendre directement sans faire défiler toute la page. */
+  { const nbRentrees = (db.rentrees || []).filter(r => !r.recu).length;
+    const ancres = [
+      b.attente.length ? ["attente", "Attente", b.attente.length] : null,
+      b.dep.length ? ["repartition", "Répartition"] : null,
+      b.dep.length ? ["categories", "Catégories"] : null,
+      ["rentrees", "Rentrées", nbRentrees || null],
+      jours.length && aVenirMois.length ? ["avenir", "À venir"] : null,
+      ["charges", "Charges"],
+    ].filter(Boolean);
+    h.push(`<div class="ancres-budget">${ancres.map(([id, nom, n]) =>
+      `<button data-act="allerSection" data-s="${id}">${nom}${n ? `<i>${n}</i>` : ""}</button>`).join("")}</div>`); }
   if(!jours.length){
     /* On ne propose que les mois à venir : une facture annuelle a autant
        d'occurrences passées que futures, et les remonter n'aide en rien. */
@@ -4821,7 +4841,7 @@ function vueBudget(){
      qui concerne le mois en cours, pas un aperçu d'un autre mois. */
   if(b.attente.length){
     const age = ecartJours(b.attente[0].date, j);
-    h.push(`<div class="oeil">En attente de remboursement<span class="a-droite">${euro(b.avances,0)} avancés</span></div>`);
+    h.push(`<div class="oeil" id="sec-attente">En attente de remboursement<span class="a-droite">${euro(b.avances,0)} avancés</span><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
     h.push(`<p class="petit-detail" style="margin:0 0 8px">
       ${b.attente.length} dépense${b.attente.length>1?"s":""} · la plus ancienne remonte à ${age} jour${age>1?"s":""}.</p>`);
     h.push(enFiche(b.attente.map(x => { const c = cdepDe(x.categorie_id); return `<div class="ligne" data-depense="${x.id}">
@@ -4833,18 +4853,6 @@ function vueBudget(){
           ${rembourseDe(x) > 0 ? `<span class="puce ctx">reçu ${euro(rembourseDe(x),2)} sur ${euro(x.montant,2)}</span>` : ""}</div></div>
       <div class="somme${rembourseDe(x) > 0 ? " somme-remb" : ""}">${rembourseDe(x) > 0 ? sommeRemb(x) : euro(x.montant,2)}</div>
       <div class="outils"><button class="ico" data-act="marquerRemb" title="Retirer de l'attente">⟲</button></div></div>`; })));
-  }
-
-  if(jours.length && aVenirMois.length){
-    h.push(`<button class="oeil" data-act="basculerAVenir"
-      style="width:100%;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin-top:18px">
-      À venir sur d'autres mois ${vue.aVenirOuvert ? "▾" : "▸"}</button>`);
-    if(vue.aVenirOuvert){
-      h.push(`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">${
-        aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
-          title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
-        ).join("")}</div>`);
-    }
   }
 
   if(b.dep.length){
@@ -4860,7 +4868,7 @@ function vueBudget(){
     const mentionRemb = id => remb[id] > 0
       ? `<div class="mention-remb">${euro(remb[id],2)} remboursés, déjà déduits</div>` : "";
     const totalRep = lignes.reduce((t,[,v]) => t + v, 0);
-    h.push(`<div class="oeil">Répartition<span class="a-droite">${euro(totalRep,0)}</span></div><div class="fiche" style="padding:6px 0">
+    h.push(`<div class="oeil" id="sec-repartition">Répartition<span class="a-droite">${euro(totalRep,0)}</span><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div><div class="fiche" style="padding:6px 0">
       ${lignes.map(([id,v]) => `<div class="barre-cat">
         <span class="nom">${ech(cdepDe(id)?.nom || "Sans catégorie")}</span>
         <span class="tige"><i style="width:${(v/max)*100}%"></i></span>
@@ -4868,9 +4876,9 @@ function vueBudget(){
 
     /* Un seul accordéon, comme le "Récap" plus haut : un clic déplie
        toutes les catégories d'un coup (pas un accordéon par catégorie). */
-    h.push(`<button class="oeil" data-act="basculerDepensesCategorie"
-      style="width:100%;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin-top:18px">
-      Dépenses par catégorie ${vue.depensesCategorieOuvert ? "▾" : "▸"}</button>`);
+    h.push(`<div class="oeil-ancre" id="sec-categories" style="margin-top:18px"><button class="oeil" data-act="basculerDepensesCategorie"
+      style="flex:1;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin:0">
+      Dépenses par catégorie ${vue.depensesCategorieOuvert ? "▾" : "▸"}</button><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
     if(vue.depensesCategorieOuvert){
       h.push(lignes.map(([id,v]) => {
         const depensesCat = b.dep.filter(x => racineCdep(x.categorie_id || "?") === id)
@@ -4894,7 +4902,7 @@ function vueBudget(){
   const dansPeriode = r => !r.recu || !r.date || (r.date >= b.deb && r.date <= b.fin);
   const rentrees = (db.rentrees||[]).filter(dansPeriode).sort((a,c) =>
     (a.recu?1:0) - (c.recu?1:0) || (a.date||"9").localeCompare(c.date||"9"));
-  h.push(`<div class="oeil">Rentrées ponctuelles${b.attendues ? `<span class="a-droite">${euro(b.attendues,0)} à venir</span>` : ""}</div>`);
+  h.push(`<div class="oeil" id="sec-rentrees">Rentrées ponctuelles${b.attendues ? `<span class="a-droite">${euro(b.attendues,0)} à venir</span>` : ""}<button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
   h.push(rentrees.length ? enFiche(rentrees.map(r => {
     /* Un remboursement rappelle la dépense d'origine (montant avancé), pour
        voir d'un coup d'œil ce qui a été avancé et ce qui est revenu — si la
@@ -4934,7 +4942,21 @@ function vueBudget(){
   const totalReel = factures.reduce((s,x) => s + x.reel, 0);
 
   const encoreDu = resteAPrelever(b.deb, b.fin);
-  h.push(`<div class="oeil">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span></div>`);
+  /* « À venir sur d'autres mois » : placé en fin de page, juste avant les
+     charges — c'est ce qui regarde au-delà du mois en cours. */
+  if(jours.length && aVenirMois.length){
+    h.push(`<div class="oeil-ancre" id="sec-avenir" style="margin-top:18px"><button class="oeil" data-act="basculerAVenir"
+      style="flex:1;border:0;background:none;cursor:pointer;text-align:left;padding:0;margin:0">
+      À venir sur d'autres mois ${vue.aVenirOuvert ? "▾" : "▸"}</button><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
+    if(vue.aVenirOuvert){
+      h.push(`<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:8px">${
+        aVenirMois.map(n => `<button class="lien-mois" data-saut="${n}"
+          title="${dateMoyenne(debutPeriode(n))} → ${dateMoyenne(finPeriode(debutPeriode(n)))}">${nomDeLaPeriode(n)} <b>${euro(montantMouvementDuMois(n),2)}</b></button>`
+        ).join("")}</div>`);
+    }
+  }
+
+  h.push(`<div class="oeil" id="sec-charges">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
   if(b.courante)
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${
       encoreDu > 0
@@ -7557,6 +7579,17 @@ document.addEventListener("click", ev => {
     const l = c.closest("[data-jourdate]");
     return editerRdv(null, l ? l.dataset.jourdate : jourISO());
   }
+  if(act === "allerSection"){
+    const id = b.dataset.s;
+    let rerendre = false;
+    if(id === "avenir" && !vue.aVenirOuvert){ vue.aVenirOuvert = true; rerendre = true; }
+    if(id === "categories" && !vue.depensesCategorieOuvert){ vue.depensesCategorieOuvert = true; rerendre = true; }
+    if(rerendre) rendre();
+    const el = document.getElementById("sec-" + id);
+    if(el){ const y = el.getBoundingClientRect().top + window.scrollY - 12; window.scrollTo({ top:y, behavior:"smooth" }); }
+    return;
+  }
+  if(act === "hautPage"){ window.scrollTo({ top:0, behavior:"smooth" }); return; }
   if(act === "ouvrirDossiers"){ vue.pageDossiers = true; return rendre(); }
   if(act === "fermerDossiers"){ vue.pageDossiers = false; return rendre(); }
   if(act === "ouvrirDossierCherche"){ vue.pageDossiers = false; vue.dossier = b.dataset.id; vue.voirFaites = false; return rendre(); }
