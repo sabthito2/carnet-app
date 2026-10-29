@@ -1427,7 +1427,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 244;
+const VERSION_APP = 245;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -3146,7 +3146,9 @@ const parMoisPeriode = (l, deb, fin) => {
 const totalChargesPeriode = (deb, fin) => toutesLignes().reduce((s, { l }) => s + parMoisPeriode(l, deb, fin), 0);
 const parMoisDossier = d => lignesDe(d).reduce((s,l) => s + parMois(l), 0);
 const toutesLignes = () => db.dossiers.flatMap(d => lignesDe(d)
-  .filter(l => l.montant && PERIODES[l.periodicite]).map(l => ({ l, d })));
+  /* Une charge passée à 0 € (abonnement arrêté) reste listée tant qu'elle a
+     un ancien tarif : les mois d'avant doivent continuer à la compter. */
+  .filter(l => (l.montant || (l.tarifs || []).some(t => t.montant)) && PERIODES[l.periodicite]).map(l => ({ l, d })));
 const chargesDossiers = () => db.dossiers.filter(d => parMoisDossier(d) > 0);
 const totalCharges = () => toutesLignes().reduce((s,x) => s + parMois(x.l), 0);
 const totalRevenus = () => (db.revenus || []).reduce((s,r) => s + parMois(r), 0);
@@ -5169,6 +5171,8 @@ function vueBudget(){
     || (a.l.jour || 99) - (c.l.jour || 99)
     || c.lisse - a.lisse);
 
+  /* Une charge à 0 € sur la période (arrêtée depuis) n'encombre pas la liste. */
+  for(let i = factures.length - 1; i >= 0; i--) if(!factures[i].reel && !factures[i].lisse) factures.splice(i, 1);
   const sansMois = factures.filter(x => !x.mensuelle && !x.l.mois);
   const totalReel = factures.reduce((s,x) => s + x.reel, 0);
 
@@ -7515,6 +7519,7 @@ function exporterCSVMoisComplet(){
 
   toutesLignes().forEach(({ l, d }) => {
     datesPrelevement(l, b.deb, b.fin).forEach(date => {
+      if(!montantAu(l, date)) return;
       lignes.push(["Charge", date, d.nom, "", l.libelle, String(Math.round(montantAu(l, date)*100)/100).replace(".", ","), ""]);
     });
   });
