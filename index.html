@@ -821,6 +821,11 @@
   .ligne-eclair{align-items:center}
   /* En grand texte, on retire l'étiquette pour que Perso · Travail · Now tiennent sur une ligne. */
   body.gros .classer-lab,body.tres-gros .classer-lab{display:none}
+  .morse-durees{margin-top:8px;font:11px var(--mono);color:var(--encre-3);text-align:center}
+  .morse-libre{display:block;width:150px;margin:14px auto 0;text-align:center;font:700 34px var(--mono);padding:10px;
+    border:1.5px solid var(--filet-fort);border-radius:14px;background:var(--fiche);color:var(--encre);text-transform:uppercase}
+  .morse-libre::placeholder{font:400 13px var(--sans);text-transform:none;color:var(--encre-3)}
+  .morse-retour.vide{border:0;background:none}
 </style>
 </head>
 <body>
@@ -1421,7 +1426,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 237;
+const VERSION_APP = 240;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1700,7 +1705,8 @@ function etatMorse(){
   if(!m.emission) m.emission = "une";
   if(m.auto == null) m.auto = false;   /* nouvelles lettres : c'est vous qui décidez */
   if(!m.pause) m.pause = 2;
-  if(!m.serie_taille) m.serie_taille = 3;      /* lettres par série */
+  if(!m.serie_taille) m.serie_taille = 3;
+  if(!m.reponse) m.reponse = "boutons";     /* boutons · melange · clavier */      /* lettres par série */
   if(!m.serie_ecart) m.serie_ecart = 0.9;      /* secondes de silence entre les lettres d'une série */            /* secondes d'affichage du schéma après une bonne réponse */
   m.stats = m.stats || {};
   m.seances = m.seances || [];
@@ -1820,7 +1826,7 @@ function demarrerMorse(mode, lettres){
   lettres = lettres && lettres.length >= 2 ? lettres : null;
   morseS = { mode, lettres, duree: lettres ? MORSE_DUREE_CIBLEE : MORSE_DUREE, debut:Date.now(), justes:0, total:0, hist:[], confusions:{}, cible:null, etat:"question",
              saisie:"", dernierRelache:0, minuteur:null, horloge:null, suite:null,
-             point:120, trait:360 };
+             point:(etatMorse().rythme || {}).point || 120, trait:(etatMorse().rythme || {}).trait || 360, durees:[] };
   vue.morseFin = null;
   morseS.horloge = setInterval(() => {
     if(!morseS) return;
@@ -1840,14 +1846,45 @@ function questionMorse(){
   if(morseS.mode === "serie"){
     const n = etatMorse().serie_taille;
     morseS.groupe = Array.from({ length:n }, () => tirerLettreMorse());
-    morseS.saisieSerie = []; morseS.etat = "question";
+    morseS.saisieSerie = []; morseS.etat = "question"; morseS.ordre = ordreTouchesMorse();
     rendre();
     setTimeout(jouerSerieMorse, 300);
     return;
   }
-  morseS.cible = tirerLettreMorse(); morseS.etat = "question"; morseS.saisie = ""; morseS.repondu = null;
-  rendre();
+  morseS.ordre = ordreTouchesMorse();
+  morseS.cible = tirerLettreMorse(); morseS.etat = "question"; morseS.saisie = ""; morseS.durees = []; morseS.repondu = null;
+  if(morseS.mode === "ecoute" && clavierLibreMorse() && document.getElementById("morse-libre")){
+    majEcouteSurPlace();
+    const i = document.getElementById("morse-libre"); i.value = "";
+  } else {
+    rendre();
+    /* Au tout début (geste de l'utilisateur), on ouvre directement le clavier. */
+    const i = clavierLibreMorse() && document.getElementById("morse-libre");
+    if(i) try{ i.focus(); }catch(e){}
+  }
   if(morseS.mode === "ecoute") setTimeout(() => morseS && jouerCodeMorse(MORSE_CODES[morseS.cible]), 250);
+}
+/* Ordre des touches de réponse. Toujours le même, le cerveau finit par
+   retenir les positions au lieu des sons : on peut donc les mélanger à chaque
+   question, ou répondre au clavier, sans aucune liste sous les yeux. */
+function ordreTouchesMorse(){
+  const l = [...(morseS.lettres || lettresMorse())];
+  if(etatMorse().reponse !== "boutons") for(let i = l.length - 1; i > 0; i--){ const k = Math.floor(Math.random() * (i + 1)); [l[i], l[k]] = [l[k], l[i]]; }
+  return l;
+}
+const clavierLibreMorse = () => etatMorse().reponse === "clavier";
+function retourEcouteMorse(s){
+  return s.etat !== "reponse" ? `<div class="morse-retour vide" id="morse-retour">&nbsp;</div>`
+    : s.repondu === s.cible ? `<div class="morse-retour ok" id="morse-retour"><div class="morse-ligne">✓ Juste : <b>${ech(s.cible)}</b></div>${dessinMorse(MORSE_CODES[s.cible])}</div>`
+    : `<div class="morse-retour non" id="morse-retour"><div class="morse-ligne">${s.repondu && s.repondu !== "?" ? `Vous avez tapé <b>${ech(s.repondu)}</b>. ` : ""}C'était <b>${ech(s.cible)}</b>, écoutez-le encore :</div>${dessinMorse(MORSE_CODES[s.cible])}</div>`;
+}
+/* En mode clavier, on ne redessine pas la page entre deux lettres : sur
+   iPhone, le clavier se refermerait à chaque fois. On met à jour sur place. */
+function majEcouteSurPlace(){
+  const s = morseS, r = document.getElementById("morse-retour");
+  if(r) r.outerHTML = retourEcouteMorse(s);
+  const sc = document.getElementById("morse-score");
+  if(sc) sc.textContent = `${s.justes} ✓ · ${s.total - s.justes} ✗`;
 }
 function jouerSerieMorse(){
   if(!morseS || !morseS.groupe) return 0;
@@ -1877,22 +1914,42 @@ function repondreMorse(c){
   else { const k = s.cible + ">" + c; s.confusions[k] = (s.confusions[k] || 0) + 1; }
   noterMorse(s.cible, juste);
   s.etat = "reponse"; s.repondu = c;
-  rendre();
+  if(clavierLibreMorse() && document.getElementById("morse-libre")) majEcouteSurPlace(); else rendre();
   const pause = etatMorse().pause * 1000;
   if(juste) s.suite = setTimeout(questionMorse, pause);
   else { const d = jouerCodeMorse(MORSE_CODES[s.cible]); s.suite = setTimeout(questionMorse, d + Math.max(1200, pause)); }
 }
 /* Émission : on classe chaque appui en point ou trait d'après la vitesse
    propre de la personne (moyennes glissantes), pas d'après un barème fixe. */
+/* Seuil point/trait : réglé à la main, ou appris de votre propre rythme. */
+const seuilMorse = s => etatMorse().seuil_trait || Math.round(Math.sqrt(s.point * s.trait));   /* moyenne « à l oreille » (géométrique) */
 function appuiMorse(duree){
   const s = morseS; if(!s || s.etat !== "question") return;
-  const seuil = (s.point + s.trait) / 2;
-  const signe = duree < seuil ? "." : "-";
-  if(signe === ".") s.point = s.point * 0.75 + Math.max(40, duree) * 0.25;
-  else s.trait = s.trait * 0.75 + Math.min(1500, duree) * 0.25;
-  if(s.trait < s.point * 2) s.trait = s.point * 2;
-  s.saisie += signe;
+  (s.durees = s.durees || []).push(Math.round(duree));
+  s.saisie += duree < seuilMorse(s) ? "." : "-";   /* classement provisoire, affiché tout de suite */
   majTraceMorse();
+}
+/* Classement définitif d'une lettre entière : on compare les appuis entre eux.
+   Deux appuis de durée voisine sont du même type (M = deux traits, même un peu
+   inégaux) ; s'ils sont nettement différents, la coupure se fait entre les deux. */
+function classerAppuisMorse(durees, seuil){
+  if(durees.length < 2) return durees.map(d => d < seuil ? "." : "-").join("");
+  const mn = Math.min(...durees), mx = Math.max(...durees);
+  if(mx / mn >= 1.8){ const coupe = Math.sqrt(mn * mx); return durees.map(d => d < coupe ? "." : "-").join(""); }
+  const moy = durees.reduce((a,b) => a + b, 0) / durees.length;
+  return durees.map(() => moy < seuil ? "." : "-").join("");
+}
+/* Apprentissage du rythme : quand le nombre d'appuis correspond à la lettre
+   demandée, on sait quels appuis voulaient être des points ou des traits. */
+function apprendreRythmeMorse(s, code){
+  if(!s.durees || s.durees.length !== code.length) return;
+  [...code].forEach((x, i) => {
+    const d = s.durees[i];
+    if(x === ".") s.point = s.point * 0.7 + Math.max(40, Math.min(600, d)) * 0.3;
+    else s.trait = s.trait * 0.7 + Math.max(80, Math.min(1500, d)) * 0.3;
+  });
+  if(s.trait < s.point * 1.8) s.trait = s.point * 1.8;
+  etatMorse().rythme = { point:Math.round(s.point), trait:Math.round(s.trait) };
 }
 function majTraceMorse(){
   const el = document.getElementById("morse-trace");
@@ -1900,6 +1957,8 @@ function majTraceMorse(){
 }
 function validerEmissionMorse(){
   const s = morseS; if(!s || s.etat !== "question" || !s.saisie) return;
+  const uneTouche = etatMorse().emission !== "deux" && s.durees && s.durees.length === s.saisie.length;
+  if(uneTouche){ s.saisie = classerAppuisMorse(s.durees, seuilMorse(s)); majTraceMorse(); apprendreRythmeMorse(s, MORSE_CODES[s.cible]); }
   const fait = MORSE_PAR_CODE[s.saisie] || null, juste = s.saisie === MORSE_CODES[s.cible];
   s.total++; if(juste) s.justes++;
   else { const k = s.cible + ">" + (fait || "?"); s.confusions[k] = (s.confusions[k] || 0) + 1; }
@@ -1910,6 +1969,7 @@ function validerEmissionMorse(){
     r.innerHTML = juste ? `<div class="morse-ligne">✓ Juste : <b>${ech(s.cible)}</b></div>${dessinMorse(s.saisie)}`
       : `<div class="morse-ligne">Vous avez fait${fait ? ` <b>${ech(fait)}</b>` : " :"}</div>${dessinMorse(s.saisie)}
          <div class="morse-ligne">${ech(s.cible)} se fait :</div>${dessinMorse(MORSE_CODES[s.cible])}`;
+    if(uneTouche) r.innerHTML += `<div class="morse-durees">vos appuis : ${s.durees.join(" · ")} ms · trait à partir de ${seuilMorse(s)} ms</div>`;
   }
   const temps = document.getElementById("morse-score");
   if(temps) temps.textContent = `${s.justes} ✓ · ${s.total - s.justes} ✗`;
@@ -2006,8 +2066,10 @@ function vueMorsePage(){
     ${reg("hauteur", "Hauteur du son", m.hauteur + " Hz")}
     ${reg("flash", "Flash à l'écran", m.flash ? "oui" : "non")}
     ${reg("emission", "Émission", m.emission === "une" ? "une touche" : "deux touches")}
+    ${reg("reponse", "Réponse (écoute)", { boutons:"boutons", melange:"boutons mélangés", clavier:"clavier du téléphone" }[m.reponse])}
     ${reg("serie_taille", "Longueur des séries", m.serie_taille + " lettres")}
     ${reg("serie_ecart", "Silence entre les lettres (séries)", String(m.serie_ecart).replace(".", ",") + " s")}
+    ${reg("seuil_trait", "Trait à partir de (émission)", m.seuil_trait ? m.seuil_trait + " ms" : "auto" + (m.rythme ? " · " + Math.round(Math.sqrt(m.rythme.point * m.rythme.trait)) + " ms" : ""))}
     ${reg("fin_lettre", "Fin de lettre (émission)", m.fin_lettre ? String(m.fin_lettre).replace(".", ",") + " s de silence" : "auto")}
     ${reg("auto", "Nouvelles lettres", m.auto ? "automatiques à 90 %" : "je choisis")}
     ${reg("pause", "Schéma affiché", m.pause + " s")}
@@ -2031,20 +2093,22 @@ function enteteSeanceMorse(){
     <div class="barre-morse" style="margin:4px 0 14px"><i id="morse-avance" style="width:${Math.min(100, (Date.now() - s.debut) / 10 / s.duree)}%"></i></div>`;
 }
 function vueMorseEcoute(){
-  const s = morseS, l = s.lettres || lettresMorse();
+  const s = morseS, l = s.ordre || s.lettres || lettresMorse();
   const etat = c => s.etat !== "reponse" ? "" : c === s.cible ? "ok" : c === s.repondu ? "non" : "";
-  const retour = s.etat !== "reponse" ? `<div class="morse-retour vide">&nbsp;</div>`
-    : s.repondu === s.cible ? `<div class="morse-retour ok"><div class="morse-ligne">✓ Juste : <b>${ech(s.cible)}</b></div>${dessinMorse(MORSE_CODES[s.cible])}</div>`
-    : `<div class="morse-retour non"><div class="morse-ligne">C'était <b>${ech(s.cible)}</b>, écoutez-le encore :</div>${dessinMorse(MORSE_CODES[s.cible])}</div>`;
+  const zone = clavierLibreMorse()
+    ? `<input id="morse-libre" class="morse-libre" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="characters"
+         spellcheck="false" enterkeyhint="next" aria-label="Lettre entendue" placeholder="Tapez la lettre…">
+       <p class="petit-detail" style="text-align:center;margin:6px 0 0">Touchez le champ une fois : le clavier reste ouvert toute la séance.</p>`
+    : `<div class="morse-clav ${l.length > 12 ? "serre" : ""}">${l.map(c => `<button class="${etat(c)}" data-act="morseRep" data-c="${ech(c)}">${ech(c)}</button>`).join("")}</div>`;
   return enteteSeanceMorse() + `
-    <button class="morse-rond" id="morse-flash" data-act="morseRejouer" aria-label="Réécouter"><span>↻</span><small>RÉÉCOUTER</small></button>
+    <button class="morse-rond${clavierLibreMorse() ? " petit" : ""}" id="morse-flash" data-act="morseRejouer" aria-label="Réécouter"><span>↻</span><small>RÉÉCOUTER</small></button>
     <p class="petit-detail" style="text-align:center;margin:0">Quelle lettre avez-vous entendue ?</p>
-    <div class="morse-clav ${l.length > 12 ? "serre" : ""}">${l.map(c => `<button class="${etat(c)}" data-act="morseRep" data-c="${ech(c)}">${ech(c)}</button>`).join("")}</div>
-    ${retour}
+    ${zone}
+    ${retourEcouteMorse(s)}
     <button class="btn creux mini morse-stop" data-act="morseArreter">Terminer la séance</button></div>`;
 }
 function vueMorseSerie(){
-  const s = morseS, l = s.lettres || lettresMorse(), n = s.groupe.length;
+  const s = morseS, l = s.ordre || s.lettres || lettresMorse(), n = s.groupe.length;
   const cases = s.groupe.map((x, i) => {
     const t = s.saisieSerie[i];
     if(s.etat !== "reponse") return `<span class="serie-case ${t ? "pleine" : ""}">${t ? ech(t) : ""}</span>`;
@@ -7601,7 +7665,9 @@ document.addEventListener("click", ev => {
     const d = dossDe(b.dataset.dossier); if(d) return editerCharge(d, null);
     return;
   }
-  if(act === "nouveauRdv") return editerRdv(null, (vue.moisAgenda || jourISO().slice(0,7)) + "-01");
+  /* Nouveau rendez-vous : proposé à la date du jour (et non plus au 1er du
+     mois affiché), puisque les rendez-vous sont presque toujours à venir. */
+  if(act === "nouveauRdv") return editerRdv(null, jourISO());
   if(act === "nouvelEdt") return editerEdt(null);
   if(act === "ouvrirEdt"){
     vue.semestre = null; vue.vueMois = false; vue.semaineCondensee = false; vue.agendaListe = false;
@@ -7818,6 +7884,8 @@ document.addEventListener("click", ev => {
     if(cle === "flash") m.flash = !m.flash;
     if(cle === "emission") m.emission = m.emission === "une" ? "deux" : "une";
     if(cle === "auto") m.auto = !m.auto;
+    if(cle === "seuil_trait") m.seuil_trait = tour([0, 150, 200, 250, 300, 350], m.seuil_trait || 0);
+    if(cle === "reponse") m.reponse = tour(["boutons", "melange", "clavier"], m.reponse);
     if(cle === "serie_taille") m.serie_taille = tour([3,4,5], m.serie_taille);
     if(cle === "serie_ecart"){ m.serie_ecart = tour([1.2, 0.9, 0.6, 0.4], m.serie_ecart); audioMorse(); jouerSequenceMorse([".-.", "-.-"], m.serie_ecart); }
     if(cle === "fin_lettre") m.fin_lettre = tour([0, 0.6, 0.9, 1.2, 1.6, 2], m.fin_lettre || 0);
@@ -8314,6 +8382,13 @@ document.addEventListener("keydown", ev => {
 
 document.addEventListener("input", ev => {
   Sync.noterGeste();
+  if(ev.target.id === "morse-libre"){
+    const v = sansAccents(ev.target.value || "").toUpperCase().replace(/\s/g, "");
+    ev.target.value = "";
+    const c = v.slice(-1);
+    if(c && morseS && morseS.etat === "question") repondreMorse(MORSE_CODES[c] ? c : "?");
+    return;
+  }
   if(ev.target.id === "suivi-cherche"){
     const r = document.getElementById("suivi-resultats");
     if(r) r.innerHTML = resultatsSuiviCherche(ev.target.value);
