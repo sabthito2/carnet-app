@@ -807,9 +807,10 @@
   .serie-case.non s{font-size:14px;font-weight:400;color:var(--encre-3)}
   body.sombre .serie-case.ok{background:#22382A}
   .morse-histo .ligne{display:flex;align-items:center;gap:10px;padding:11px 12px}
-  .mh-date{flex:0 0 auto;min-width:86px;font-size:14px;color:var(--encre)}
-  .mh-type{flex:1;font:12px var(--mono);color:var(--encre-2);text-align:right;line-height:1.3}
-  .mh-type small{display:block;font-size:11px;color:var(--encre-3);letter-spacing:.1em;white-space:nowrap}
+  .mh-date{flex:0 0 auto;min-width:86px;font-size:14px;color:var(--encre);line-height:1.3}
+  .mh-date small{display:block;font:11px var(--mono);color:var(--encre-3);letter-spacing:.04em;white-space:nowrap}
+  .mh-type{flex:1;min-width:0;font:12px var(--mono);color:var(--encre-2);text-align:right;line-height:1.3}
+  .mh-type small{display:block;font-size:11px;color:var(--encre-3);letter-spacing:.06em}
   .mh-sep{flex:none;width:1px;align-self:stretch;background:var(--filet-fort);margin:2px 0}
   .mh-score{display:flex;flex-direction:column;align-items:flex-end;min-width:52px;line-height:1.15}
   .mh-score b{font:700 16px var(--mono);color:var(--encre)}.mh-score b.bon{color:var(--vert)}
@@ -1426,7 +1427,7 @@ const Sync = (() => {
    2. MODÈLE
    ===================================================================== */
 const VERSION_SCHEMA = 16;
-const VERSION_APP = 240;
+const VERSION_APP = 244;
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID()
   : Date.now().toString(36) + Math.random().toString(36).slice(2,9));
@@ -1989,7 +1990,8 @@ function terminerMorse(){
     if(m.auto) nouvelle = ajouterLettreMorse();
     else prete = MORSE_KOCH[m.niveau];
   }
-  m.seances.unshift({ date:j, mode:s.mode, justes:s.justes, total:s.total, ...(s.lettres ? { lettres:s.lettres.join("") } : {}),
+  m.seances.unshift({ date:j, mode:s.mode, justes:s.justes, total:s.total,
+    ...(s.lettres ? { lettres:s.lettres.join("") } : { jeu:lettresMorse().join("") }),
     ...(s.mode === "serie" ? { taille:m.serie_taille } : {}) });
   m.seances = m.seances.slice(0, 40);
   const hab = habitudeMorse();
@@ -2078,8 +2080,9 @@ function vueMorsePage(){
   if(m.seances.length) h.push(`<div class="oeil" style="margin-top:18px">Dernières séances</div>
     <div class="fiche liste morse-histo">${m.seances.slice(0,10).map((x, i) => { const d = versDate(x.date), pct = Math.round(100*x.justes/x.total);
       return `<div class="ligne">
-        <span class="mh-date">${JOURS[d.getDay()].slice(0,3)}. ${d.getDate()} ${MOIS_ABREGE[d.getMonth()]}</span>
-        <span class="mh-type">${x.mode === "ecoute" ? "écoute" : x.mode === "serie" ? "séries de " + (x.taille || 3) : "émission"}${x.lettres ? `<small>${ech(x.lettres.split("").join(" "))}</small>` : ""}</span>
+        <span class="mh-date">${JOURS[d.getDay()].slice(0,3)}. ${d.getDate()} ${MOIS_ABREGE[d.getMonth()]}${x.lettres ? `<small>${ech(x.lettres.split("").join(" "))}</small>`
+          : x.jeu ? `<small>${x.jeu.length} lettres → ${ech(x.jeu.slice(-1))}</small>` : ""}</span>
+        <span class="mh-type">${x.mode === "ecoute" ? "écoute" : x.mode === "serie" ? "séries de " + (x.taille || 3) : "émission"}</span>
         <span class="mh-sep"></span>
         <span class="mh-score"><b class="${pct >= 90 ? "bon" : ""}">${pct} %</b><small>${x.total}</small></span>
         <button class="ico sup" data-act="morseSupSeance" data-i="${i}" title="Supprimer cette séance">✕</button></div>`; }).join("")}</div>`);
@@ -3096,7 +3099,7 @@ function montantMouvementDuMois(n){
   const deb = debutPeriode(n), fin = finPeriode(deb);
   const charges = toutesLignes()
     .filter(({ l }) => PERIODES[l.periodicite] > 1 && l.mois && l.jour)
-    .reduce((s, { l }) => s + l.montant * datesPrelevement(l, deb, fin).length, 0);
+    .reduce((s, { l }) => s + sommeAuxDates(l, datesPrelevement(l, deb, fin)), 0);
   const depenses = db.depenses
     .filter(x => decalagePeriode(x.date) === n)
     .reduce((s, x) => s + (x.montant||0), 0);
@@ -3126,12 +3129,40 @@ const parMois = x => {
   return x && x.montant && p ? x.montant / p : 0;
 };
 const lignesDe = d => d.lignes || [];
+/* Historique des tarifs d'une charge : l.tarifs = [{ jusqu_au, montant }],
+   du plus ancien au plus récent. Un changement de prix ne réécrit donc plus
+   les mois passés : chaque date retrouve le montant en vigueur ce jour-là. */
+const montantAu = (l, iso) => {
+  const t = iso ? (l.tarifs || []).find(x => iso <= x.jusqu_au) : null;
+  return t ? t.montant : (l.montant || 0);
+};
+const sommeAuxDates = (l, dates) => dates.reduce((s, d) => s + montantAu(l, d), 0);
+/* Équivalent mensuel d'une charge pour une période donnée. */
+const parMoisPeriode = (l, deb, fin) => {
+  const p = PERIODES[l && l.periodicite]; if(!p) return 0;
+  const ref = p === 1 ? (datesPrelevement(l, deb, fin)[0] || deb) : deb;
+  return montantAu(l, ref) / p;
+};
+const totalChargesPeriode = (deb, fin) => toutesLignes().reduce((s, { l }) => s + parMoisPeriode(l, deb, fin), 0);
 const parMoisDossier = d => lignesDe(d).reduce((s,l) => s + parMois(l), 0);
 const toutesLignes = () => db.dossiers.flatMap(d => lignesDe(d)
   .filter(l => l.montant && PERIODES[l.periodicite]).map(l => ({ l, d })));
 const chargesDossiers = () => db.dossiers.filter(d => parMoisDossier(d) > 0);
 const totalCharges = () => toutesLignes().reduce((s,x) => s + parMois(x.l), 0);
 const totalRevenus = () => (db.revenus || []).reduce((s,r) => s + parMois(r), 0);
+/* Revenus d'une période, avec le même historique de montants que les charges
+   (r.tarifs) : une augmentation ne réécrit pas les mois passés. */
+const revenusPeriode = deb => (db.revenus || []).reduce((s,r) => {
+  const p = PERIODES[r.periodicite]; return p ? s + montantAu(r, deb) / p : s; }, 0);
+/* Changement de montant daté, commun aux charges et aux revenus : l'ancien
+   montant reste valable jusqu'à la veille de « depuis ». */
+function noterAncienMontant(x, ancien, nouveau, depuis){
+  if(ancien == null || nouveau === ancien || !depuis) return;
+  const fin = ajouterPeriode(depuis, -1, "jour");
+  const avant = (x.tarifs || []).filter(t => t.jusqu_au < fin);
+  const suivant = (x.tarifs || []).find(t => t.jusqu_au >= fin);
+  x.tarifs = [...avant, { jusqu_au: fin, montant: suivant ? suivant.montant : ancien }];
+}
 
 /* Date de prélèvement d'une ligne mensuelle à l'intérieur de la période
    budgétaire, qui ne coïncide pas forcément avec le mois calendaire. */
@@ -3175,11 +3206,11 @@ function datesPrelevement(l, deb, fin){
    si son échéance tombe dedans. */
 function chargesReelles(deb, fin){
   return toutesLignes().reduce((s, { l, d }) => {
-    if(PERIODES[l.periodicite] === 1) return s + l.montant;
     const dates = datesPrelevement(l, deb, fin);
-    if(dates.length) return s + l.montant * dates.length;
+    if(PERIODES[l.periodicite] === 1) return s + montantAu(l, dates[0] || deb);
+    if(dates.length) return s + sommeAuxDates(l, dates);
     /* Charge sans mois renseigné : on retombe sur l'échéance du dossier. */
-    if(!l.mois){ const p = prochaineDe(d.id); if(p && p >= deb && p <= fin) return s + l.montant; }
+    if(!l.mois){ const p = prochaineDe(d.id); if(p && p >= deb && p <= fin) return s + montantAu(l, p); }
     return s;
   }, 0);
 }
@@ -3202,10 +3233,10 @@ function resteAPrelever(deb, fin){
   const j = jourISO();
   return toutesLignes().reduce((s, { l, d }) => {
     const dates = datesPrelevement(l, deb, fin);
-    if(dates.length) return s + l.montant * dates.filter(x => x >= j && !chargeConfirmee(l.id, x)).length;
+    if(dates.length) return s + sommeAuxDates(l, dates.filter(x => x >= j && !chargeConfirmee(l.id, x)));
     if(!l.mois && PERIODES[l.periodicite] > 1){
       const p = prochaineDe(d.id);
-      if(p && p >= j && p <= fin && !chargeConfirmee(l.id, p)) return s + l.montant;
+      if(p && p >= j && p <= fin && !chargeConfirmee(l.id, p)) return s + montantAu(l, p);
     }
     return s;
   }, 0);
@@ -3235,7 +3266,7 @@ function bilan(decalage = 0){
   const deb = debutPeriode(decalage), fin = finPeriode(deb), j = jourISO();
   const dep = depensesDe(deb, fin);
   const especes = dep.filter(enEspeces).reduce((s,x) => s + (x.montant||0), 0);
-  const revenus = totalRevenus(), charges = totalCharges();
+  const revenus = revenusPeriode(deb), charges = totalChargesPeriode(deb, fin);
   /* Une rentrée ponctuelle — remboursement, prime, vente — ne compte qu'une
      fois encaissée. Tant qu'elle est « à venir », elle est signalée à part
      sans gonfler le disponible : mieux vaut une bonne surprise. */
@@ -3252,7 +3283,7 @@ function bilan(decalage = 0){
      ce qui reste que d'être surpris le jour du prélèvement. */
   const ponctuels = prelevementsPonctuels(deb, fin);
   const sortiePonctuelle = compterPrelevements()
-    ? ponctuels.reduce((s, x) => s + (x.l.montant || 0), 0) : 0;
+    ? ponctuels.reduce((s, x) => s + montantAu(x.l, x.date), 0) : 0;
   const depense = sommeDep(dep.filter(x => !enEspeces(x)));
   const reste = disponible - depense - sortiePonctuelle;
   const total = ecartJours(deb, fin) + 1;
@@ -4931,7 +4962,8 @@ function vueBudget(){
       Récap ${vue.recapOuvert ? "▾" : "▸"}</button>`);
     if(vue.recapOuvert) h.push(`<div class="compteur">
       ${ligne(b.courante ? "Solde" : "Solde sur " + nomPeriode, euro(b.reste,0),
-              b.courante ? `soit ${euro(b.reste / b.encore, 0)} par jour pendant ${b.encore} jours` : "",
+              [b.courante ? `soit ${euro(b.reste / b.encore, 0)} par jour pendant ${b.encore} jours` : "",
+               attenteMois > 0 ? `<b>dont ${euro(attenteMois,0)} avancés, en attente de remboursement</b>` : ""].filter(Boolean).join("<br>"),
               b.reste < 0 ? "neg" : "")}
       ${aPrel > 0 && b.courante ? ligne("Encore à prélever", euro(aPrel,0), "déjà retirés") : ""}
       ${b.sortiePonctuelle > 0 ? ligne("Facture annuelle du mois", euro(b.sortiePonctuelle,0), "retirée en plus") : ""}
@@ -4971,7 +5003,7 @@ function vueBudget(){
   h.push(`<div class="oeil">Dépenses ${b.courante ? "" : "de " + nomPeriode}
     ${jours.length?`<span class="cpt">${euro(totalMois,2)}</span>`:""}</div>`);
   if(ponctuelsDuMois.length){
-    const somme = ponctuelsDuMois.reduce((s,p) => s + (p.l.montant || 0), 0);
+    const somme = ponctuelsDuMois.reduce((s,p) => s + montantAu(p.l, p.date), 0);
     const liste = ponctuelsDuMois.map(p => `${ech(p.l.libelle)} le ${versDate(p.date).getDate()}`).join(" · ");
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${comptes
       ? `Dont ${euro(somme,2)} de facture annuelle prélevée ${b.courante ? "ce mois-ci" : "sur " + nomPeriode} : ${liste}.`
@@ -5004,7 +5036,7 @@ function vueBudget(){
   }
   else h.push(jours.map(d => {
     const l = parJour[d];
-    const s = l.reduce((t,e) => t + (e.genre === "dep" ? e.x.montant : e.p.l.montant), 0);
+    const s = l.reduce((t,e) => t + (e.genre === "dep" ? e.x.montant : montantAu(e.p.l, e.p.date)), 0);
     return `<div class="oeil" style="margin:14px 0 6px">${d===j?"Aujourd'hui":dateLongue(d)}<span class="a-droite">${euro(s,2)}</span></div>
     ${enFiche(l.map(e => {
       if(e.genre === "prel"){
@@ -5014,7 +5046,7 @@ function vueBudget(){
             <div class="meta"><span class="puce doss">${ech(dos.nom)}</span>
               <span class="puce ctx">prélèvement ${ech(lg.periodicite)}</span>
               ${comptes ? "" : `<span class="puce">déjà lissé</span>`}</div></div>
-          <div class="somme"${comptes ? "" : ` style="color:var(--encre-3)"`}>${euro(lg.montant,2)}</div>
+          <div class="somme"${comptes ? "" : ` style="color:var(--encre-3)"`}>${euro(montantAu(lg, e.p.date),2)}</div>
           <div class="outils"><button class="ico" data-act="ouvrir" title="Ouvrir le dossier">↗</button></div></div>`;
       }
       const x = e.x, c = cdepDe(x.categorie_id);
@@ -5129,8 +5161,8 @@ function vueBudget(){
     return { l, d, mensuelle: p === 1, dates,
              tombe: dates.length > 0,
              quand: dates[0] || null,
-             reel: p === 1 ? l.montant : l.montant * dates.length,
-             lisse: parMois(l) };
+             reel: p === 1 ? montantAu(l, dates[0] || b.deb) : sommeAuxDates(l, dates),
+             lisse: parMoisPeriode(l, b.deb, b.fin) };
   }).sort((a,c) =>
     (c.tombe?1:0) - (a.tombe?1:0)
     || (a.quand || "9").localeCompare(c.quand || "9")
@@ -5155,7 +5187,7 @@ function vueBudget(){
     }
   }
 
-  h.push(`<div class="oeil" id="sec-charges">Charges<span class="a-droite">${euro(totalCharges(),2)} / mois</span><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
+  h.push(`<div class="oeil" id="sec-charges">Charges<span class="a-droite">${euro(totalChargesPeriode(b.deb, b.fin),2)} / mois</span><button class="haut-page" data-act="hautPage" title="Revenir en haut" aria-label="Revenir en haut">↑</button></div>`);
   if(b.courante)
     h.push(`<p class="petit-detail" style="margin:0 0 8px">${
       encoreDu > 0
@@ -5180,7 +5212,7 @@ function vueBudget(){
       const meta = [`<span class="puce doss">${ech(d.nom)}</span>`,
                     `<span class="puce">${ech(l.periodicite)}</span>`];
       if(!mensuelle){
-        if(tombe) meta.push(`<span class="puce ctx">${euro(l.montant,0)} le ${dateMoyenne(quand)}</span>`);
+        if(tombe) meta.push(`<span class="puce ctx">${euro(montantAu(l, quand),0)} le ${dateMoyenne(quand)}</span>`);
         else if(l.mois) meta.push(`<span class="puce">${euro(l.montant,0)} le ${l.jour} ${MOIS[l.mois-1]}</span>`);
         else meta.push(`<span class="puce chaud">mois à préciser</span>`);
       }
@@ -7175,6 +7207,8 @@ function ajouterTacheProjet(projetId){
 function editerCharge(d, l){
   const neuf = !l;
   const x = l || { id:uid(), libelle:"", montant:null, periodicite:"mensuel", jour:null, mois:null };
+  const ancien = x.montant;
+  const histo = (x.tarifs || []).map(t => `${euro(t.montant,2)} jusqu'au ${dateCourte(t.jusqu_au)}`).join(" · ");
   formulaire(neuf ? `Nouvelle charge · ${d.nom}` : "Modifier la charge", [
     { cle:"libelle", nom:"Libellé" },
     { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
@@ -7182,7 +7216,12 @@ function editerCharge(d, l){
     { cle:"jour", nom:"Jour du prélèvement", type:"text", mode:"numeric", ph:"12", duo:true },
     { cle:"mois", nom:"Mois (si pas mensuel)", type:"select",
       options:[{v:"",n:"— sans objet —"}, ...MOIS.map((m,i) => ({v:i+1,n:m}))] },
-  ], { ...x, montant:x.montant ?? "", jour:x.jour ?? "", mois:x.mois ?? "" }, f => {
+    /* Si le montant change : à partir de quand. Les mois d'avant gardent
+       l'ancien tarif (Récap, liste des charges, export, bilan annuel). */
+    ...(neuf ? [] : [{ cle:"depuis", nom:"Si le montant change : nouveau tarif à partir du", type:"date" }]),
+    ...(histo ? [{ cle:"histo", nom:"Anciens tarifs : " + histo, type:"select",
+      options:[{v:"",n:"Les garder"},{v:"effacer",n:"Les effacer (tout au tarif actuel)"}] }] : []),
+  ], { ...x, montant:x.montant ?? "", jour:x.jour ?? "", mois:x.mois ?? "", depuis:debutPeriode(0), histo:"" }, f => {
     const m = lireMontant(f.montant);
     if(!f.libelle || m === null){ alert("Il faut un libellé et un montant."); return; }
     let jr = parseInt(f.jour, 10);
@@ -7192,7 +7231,10 @@ function editerCharge(d, l){
       alert("Pour une charge qui ne tombe pas tous les mois, indiquez aussi le mois du prélèvement.");
       return;
     }
-    Object.assign(x, { libelle:f.libelle, montant:Math.abs(m), periodicite:f.periodicite, jour:jr, mois:mo });
+    if(f.histo === "effacer") x.tarifs = [];
+    const nouveau = Math.abs(m);
+    if(!neuf) noterAncienMontant(x, ancien, nouveau, f.depuis);
+    Object.assign(x, { libelle:f.libelle, montant:nouveau, periodicite:f.periodicite, jour:jr, mois:mo });
     if(neuf) (d.lignes = d.lignes || []).push(x);
     touche(d);   /* une charge vit dans son dossier : c'est lui qu'on horodate */
     d.demo = false;
@@ -7265,12 +7307,19 @@ function encaisserRemboursement(x){
 function editerRevenu(r){
   const neuf = !r;
   const x = r || { id:uid(), libelle:"", montant:null, periodicite:"mensuel" };
+  const ancien = x.montant;
+  const histo = (x.tarifs || []).map(t => `${euro(t.montant,2)} jusqu'au ${dateCourte(t.jusqu_au)}`).join(" · ");
   formulaire(neuf ? "Nouveau revenu" : "Modifier le revenu", [
     { cle:"libelle", nom:"Libellé", ph:"Salaire, APL, pension…" },
     { cle:"montant", nom:"Montant (€)", type:"number", step:"0.01", duo:true },
     { cle:"periodicite", nom:"Périodicité", type:"select", options:Object.keys(PERIODES).map(k => ({v:k,n:k})) },
-  ], { ...x, montant:x.montant ?? "" }, d => {
+    ...(neuf ? [] : [{ cle:"depuis", nom:"Si le montant change : nouveau montant à partir du", type:"date" }]),
+    ...(histo ? [{ cle:"histo", nom:"Anciens montants : " + histo, type:"select",
+      options:[{v:"",n:"Les garder"},{v:"effacer",n:"Les effacer (tout au montant actuel)"}] }] : []),
+  ], { ...x, montant:x.montant ?? "", depuis:debutPeriode(0), histo:"" }, d => {
     if(!d.libelle || d.montant === "") return;
+    if(d.histo === "effacer") x.tarifs = [];
+    if(!neuf) noterAncienMontant(x, ancien, Number(d.montant), d.depuis);
     Object.assign(x, { libelle:d.libelle, montant:Number(d.montant), periodicite:d.periodicite });
     touche(x);
     if(neuf) (db.revenus = db.revenus || []).push(x);
@@ -7442,12 +7491,19 @@ function exporter(){
 function exporterCSVMoisComplet(){
   const b = bilan(vue.decalage);
   const echapper = v => /[;"\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
-  const lignes = [["Type","Date","Catégorie / Dossier","Sous-catégorie","Libellé","Montant (€)"]];
+  const lignes = [["Type","Date","Catégorie / Dossier","Sous-catégorie","Libellé","Montant (€)","Remboursement"]];
+  const virgule = n => String(Math.round((n || 0) * 100) / 100).replace(".", ",");
 
+  /* Colonne « Remboursement » : on voit dans le tableur ce qui, parmi les
+     dépenses du mois, a été avancé et doit revenir. */
   [...b.dep].sort((x,y) => (x.date||"").localeCompare(y.date||"")).forEach(x => {
     const cat = cdepDe(x.categorie_id), parent = parentCdep(cat);
+    const recu = rembourseDe(x);
+    const etatRemb = x.rembourser && !x.rembourse
+      ? (recu > 0 ? `en attente (reçu ${virgule(recu)} sur ${virgule(x.montant)})` : "en attente")
+      : recu > 0 ? `remboursé ${virgule(recu)}` : "";
     lignes.push(["Dépense", x.date || "", (parent || cat || {}).nom || "", parent ? cat.nom : "",
-      x.libelle || "", String(x.montant ?? 0).replace(".", ",")]);
+      x.libelle || "", String(x.montant ?? 0).replace(".", ","), etatRemb]);
   });
 
   (db.rentrees||[]).filter(r => r.recu && r.date && r.date >= b.deb && r.date <= b.fin)
@@ -7459,10 +7515,15 @@ function exporterCSVMoisComplet(){
 
   toutesLignes().forEach(({ l, d }) => {
     datesPrelevement(l, b.deb, b.fin).forEach(date => {
-      lignes.push(["Charge", date, d.nom, "", l.libelle, String(Math.round(l.montant*100)/100).replace(".", ",")]);
+      lignes.push(["Charge", date, d.nom, "", l.libelle, String(Math.round(montantAu(l, date)*100)/100).replace(".", ","), ""]);
     });
   });
 
+  const attenteMois = b.dep.filter(x => x.rembourser && !x.rembourse).reduce((t,x) => t + montantNet(x), 0);
+  if(attenteMois > 0){
+    lignes.push([]);
+    lignes.push(["Dont en attente de remboursement", "", "", "", "", virgule(attenteMois), ""]);
+  }
   const csv = "\uFEFF" + lignes.map(l => l.map(v => echapper(String(v))).join(";")).join("\r\n");
   const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
   const nomFichier = nomDeLaPeriode(vue.decalage).toLowerCase()
